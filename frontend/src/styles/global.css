@@ -1,0 +1,107 @@
+@import 'tailwindcss' source('../');
+
+/* Paperlogy 로컬 폰트 (TTF). 실제 사용되는 굵기만 브라우저가 내려받는다. */
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 100;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-1Thin.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 200;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-2ExtraLight.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-3Light.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-4Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-5Medium.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-6SemiBold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-7Bold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-8ExtraBold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Paperlogy';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('../assets/fonts/Paperlogy-9Black.ttf') format('truetype');
+}
+
+/* 승인된 기획 문서의 디자인 토큰 */
+@theme {
+  --color-brand: #2563eb;
+  --color-brand-hover: #1d4ed8;
+  --color-brand-soft: #eff6ff;
+  --color-exercise: #4f46e5;
+  --color-exercise-soft: #eef2ff;
+  --color-meal: #b45309;
+  --color-meal-soft: #fff7ed;
+  --color-page: #f6f8fc;
+  --color-surface: #ffffff;
+  --color-content: #17233d;
+  --color-muted: #5e6b82;
+  --color-line: #e1e7f0;
+  --color-success: #23734d;
+  --color-success-soft: #edf7f0;
+  --color-warning: #8a5a00;
+  --color-warning-soft: #fff8e6;
+  --color-danger: #b42318;
+  --color-danger-soft: #fff1f0;
+  --font-sans: 'Paperlogy', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  --text-app-title: 1.375rem;
+  --text-section-title: 0.9375rem;
+  --text-body: 0.875rem;
+  --text-support: 0.75rem;
+  --text-metric: 1.625rem;
+  --spacing: 0.25rem;
+  --container-app: 24.375rem;
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --shadow-card: none;
+}
