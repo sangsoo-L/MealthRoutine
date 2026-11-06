@@ -17,7 +17,7 @@ public abstract class BaseTimeEntity {
 
     @CreatedDate
     @Column(updatable = false) // 처음 저장 후 다시 안 바꿈
-    private LocalDateTime createAt;
+    private LocalDateTime createdAt;
 
     @LastModifiedDate
     private LocalDateTime updatedAt;// 수정할 떄마다 갱신

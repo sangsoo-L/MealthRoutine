@@ -38,16 +38,16 @@ public class Food extends BaseTimeEntity { // created_at, updated_at
     @Column(precision = 8,scale = 2)
     private BigDecimal caloriesKcal; // 기준량당 열량
 
-    @Column(precision = 8,scale = 2)
+    @Column(name = "carbohydrate_g", precision = 8,scale = 2)
     private BigDecimal carbohydrateG; // 탄수화물
 
-    @Column(precision = 8,scale = 2)
+    @Column(name = "protein_g", precision = 8,scale = 2)
     private BigDecimal proteinG; // 단백질
 
-    @Column(precision = 8,scale = 2)
+    @Column(name = "fat_g", precision = 8,scale = 2)
     private BigDecimal fatG; // 지방
 
-    @Column(precision = 8,scale = 2)
+    @Column(name = "sugar_g",precision = 8,scale = 2)
     private BigDecimal sugarG; // 당류
 
     @Column(precision = 8,scale = 2)
