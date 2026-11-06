@@ -6,7 +6,19 @@
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
 
 
+# Python virtual environments
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Environment variables and secrets
+.env
 .env.*
+!.env.example
 
 # AI 학습 데이터 / 결과물
 
