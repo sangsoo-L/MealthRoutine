@@ -1,3 +1,10 @@
 spring:
   application:
     name: backend
+  profiles:
+    active: local        # application-local.yml도 같이 읽음 로컬얌엘읽으려고 추가한거 없으면 그냥지우면됨
+  jpa:
+    open-in-view: false  # 화면 랜더링중에 DB조회 방지
+    hibernate:
+      ddl-auto: update   # 엔티티 보고 테이블 자동 생성
+    show-sql: true       # 실행 SQL 콘솔 출력
