@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { TABS, type TabKey } from '../../app/routeHandle.ts'
+import Icon from '../icons/Icon.tsx'
 
 const baseClass =
   'flex min-h-11 flex-col items-center justify-center py-1 text-support font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
@@ -29,9 +30,8 @@ export default function BottomNav({ activeTab }: BottomNavProps) {
                 aria-current={isActive ? 'page' : undefined}
                 className={isActive ? activeClass : inactiveClass}
               >
-                <span aria-hidden="true" className="text-section-title">
-                  {tab.glyph}
-                </span>
+                {/* 텍스트 라벨이 있으므로 아이콘은 장식(aria-hidden)이다. 색은 링크의 text-brand/text-muted를 따른다. */}
+                <Icon name={tab.icon} />
                 <span>{tab.label}</span>
               </Link>
             </li>

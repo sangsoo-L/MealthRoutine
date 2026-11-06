@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import Icon from '../icons/Icon.tsx'
 
 const focusRing =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
@@ -33,9 +34,10 @@ export default function AppBar({ title, parent }: AppBarProps) {
       <Link
         to="/support"
         aria-label="고객지원"
-        className={`flex min-h-11 w-11 items-center justify-center text-section-title font-normal text-content ${focusRing}`}
+        className={`flex min-h-11 w-11 items-center justify-center text-content ${focusRing}`}
       >
-        <span aria-hidden="true">?</span>
+        {/* 아이콘만 있는 링크라서 이름은 링크의 aria-label이 담당하고 아이콘은 장식이다. */}
+        <Icon name="help" />
       </Link>
     </header>
   )
