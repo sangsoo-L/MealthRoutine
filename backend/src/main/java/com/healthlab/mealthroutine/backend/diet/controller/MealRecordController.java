@@ -18,7 +18,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/meal-records")
 public class MealRecordController {
-
+    // TODO: 로그인 구현 후 @AuthenticationPrincipal로 교체
     private final MealRecordService mealRecordService;
 
     @PostMapping
@@ -42,6 +42,7 @@ public class MealRecordController {
 
     @GetMapping("/{mealRecordId}")
     public MealRecordResponse get(
+
             @RequestHeader("X-User-Id")Long userId,
             @PathVariable Long mealRecordId
     ){
