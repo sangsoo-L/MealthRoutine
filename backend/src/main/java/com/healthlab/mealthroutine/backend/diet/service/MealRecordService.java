@@ -1,8 +1,6 @@
 package com.healthlab.mealthroutine.backend.diet.service;
 
-import com.healthlab.mealthroutine.backend.diet.domain.Food;
-import com.healthlab.mealthroutine.backend.diet.domain.MealRecord;
-import com.healthlab.mealthroutine.backend.diet.domain.MealRecordItem;
+import com.healthlab.mealthroutine.backend.diet.domain.*;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordCreateRequest;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordResponse;
 import com.healthlab.mealthroutine.backend.diet.repository.FoodRepository;
@@ -10,6 +8,10 @@ import com.healthlab.mealthroutine.backend.diet.repository.MealRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -31,4 +33,34 @@ public class MealRecordService {
         MealRecord saved = mealRecordRepository.save(record); // 4. 저장 (아이템도 cascade로 같이)
         return MealRecordResponse.from(saved); // 5. DTO로 바꿔서 반환
     }
+
+    // 날짜별 목록 (예: 11/9 하루치 실제 섭취 기록)
+    public List<MealRecordResponse> getDaily(Long userId , LocalDate date, RecordType recordType){
+        LocalDateTime start = date.atStartOfDay();
+        LocalDateTime end =  date.plusDays(1).atStartOfDay();
+        return mealRecordRepository
+                .findDaily(userId,recordType, RecordStatus.DELETED,start,end)
+                .stream()
+                .map(MealRecordResponse::from)
+                .toList();
+    }
+
+
+    // 상세 조회 (본인 기록만, 삭제된 건 제외)
+    public MealRecordResponse get(Long userId,Long mealRecordId){
+        return MealRecordResponse.from(findOwned(userId,mealRecordId));
+    }
+
+    // 내 기록인지 확인하면서 가져오기 (수정, 삭제에서도 재사용)
+    private MealRecord findOwned(Long userId,Long mealRecordId){
+        MealRecord record = mealRecordRepository.findById(mealRecordId)
+                .filter(r -> r.getRecordStatus() != RecordStatus.DELETED) // 삭제된건 없는지
+                .orElseThrow(() -> new IllegalArgumentException("식단 기록을 찾을 수 없습니다 . id=" + mealRecordId ));
+        if (!record.getUserId().equals(userId)){
+            throw new IllegalArgumentException("본인의 식단 기록만 조회할 수 있습니다.");
+        }
+        return record;
+    }
+
+
 }

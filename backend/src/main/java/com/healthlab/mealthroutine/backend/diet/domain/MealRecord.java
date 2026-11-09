@@ -60,7 +60,7 @@ public class MealRecord extends BaseTimeEntity {
 
     @Column(length = 1000)
     private String notes;
-
+    @OrderBy("mealItemId ASC")
     @OneToMany(mappedBy = "mealRecord", // MealRecordItem의 mealRecord 필드가 FK 주인
                 cascade = CascadeType.ALL,   // 끼니 저장 시 아이템도 같이 저장
                 orphanRemoval = true)  // 목록에서 빠진 아이템은 DB에서도 삭제
