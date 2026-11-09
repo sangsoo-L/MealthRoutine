@@ -1,0 +1,21 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: mealthroutine
+      MYSQL_USER: mealthroutine
+      MYSQL_PASSWORD: ${DB_PASSWORD:?.env 파일에 DB_PASSWORD를 설정하세요}
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database/schema:/database/schema:ro
+      - ./database/schema/001_create_tables.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./database/seed/001_insert_exercises.sql:/docker-entrypoint-initdb.d/002_exercises.sql:ro
+      - ./database/seed/002_insert_test_users.sql:/docker-entrypoint-initdb.d/003_users.sql:ro
+      - ./database/docker/create-test-db.sql:/docker-entrypoint-initdb.d/004_test_db.sql:ro
+
+volumes:
+  mysql-data:
