@@ -48,4 +48,12 @@ public class MealRecordController {
         return mealRecordService.get(userId,mealRecordId);
     }
 
+    @DeleteMapping("/{mealRecordId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@RequestHeader("X-User-Id")Long userId,
+                       @PathVariable Long mealRecordId
+                       ){
+        mealRecordService.delete(userId,mealRecordId);
+    } //curl -X DELETE -H "X-User-Id: 1" http://localhost:8080/api/v1/meal-records/1
+
 }

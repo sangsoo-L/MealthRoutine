@@ -101,4 +101,8 @@ public class MealRecord extends BaseTimeEntity {
                 .filter(Objects::nonNull) // 값 없는 건 제외
                 .reduce(BigDecimal.ZERO,BigDecimal::add);  // 0부터 차례로 더하기
     }
+    // 소프트 삭제: 행은 남기고 상태만 DELETED로
+    public void delete(){
+        this.recordStatus = RecordStatus.DELETED;
+    }
 }

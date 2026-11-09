@@ -49,6 +49,12 @@ public class MealRecordService {
     // 상세 조회 (본인 기록만, 삭제된 건 제외)
     public MealRecordResponse get(Long userId,Long mealRecordId){
         return MealRecordResponse.from(findOwned(userId,mealRecordId));
+
+    }
+
+    @Transactional // 상태를 바꾸니까 쓰기 트랜잭션
+    public void delete(Long userId,Long mealRecordId){
+        findOwned(userId,mealRecordId).delete(); // 내 기록 확인 → 상태 변경 알아서저장함
     }
 
     // 내 기록인지 확인하면서 가져오기 (수정, 삭제에서도 재사용)
