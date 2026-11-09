@@ -1,11 +1,23 @@
 import { useId, useRef, useState, type Ref, type SubmitEvent } from 'react'
-import { Link, Navigate } from 'react-router'
+import { Navigate } from 'react-router'
 import { useAuth } from '../auth/authContext.ts'
-import loginIllustrationUrl from '../assets/images/login/mealthroutine-login-illustration.webp'
+import {
+  AuthBody,
+  AuthFrame,
+  AuthHero,
+  AuthSwitchCard,
+} from '../components/auth/AuthParts.tsx'
+import {
+  errorClass,
+  inputClass,
+  labelClass,
+  noticeClass,
+  primaryButtonClass,
+} from '../components/auth/authStyles.ts'
 
 const MIN_PASSWORD_LENGTH = 8
 
-/** 화면 문구 출처: 스토리보드 v5.0의 A01 정의 */
+/** 화면 문구 출처: 스토리보드 v5.0(documents/스토리보드_v5.0/storyboard.html)의 A01 정의 */
 const FORM_MESSAGES = {
   passwordTooShort: '체험용 비밀번호는 8자 이상 입력해 주세요.',
   // 입력이 개발용 계정과 맞지 않을 때. 어느 입력이 틀렸는지 알려 주지 않는다.
@@ -21,21 +33,6 @@ const FORM_MESSAGES = {
  * authFailed는 이메일이든 비밀번호든 고치면 지운다.
  */
 type FieldErrorKey = 'passwordTooShort' | 'authFailed'
-
-const focusRing =
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
-
-/**
- * - text-base(16px): 타입 스케일(본문 14px)의 예외다. 모바일 Safari는 16px 미만 입력창에
- *   포커스하면 화면을 확대하므로 입력값에만 적용하고, placeholder는 본문 크기를 유지한다.
- * - border-muted/75: line 토큰은 흰 배경 대비가 1.24:1이라 입력창 경계로 약하다. 3.22:1을 확보한다.
- * - placeholder-shown:text-ellipsis: 글자 확대로 placeholder가 입력창보다 길어지면 글자 조각이 보이게 잘리므로
- *   말줄임으로 정리한다. placeholder가 보이는 동안(입력이 비어 있을 때)에만 적용되어 입력값의 표시·편집에는 영향이 없다.
- */
-const inputClass =
-  'h-12 w-full rounded-control border border-muted/75 bg-surface px-4 text-base font-normal text-content transition-colors placeholder:text-body placeholder:text-muted placeholder-shown:text-ellipsis hover:border-muted focus-visible:border-brand focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-brand aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:outline-danger motion-reduce:transition-none'
-
-const labelClass = 'mb-2 block text-body font-normal text-content'
 
 function EyeIcon({ crossed }: { crossed: boolean }) {
   return (
@@ -193,7 +190,7 @@ function LoginForm() {
           className={inputClass}
         />
       </div>
-      <div className="mt-4">
+      <div className="mt-5">
         <label htmlFor={passwordId} className={labelClass}>
           비밀번호
         </label>
@@ -211,24 +208,17 @@ function LoginForm() {
       {/* 보조기기가 변경을 알 수 있도록 알림 영역은 항상 렌더한다. */}
       <div role="alert">
         {errorKey ? (
-          <p
-            id={errorId}
-            className="mt-4 rounded-control bg-danger-soft px-3 py-2 text-support font-normal text-danger"
-          >
+          <p id={errorId} className={errorClass}>
             {FORM_MESSAGES[errorKey]}
           </p>
         ) : null}
       </div>
       <div role="status">
         {submitting ? (
-          <p className="mt-4 rounded-control bg-brand-soft px-3 py-2 text-support font-normal text-content">
-            {FORM_MESSAGES.submitting}
-          </p>
+          <p className={noticeClass}>{FORM_MESSAGES.submitting}</p>
         ) : null}
         {noticeVisible ? (
-          <p className="mt-4 rounded-control bg-brand-soft px-3 py-2 text-support font-normal text-content">
-            {FORM_MESSAGES.apiNotConnected}
-          </p>
+          <p className={noticeClass}>{FORM_MESSAGES.apiNotConnected}</p>
         ) : null}
       </div>
 
@@ -236,7 +226,7 @@ function LoginForm() {
       <button
         type="submit"
         aria-disabled={submitting || undefined}
-        className={`mt-5 h-12 w-full cursor-pointer rounded-control bg-brand text-body font-semibold text-surface transition-colors hover:bg-brand-hover active:bg-brand-hover aria-disabled:cursor-wait aria-disabled:opacity-70 motion-reduce:transition-none ${focusRing}`}
+        className={`mt-6 aria-disabled:cursor-wait aria-disabled:opacity-70 ${primaryButtonClass}`}
       >
         {submitting ? '로그인 중…' : '로그인하고 시작하기'}
       </button>
@@ -245,7 +235,7 @@ function LoginForm() {
 }
 
 /**
- * A01 로그인 화면. 기능·문구 기준은 스토리보드 v5.0 화면명세와 HTML 스토리보드다.
+ * A01 로그인 화면. 기능·문구 기준은 화면명세_v5.0.json과 v5.0 HTML 스토리보드다.
  *
  * 회원가입(A03)은 `/signup` 라우트로 연결한다.
  * 비밀번호 재설정(A04)은 대상 라우트가 없어 href 없는 <a>(HTML 표준의 자리표시 링크)로 둔다.
@@ -260,70 +250,47 @@ export default function LoginPage() {
   if (status === 'authenticated') return <Navigate to="/home" replace />
 
   return (
-    // AppShell 본문의 여백을 상쇄해 흰 배경을 채운다. 3.5rem은 AppBar 높이(h-14)다.
-    // break-keep: 한글을 단어(어절) 단위로 줄바꿈한다. wrap-anywhere: 한 단어가 줄보다 길 때만 예외로 끊는다.
-    <div className="-mx-5 -my-5 flex min-h-[calc(100vh-3.5rem)] flex-col justify-center bg-surface px-5 py-6 break-keep wrap-anywhere">
-      <section>
-        <div className="-mx-5 aspect-39/16 overflow-hidden">
-          {/*
-            원본 이미지의 넓은 여백을 잘라 주제가 앱 폭을 채우게 한다. 파일 자체는 수정하지 않는다.
-            이미지 배경이 #FEFEFE 안팎이라 흰 바탕과 경계가 생기므로 brightness-101로 순백에 맞춘다.
-            창 크기를 높이(rem)가 아니라 폭 대비 비율(390×160)로 정해, 글자 확대로 높이가 커져도
-            같은 영역이 보이게 한다. 높이를 고정하면 확대 시 좌우가 더 잘린다.
-          */}
-          <img
-            src={loginIllustrationUrl}
-            alt="운동 도구와 균형 잡힌 식사, 달력이 블루 루틴 고리로 연결된 밀스루틴 일러스트"
-            width={1536}
-            height={1024}
-            decoding="async"
-            fetchPriority="high"
-            className="h-full w-full scale-125 object-cover brightness-101"
-          />
-        </div>
-        <h2 className="mt-4 text-app-title leading-snug font-semibold text-content">
-          운동도, 식단도.
-          <br />
-          다시 나의 루틴으로.
-        </h2>
-        <p className="mt-2 text-support leading-relaxed font-normal text-muted">
-          운동과 식단의 기록이 꾸준한 건강 습관으로.
-          <br />
-          무료로 가입하고 나에게 맞는 루틴을 시작하세요.
-        </p>
-      </section>
+    <AuthFrame>
+      <AuthHero
+        plain
+        title={
+          <>
+            운동도, 식단도.
+            <br />
+            다시 나의 루틴으로.
+          </>
+        }
+        description={
+          <>
+            운동과 식단의 기록이 꾸준한 건강 습관으로.
+            <br />
+            무료로 가입하고 나에게 맞는 루틴을 시작하세요.
+          </>
+        }
+      />
 
-      <section aria-labelledby="login-form-title" className="mt-6">
-        <h3
-          id="login-form-title"
-          className="mb-4 text-section-title font-semibold text-content"
-        >
-          로그인
-        </h3>
-        <LoginForm />
-        <div className="flex justify-end">
-          <a className="inline-flex min-h-11 items-center text-support font-normal text-muted">
-            비밀번호를 잊으셨나요?
-          </a>
-        </div>
-      </section>
+      <AuthBody>
+        <section aria-labelledby="login-form-title">
+          {/* AppBar 제목(로그인)과 중복이라 시각적으로는 숨기고 섹션 이름으로만 쓴다. */}
+          <h3 id="login-form-title" className="sr-only">
+            로그인
+          </h3>
+          <LoginForm />
+          <div className="mt-1 flex justify-center">
+            <a className="inline-flex min-h-11 items-center text-support font-normal text-muted">
+              비밀번호를 잊으셨나요?
+            </a>
+          </div>
+        </section>
 
-      <div className="mt-3 border-t border-line pt-3 text-center">
-        <div className="flex flex-wrap items-center justify-center gap-x-2">
-          <span className="text-body font-normal text-muted">
-            처음 오셨나요?
-          </span>
-          <Link
-            to="/signup"
-            className={`inline-flex min-h-11 items-center gap-1 text-body font-semibold text-brand ${focusRing}`}
-          >
-            무료 회원가입 <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-        <p className="text-support font-normal text-muted">
-          기본 기록과 다시 시작은 무료예요.
-        </p>
-      </div>
-    </div>
+        <AuthSwitchCard
+          prompt="처음 오셨나요?"
+          hint="기본 기록과 다시 시작은 무료예요."
+          to="/signup"
+          linkLabel="무료 회원가입"
+          arrow="→"
+        />
+      </AuthBody>
+    </AuthFrame>
   )
 }

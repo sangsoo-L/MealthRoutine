@@ -9,7 +9,7 @@ import { LANDING_HEADER } from './landingContent.ts'
  *
  * 브랜드 로고 + 워드마크. 로고는 공식 로고 SVG(mealthroutine-logo-icon.svg, PNG를 그대로 담은 416KB)에서 투명 여백만 자르고
  * 크기만 줄인 헤더용 WebP(240×163, 약 7.8KB)다. 형태·색은 그대로이고 원본 SVG는 인트로가 그대로 쓴다.
- * (형태·색은 원본과 같다)
+ * (규격·해시는 assets/images/logo/README.md)
  * 로고는 옆의 글자(MealthRoutine)가 이름을 대신하므로 장식(alt="")이다. 종횡비를 지키도록 높이만 정한다(h-7 = 28px, 폭 약 41px).
  * 브랜드 라벨이라 굵기는 600이고, 색은 brand 토큰이다.
  *

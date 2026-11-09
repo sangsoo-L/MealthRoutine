@@ -4,9 +4,14 @@ import AppShell from '../layouts/AppShell.tsx'
 import HomePage from '../pages/HomePage.tsx'
 import IntroPage from '../pages/IntroPage.tsx'
 import LoginPage from '../pages/LoginPage.tsx'
+import MyPagePlaceholder from '../pages/MyPagePlaceholder.tsx'
 import PagePlaceholder, {
   NotFoundPlaceholder,
 } from '../pages/PagePlaceholder.tsx'
+import ExercisesPage from '../pages/ExercisesPage.tsx'
+import FoodsPage from '../pages/FoodsPage.tsx'
+import ExplorePage from '../pages/ExplorePage.tsx'
+import SearchPage from '../pages/SearchPage.tsx'
 import SignupPage from '../pages/SignupPage.tsx'
 import SurveyPage from '../pages/SurveyPage.tsx'
 import type { RouteHandle } from './routeHandle.ts'
@@ -42,12 +47,14 @@ const introHandle: RouteHandle = {
 
 // 홈은 비회원이면 랜딩(H01, 자체 헤더 LandingHeader), 로그인했으면 회원 홈이다.
 // landing: 비회원일 때만 AppBar와 하단 탭을 숨긴다(AppShell). 회원 홈은 일반 화면이라 focus는 false다.
+// brandHeader: 회원 홈의 AppBar에 제목 글자 대신 로고를 보인다(다른 화면의 AppBar는 그대로).
 const homeHandle: RouteHandle = {
   screenId: 'H01',
   title: '홈',
   tab: 'home',
   focus: false,
   landing: true,
+  brandHeader: true,
   domain: 'brand',
   parent: null,
   transition: 'fade',
@@ -58,6 +65,7 @@ const loginHandle: RouteHandle = {
   title: '로그인',
   tab: 'home',
   focus: true,
+  brandHeader: true,
   domain: 'brand',
   parent: '/home',
 }
@@ -67,6 +75,8 @@ const signupHandle: RouteHandle = {
   title: '회원가입',
   tab: 'home',
   focus: true,
+  // 회원가입은 AppBar(제목·뒤로가기·고객지원)를 그리지 않는다. 로그인으로 돌아가는 길은 본문 하단 안내 카드가 맡는다.
+  hideAppBar: true,
   domain: 'brand',
   parent: '/login',
 }
@@ -82,6 +92,54 @@ const surveyHandle: RouteHandle = {
   parent: null,
 }
 
+const exploreHandle: RouteHandle = {
+  screenId: null,
+  title: '탐색',
+  tab: 'explore',
+  focus: false,
+  domain: 'brand',
+  parent: '/home',
+  transition: 'fade',
+}
+
+// 통합검색: AppBar 대신 화면이 뒤로가기·검색창이 있는 자체 헤더를 가지고, 키보드가 열리는 화면이라 하단 탭도 그리지 않는다.
+// 탐색 탭의 하위 화면이라 tab은 'explore'로 둔다(하단 탭을 그리지 않으므로 표시는 되지 않는다).
+const searchHandle: RouteHandle = {
+  screenId: null,
+  title: '통합검색',
+  tab: 'explore',
+  focus: true,
+  hideAppBar: true,
+  domain: 'brand',
+  parent: '/explore',
+}
+
+// 운동 탐색: AppBar는 가운데 로고만 보이고(brandHeader), 뒤로가기는 본문 제목 위에 둔다(bodyBack). 우측 고객지원 아이콘은 로고 모드에서 그려지지 않는다.
+const exercisesHandle: RouteHandle = {
+  screenId: 'E01',
+  title: '운동 탐색',
+  tab: 'explore',
+  focus: false,
+  brandHeader: true,
+  bodyBack: true,
+  domain: 'exercise',
+  parent: '/home',
+  transition: 'fade',
+}
+
+// 음식 탐색: 운동 탐색과 같이 AppBar는 가운데 로고만 보이고(brandHeader), 뒤로가기는 본문 제목 옆에 둔다(bodyBack).
+const foodsHandle: RouteHandle = {
+  screenId: 'F01',
+  title: '음식 검색',
+  tab: 'explore',
+  focus: false,
+  brandHeader: true,
+  bodyBack: true,
+  domain: 'meal',
+  parent: '/home',
+  transition: 'fade',
+}
+
 const notFoundHandle: RouteHandle = {
   screenId: null,
   title: '페이지를 찾을 수 없습니다',
@@ -91,7 +149,7 @@ const notFoundHandle: RouteHandle = {
   parent: '/home',
 }
 
-// 근거: 화면명세 v5.0(화면 ID·화면명), URL은 팀과 정한 임시 경로 (대표 경로만 정의)
+// 근거: documents/화면명세_v5.0.json(화면 ID·화면명), URL은 frontend/docs/screen-route-map.md (대표 경로만 정의)
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -127,26 +185,31 @@ export const router = createBrowserRouter([
         element: <SurveyPage />,
         handle: surveyHandle,
       },
-      placeholderRoute({
+      {
+        // 통합 탐색 메인. 화면명세 v5.0에 없는 화면이라 화면 ID는 null이고 `/explore`는 사용자 지시로 정한 임시 확정이다.
+        // 하단 탭 '탐색'의 도착 화면이며, 운동 탐색(/exercises)·음식 검색(/foods)과 같은 탭을 활성으로 둔다.
+        path: 'explore',
+        element: <ExplorePage />,
+        handle: exploreHandle,
+      },
+      {
+        // 통합검색. 화면명세 v5.0에 없는 화면이며 `/search`는 사용자 지시로 정한 임시 확정이다.
+        path: 'search',
+        element: <SearchPage />,
+        handle: searchHandle,
+      },
+      {
+        // E01 운동 탐색. 검색 전·결과 화면과 필터 조건을 주소(검색 파라미터)에 보관한다. 운동 검색 API는 아직 없다.
         path: 'exercises',
-        screenId: 'E01',
-        title: '운동 탐색',
-        tab: 'explore',
-        focus: false,
-        domain: 'exercise',
-        parent: '/home',
-        transition: 'fade',
-      }),
-      placeholderRoute({
+        element: <ExercisesPage />,
+        handle: exercisesHandle,
+      },
+      {
+        // F01 음식 탐색. 운동 탐색(E01)과 같은 구성이며 검색 조건과 화면 상태를 주소(검색 파라미터)에 보관한다. 음식 검색 API는 아직 없다.
         path: 'foods',
-        screenId: 'F01',
-        title: '음식 검색',
-        tab: 'explore',
-        focus: false,
-        domain: 'meal',
-        parent: '/home',
-        transition: 'fade',
-      }),
+        element: <FoodsPage />,
+        handle: foodsHandle,
+      },
       {
         // 비회원 접근 정책: 기록·마이는 로그인 안내를 보여 준다(탐색·AI·고객지원은 공개).
         // 경로를 만들지 않는 레이아웃 라우트라 URL·handle(활성 탭, 앱바 제목)은 그대로 유지된다.
@@ -173,16 +236,20 @@ export const router = createBrowserRouter([
             parent: '/home',
             transition: 'fade',
           }),
-          placeholderRoute({
-            path: 'mypage',
-            screenId: 'P01',
-            title: '마이페이지',
-            tab: 'my',
-            focus: false,
-            domain: 'brand',
-            parent: '/home',
-            transition: 'fade',
-          }),
+          {
+            // P01은 아직 임시 화면이다. 회원 홈에서 옮긴 계정 정보·로그아웃만 함께 보여 준다(MyPagePlaceholder).
+            ...placeholderRoute({
+              path: 'mypage',
+              screenId: 'P01',
+              title: '마이페이지',
+              tab: 'my',
+              focus: false,
+              domain: 'brand',
+              parent: '/home',
+              transition: 'fade',
+            }),
+            element: <MyPagePlaceholder />,
+          },
         ],
       },
       placeholderRoute({

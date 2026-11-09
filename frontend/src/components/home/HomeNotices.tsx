@@ -31,7 +31,7 @@ export default function HomeNotices() {
           </span>
         </Link>
       </div>
-      <ul className="mt-1 overflow-clip rounded-card border border-line bg-surface">
+      <ul className="mt-3 overflow-clip rounded-card border border-line bg-surface">
         {HOME_NOTICES.map((notice) => (
           <li
             key={notice.title}

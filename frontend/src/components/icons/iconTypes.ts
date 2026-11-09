@@ -13,6 +13,15 @@ export type IconName =
   | 'help'
   // 이후 화면에서 재사용 (U1~U7)
   | 'chevron-down'
+  // 회원가입 단계의 이전 이동(스토리보드 SVG 13종에 없어 추가)
+  | 'arrow-left'
+  // 통합 탐색의 운동 찾기·음식 찾기 카드(스토리보드 SVG 13종에 없어 추가)
+  | 'arrow-right'
+  | 'chevron-right'
+  // 통합검색의 검색어 삭제
+  | 'close'
+  | 'dumbbell'
+  | 'utensils'
   | 'eye'
   | 'eye-off'
   | 'clipboard-check'

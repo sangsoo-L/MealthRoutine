@@ -2,6 +2,8 @@
 
 React + Vite + Tailwind CSS v4 기반 TypeScript(TSX) 프론트엔드입니다. 이 디렉터리에서 명령을 실행합니다.
 
+> 이 README는 **개인 개발 Repository**(`Binwoojin/mealthroutine`)의 `frontend/`용입니다. 이 Repository에는 기획 문서(`../documents/`)와 개인 개발 환경 설정(`../CLAUDE.md`, `../.claude/`)이 함께 있습니다. 팀 협업 Repository에 전달하는 README는 따로 작성하며, 이 문서를 그대로 복사하지 않습니다.
+
 ## 시작
 
 Node.js 24 이상을 사용합니다. 검증 환경은 Node.js 24.18.0, npm 11.16.0입니다.
@@ -50,7 +52,8 @@ npm run dev
 
 - `react-router`의 `createBrowserRouter`를 사용하며, URL은 `/login`, `/exercises`, `/mypage` 같은 일반 경로입니다. `HashRouter`는 사용하지 않습니다.
 - 모든 화면은 하나의 `AppShell`을 공유합니다. 제목, 뒤로가기, 활성 탭, 하단탭 노출은 라우트의 `handle`(screenId, title, tab, focus, domain, parent)로 결정합니다.
-- 현재 연결된 경로는 홈(`/`), 로그인(`/login`), 운동 탐색(`/exercises`), 음식 검색(`/foods`), 운동 기록(`/records/exercise`), 식단 기록(`/records/meal`), AI 안내(`/ai`), 마이페이지(`/mypage`), 고객지원(`/support`)의 임시 화면과 404 임시 처리입니다.
+- `/`는 인트로 스플래시이며 약 3초 뒤 홈(`/home`)으로 자동 이동합니다. 홈 경로(`/home`)는 기획 문서에 없는 임시 확정입니다.
+- 현재 연결된 경로는 홈(`/home`), 로그인(`/login`), 운동 탐색(`/exercises`), 음식 검색(`/foods`), 운동 기록(`/records/exercise`), 식단 기록(`/records/meal`), AI 안내(`/ai`), 마이페이지(`/mypage`), 고객지원(`/support`)의 임시 화면과 404 임시 처리입니다.
 - 나머지 화면과 경로는 기획 문서가 확정된 뒤 추가합니다.
 
 ## 스타일

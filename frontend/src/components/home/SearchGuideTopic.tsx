@@ -8,7 +8,7 @@ interface SearchGuideTopicProps {
 }
 
 /**
- * [H02 재사용 예정] HomeDiscovery의 항목. 현재 H01(비로그인 랜딩)은 렌더링하지 않는다.
+ * HomeDiscovery의 항목. 회원 홈이 사용하고 비회원 랜딩(H01)은 렌더링하지 않는다.
  *
  * 검색 사용법 소개 한 건(운동 검색 또는 음식 검색): 제목, 검색 화면 미리보기, 시작하기 링크.
  *
@@ -21,7 +21,7 @@ export default function SearchGuideTopic({ topic }: SearchGuideTopicProps) {
   const tone = DOMAIN_TONE[topic.tone]
 
   return (
-    <article className="rounded-card border border-line bg-surface px-[16px] py-4">
+    <article className="rounded-card border border-line bg-surface px-[20px] py-5">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span
           aria-hidden="true"
@@ -88,7 +88,7 @@ export default function SearchGuideTopic({ topic }: SearchGuideTopicProps) {
           />
           <span className="flex items-center gap-1">
             <span aria-hidden="true">↓</span>
-            <small>{HOME_GUIDE_TEXT.next}</small>
+            <span>{HOME_GUIDE_TEXT.next}</span>
           </span>
           <span
             aria-hidden="true"

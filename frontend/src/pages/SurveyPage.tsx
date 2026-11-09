@@ -82,7 +82,7 @@ function UnconnectedButton({
   )
 }
 
-/** A02 초기설문. 기능·문구 기준은 스토리보드 v5.0 화면명세와 survey 스크립트다. */
+/** A02 초기설문. 기능·문구 기준은 화면명세_v5.0.json과 v5.0 스토리보드의 survey 스크립트다. */
 export default function SurveyPage() {
   const [step, setStep] = useState(0)
   const [direction, setDirection] = useState<Direction>('next')

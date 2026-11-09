@@ -44,6 +44,14 @@ export const ICON_NODES: Record<IconName, ReactNode> = {
     </>
   ),
   'chevron-down': <path d="m7 10 5 5 5-5" />,
+  'arrow-left': <path d="M19 12H5m6-6-6 6 6 6" />,
+  close: <path d="M6 6l12 12M18 6 6 18" />,
+  'chevron-right': <path d="m10 7 5 5-5 5" />,
+  'arrow-right': <path d="M5 12h14m-6-6 6 6-6 6" />,
+  dumbbell: <path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11" />,
+  utensils: (
+    <path d="M7 3v8M4 3v5a3 3 0 0 0 6 0V3M7 11v10M17 21V3c-2.5 1.5-3.5 4-3.5 7v3H17" />
+  ),
   eye: (
     <>
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />

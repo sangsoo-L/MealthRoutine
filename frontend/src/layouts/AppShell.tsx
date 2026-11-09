@@ -19,6 +19,9 @@ export default function AppShell() {
   const { status } = useAuth()
   const isGuestLanding = handle.landing === true && status !== 'authenticated'
 
+  // 회원가입(A03): AppBar만 그리지 않는다. 본문 배치·하단 탭 노출은 handle 그대로다.
+  const hideAppBar = isSplash || isGuestLanding || handle.hideAppBar === true
+
   return (
     <div
       // 모바일(640px 미만)은 앱이 화면 전체를 차지하므로 바깥·안쪽 배경이 같은 색이다.
@@ -29,8 +32,12 @@ export default function AppShell() {
       <div
         className={`${isSplash ? 'min-h-dvh bg-surface' : 'min-h-screen bg-page'} mx-auto flex max-w-app flex-col sm:shadow-app sm:ring-1 sm:ring-line`}
       >
-        {isSplash || isGuestLanding ? null : (
-          <AppBar title={handle.title ?? ''} parent={handle.parent ?? null} />
+        {hideAppBar ? null : (
+          <AppBar
+            title={handle.title ?? ''}
+            parent={handle.bodyBack === true ? null : (handle.parent ?? null)}
+            brand={handle.brandHeader === true}
+          />
         )}
         {/* 화면 전환은 RouteTransition이 공통으로 처리한다. AppBar·BottomNav는 전환 대상이 아니다. */}
         <RouteTransition

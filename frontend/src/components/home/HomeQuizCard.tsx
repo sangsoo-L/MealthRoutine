@@ -2,7 +2,7 @@ import { Link } from 'react-router'
 import { HOME_QUIZ } from './homeContent.ts'
 import { focusRing } from './homeStyles.ts'
 
-const cardClass = `flex w-full flex-wrap items-center gap-x-3 gap-y-4 rounded-card border border-brand/20 bg-brand-soft px-[16px] py-4 text-left ${focusRing}`
+const cardClass = `flex w-full flex-wrap items-center gap-x-3 gap-y-4 rounded-card border border-brand/20 bg-brand-soft px-[20px] py-5 text-left ${focusRing}`
 
 /**
  * 장식 그림: 살짝 기울인 "오늘의 상식" 카드와 두 이모지. 순수 장식이라 보조기기에서는 숨긴다.
@@ -51,6 +51,11 @@ const content = (
         <small className="rounded-full border border-brand/20 bg-surface px-2 py-0.5 text-support font-normal text-content">
           {HOME_QUIZ.frequency}
         </small>
+        {HOME_QUIZ.to ? null : (
+          <small className="rounded-full bg-surface px-2 py-0.5 text-support font-normal text-muted">
+            준비 중
+          </small>
+        )}
       </span>
     </span>
     {QUIZ_ART}
@@ -60,11 +65,11 @@ const content = (
 /**
  * 회원 홈(MemberHomePage)의 퀴즈 카드. 비회원 랜딩(H01)은 이 컴포넌트 대신 landing/LandingQuizBanner로 퀴즈를 소개한다.
  *
- * "운동·식단 알아가기 퀴즈" 카드(v5.0 H01). 주 행동(히어로)을 가리지 않도록 브랜드 블루로 채우지 않고
+ * "운동·식단 알아가기 퀴즈" 카드(v5.0 H01). 주 행동(바로가기)을 가리지 않도록 브랜드 블루로 채우지 않고
  * 연한 면과 테두리로 표현한다.
  *
- * 이동할 오늘의 퀴즈(H02)의 경로가 아직 정해지지 않아(`HOME_QUIZ.to`가 null) 지금은 비활성 버튼이다.
- * 눌러도 이동·안내·모달이 없고, 바로가기의 "커뮤니티"와 같은 방식으로 흐리게 보여 이동할 수 있는 것처럼 보이지 않게 한다.
+ * 이동할 오늘의 퀴즈(H02)의 경로가 아직 정해지지 않아(`HOME_QUIZ.to`가 null) 지금은 누를 수 없는 소개 카드다.
+ * 눌러도 아무 일이 없는 버튼이 되지 않도록 링크·버튼이 아닌 요소로 두고, "준비 중"을 글자로 함께 표시한다.
  * 경로가 확정되면 `HOME_QUIZ.to`만 채우면 링크로 바뀐다. 퀴즈 기능과 H02 화면은 이 작업의 범위가 아니다.
  */
 export default function HomeQuizCard() {
@@ -79,12 +84,8 @@ export default function HomeQuizCard() {
     )
   }
   return (
-    <button
-      type="button"
-      aria-disabled="true"
-      className={`${cardClass} cursor-not-allowed opacity-60`}
-    >
+    <section aria-label="운동·식단 알아가기 퀴즈" className={cardClass}>
       {content}
-    </button>
+    </section>
   )
 }

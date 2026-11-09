@@ -1,7 +1,7 @@
 interface LandingSectionHeaderProps {
   id: string
   title: string
-  description: string
+  description?: string
 }
 
 /** 일반 섹션의 공통 머리. 제목(h2)과 그 아래 설명이 본문 폭 전체를 쓴다. */
@@ -18,9 +18,11 @@ export default function LandingSectionHeader({
       >
         {title}
       </h2>
-      <p className="mt-2 text-body leading-relaxed font-normal text-pretty text-muted">
-        {description}
-      </p>
+      {description ? (
+        <p className="mt-2 text-body leading-relaxed font-normal text-pretty text-muted">
+          {description}
+        </p>
+      ) : null}
     </div>
   )
 }

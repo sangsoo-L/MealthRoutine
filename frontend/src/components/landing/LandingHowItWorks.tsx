@@ -60,7 +60,7 @@ export default function LandingHowItWorks() {
               ) : null}
             </div>
             <div
-              className={`min-w-0 flex-1 ${index < lastIndex ? 'pb-6' : ''}`}
+              className={`min-w-0 flex-1 ${index < lastIndex ? 'pb-7' : ''}`}
             >
               <h3 className="flex min-h-7 items-center text-section-title leading-snug font-semibold text-content">
                 {step.title}

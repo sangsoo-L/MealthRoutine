@@ -11,6 +11,13 @@ export const focusRing =
 export const focusRingOnBrand =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface'
 
+/**
+ * 회원 홈에서 섹션을 구분하는 흰 밴드. 화면 폭 전체로 펼쳐지는 흰 면에 위아래 얇은 선을 둔다(카드가 아니다).
+ * -mx-5/px-5는 AppShell 본문의 좌우 여백(px-5 = 20px)과 짝이다: 밴드는 그 여백을 뚫고 프레임 양 끝까지 가고, 안의 글은 다시 같은 20px에서 시작한다.
+ * AppShell의 본문 좌우 여백을 바꾸면 이 값도 함께 바꾼다. 밴드는 회원 홈의 두 섹션(오늘의 기록·처음이라면 여기부터)에만 쓴다.
+ */
+export const sectionBand = '-mx-5 border-y border-line bg-surface px-5 py-6'
+
 /** 운동(인디고)·식단(앰버) 도메인별 색 클래스 */
 export const DOMAIN_TONE = {
   exercise: {

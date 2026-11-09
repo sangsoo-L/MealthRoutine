@@ -14,11 +14,12 @@ export default function LoginRequiredNotice() {
   const location = useLocation()
 
   return (
-    // 3.5rem은 AppBar 높이, 2.5rem은 본문 위아래 여백, 마지막 3.5rem은 BottomNav 높이(약)다.
+    // 3.5rem은 AppBar 높이, 2.5rem은 본문 위아래 여백, 4.5rem은 BottomNav 높이(위 완충 영역 1rem + 탭 막대 3.5rem)이고,
+    // 0.125rem은 탭 막대 위 선(1px)과 반올림 여유다. BottomNav 높이를 바꾸면 이 값도 함께 바꾼다(모자라면 한 화면짜리 안내가 세로로 넘친다).
     // break-keep: 한글을 어절 단위로 줄바꿈한다. wrap-anywhere: 한 단어가 줄보다 길 때만 예외로 끊는다.
     <section
       aria-labelledby="login-required-title"
-      className="flex min-h-[calc(100dvh-9.5rem)] flex-col items-center justify-center text-center break-keep wrap-anywhere"
+      className="flex min-h-[calc(100dvh-10.625rem)] flex-col items-center justify-center text-center break-keep wrap-anywhere"
     >
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-soft text-brand">
         <Icon name="lock" size={30} />

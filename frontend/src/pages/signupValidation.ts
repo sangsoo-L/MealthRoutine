@@ -8,6 +8,7 @@ export type FieldKey =
   | 'phone'
   | 'nickname'
   | 'address'
+  | 'addressDetail'
   | 'email'
   | 'password'
   | 'passwordConfirm'
@@ -22,6 +23,7 @@ export const FIELD_REGION: Record<FieldKey, Region> = {
   phone: 'identity',
   nickname: 'nickname',
   address: 'address',
+  addressDetail: 'address',
   email: 'email',
   password: 'password',
   passwordConfirm: 'password',
@@ -32,7 +34,10 @@ export interface SignupValues {
   name: string
   phone: string
   nickname: string
+  /** 기본 주소. 주소 검색 결과로만 채워진다(직접 입력하지 않는다). */
   address: string
+  /** 상세 주소(동·호수 등). 기본 주소를 선택한 뒤 직접 입력한다. 기본 주소가 바뀌면 비운다. */
+  addressDetail: string
   email: string
   password: string
   passwordConfirm: string
@@ -60,7 +65,8 @@ export const SIGNUP_MESSAGES = {
   identityNotVerified: '이름·휴대폰 번호 본인인증을 완료해 주세요.',
   nicknameLength: '닉네임은 2~20자로 입력해 주세요.',
   addressInvalid: '주소를 확인해 주세요.',
-  emailNotVerified: '이메일 중복확인과 인증을 완료해 주세요.',
+  addressDetailRequired: '상세 주소를 입력해 주세요.',
+  emailNotVerified: '이메일 인증을 완료해 주세요.',
   passwordRules:
     '비밀번호는 8자 이상이며 영어 대문자·소문자, 특수문자, 숫자를 모두 포함해야 합니다.',
   passwordMismatch: '비밀번호 확인이 일치하지 않아요.',
@@ -117,11 +123,11 @@ export function isPasswordReady(password: string, confirm: string): boolean {
   return allRulesMet(password) && password === confirm
 }
 
-function isValidPhone(phone: string): boolean {
+export function isValidPhone(phone: string): boolean {
   return /^01\d{8,9}$/.test(phone.replace(/\D/g, ''))
 }
 
-function isValidName(name: string): boolean {
+export function isValidName(name: string): boolean {
   return name.trim().length >= 2
 }
 
@@ -196,6 +202,13 @@ export function validateSubmit(
       region: 'address',
       field: 'address',
       message: SIGNUP_MESSAGES.addressInvalid,
+    }
+  }
+  if (values.addressDetail.trim().length === 0) {
+    return {
+      region: 'address',
+      field: 'addressDetail',
+      message: SIGNUP_MESSAGES.addressDetailRequired,
     }
   }
   if (!verified.email) {

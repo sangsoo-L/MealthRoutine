@@ -14,7 +14,7 @@ export const ENTITLEMENT_LABEL: Record<Entitlement, string> = {
 export type AiAccess = 'paid' | 'trial' | 'unspecified'
 
 /**
- * AI 운동 플랜(I02-1). 근거: 화면명세 v5.0 I02-1의 접근 정의
+ * AI 운동 플랜(I02-1). 근거: documents/화면명세_v5.0.json I02-1의 접근 정의
  * "유료 운동 또는 종합 권한 · 무료 회원: AI 운동·식단·사진·주간 코칭 합산 5회 체험".
  * 식단 멤버십 회원에게 체험이 적용되는지는 명세에 없어 임의로 정하지 않고 'unspecified'로 둔다.
  */
@@ -25,7 +25,7 @@ export function getExercisePlanAccess(entitlement: Entitlement): AiAccess {
 }
 
 /**
- * 사진 음식 분석(I04). 근거: 화면명세 v5.0 I04의 접근 정의
+ * 사진 음식 분석(I04). 근거: documents/화면명세_v5.0.json I04의 접근 정의
  * "유료 식단 또는 종합 권한 · 무료 회원 합산 5회 체험".
  * 운동 멤버십 회원에게 체험이 적용되는지는 명세에 없어 임의로 정하지 않고 'unspecified'로 둔다.
  */

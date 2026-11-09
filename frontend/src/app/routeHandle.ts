@@ -1,6 +1,6 @@
 /**
  * 라우트 `handle` 메타데이터 구조와 하단 탭 정의.
- * 화면 ID·화면명의 근거는 화면명세 v5.0이고, 프로젝트 URL은 팀과 정한 임시 경로이다.
+ * 화면 ID·화면명의 근거는 documents/화면명세_v5.0.json이고, 프로젝트 URL은 frontend/docs/screen-route-map.md이다.
  */
 
 import type { IconName } from '../components/icons/iconTypes.ts'
@@ -28,6 +28,21 @@ export interface RouteHandle {
    * 비회원 홈(H01) 전용이다. splash와 달리 본문 배치는 그대로다. (없으면 false)
    */
   landing?: boolean
+  /**
+   * true이면 AppBar 중앙의 제목 글자 대신 MealthRoutine 로고(심볼 + 이름)를 보이고 우측 고객지원(도움말) 링크를 숨긴다.
+   * 로그인 회원의 홈(/home) 전용이다. 비회원일 때 같은 라우트는 AppBar 없이 랜딩 헤더를 쓴다. (없으면 false)
+   */
+  brandHeader?: boolean
+  /**
+   * true이면 AppBar를 렌더링하지 않는다(숨기는 것이 아니라 그리지 않는다). 본문 배치와 하단 탭 노출은 그대로다.
+   * 화면이 자체 상단 영역을 갖는 경우에 쓴다. 회원가입(A03)과 통합검색(/search)이 쓴다. (없으면 false)
+   */
+  hideAppBar?: boolean
+  /**
+   * true이면 AppBar에 뒤로가기를 그리지 않고(그 자리는 비운다) 화면 본문이 직접 그린다. 이동 목적지는 `parent`와 같은 규칙이다.
+   * 운동 탐색(E01)이 쓴다. (없으면 false)
+   */
+  bodyBack?: boolean
   /** 도메인색 구분 */
   domain: Domain
   /** 상위 화면 경로. 있을 때만 AppBar 뒤로가기를 표시하고 이 경로로 이동 */
@@ -51,7 +66,7 @@ export interface TabDefinition {
  */
 export const TABS: readonly TabDefinition[] = [
   { key: 'home', label: '홈', to: '/home', icon: 'home' },
-  { key: 'explore', label: '탐색', to: '/exercises', icon: 'search' },
+  { key: 'explore', label: '탐색', to: '/explore', icon: 'search' },
   { key: 'records', label: '기록', to: '/records/exercise', icon: 'clipboard' },
   { key: 'ai', label: 'AI', to: '/ai', icon: 'sparkle' },
   { key: 'my', label: '마이', to: '/mypage', icon: 'user' },

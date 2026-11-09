@@ -10,7 +10,7 @@ import { LANDING_FOOTER } from './landingContent.ts'
  */
 export default function LandingFooter() {
   return (
-    <footer className="-mx-5 -mb-5 bg-surface px-[20px] py-6">
+    <footer className="-mx-5 -mb-5 bg-surface px-[20px] py-8">
       <p className="text-body font-semibold text-content">
         {LANDING_FOOTER.brand}
       </p>

@@ -2,17 +2,20 @@ import { Link } from 'react-router'
 import { HOME_SHORTCUTS, TONE_CLASS } from './homeContent.ts'
 import { focusRing } from './homeStyles.ts'
 
-// 타일 전체가 눌리는 영역임을 테두리와 흰 배경으로 보여 준다. 눌렀을 때는 배경이 옅은 브랜드색으로 바뀐다.
-const tileClass = `flex min-h-24 flex-col items-center justify-center gap-2 rounded-card border border-line bg-surface px-1 py-3 text-center text-support leading-snug font-normal text-content ${focusRing}`
+// 메뉴를 감싸는 카드(배경·테두리·그림자)는 두지 않는다. 아이콘 타일과 메뉴명만 보인다.
+// 위에서부터 쌓는(justify-start) 구조라 아래에 상태 글이 붙어도 아이콘·메뉴명 위치가 모든 칸에서 같다.
+// 칸 높이가 아이콘 48px + 메뉴명 이상이라 링크의 터치 영역은 44px을 넘고, 보이지 않는 영역이 칸 전체다.
+const cellClass = `flex h-full flex-col items-center justify-start gap-3 px-1 py-1 text-center text-support leading-snug font-normal text-content ${focusRing}`
 
 const interactiveClass =
-  'transition-colors hover:border-brand/40 active:bg-brand-soft motion-reduce:transition-none'
+  'rounded-card transition-colors hover:text-brand motion-reduce:transition-none'
 
 /**
  * 회원 홈(MemberHomePage)의 바로가기 6개(3열×2행). 비회원 랜딩(H01)은 이 컴포넌트를 렌더링하지 않는다.
  *
  * 핵심 기능 바로가기 6개(운동 기록·식단 기록·AI 코칭 / 운동 찾기·음식 찾기·커뮤니티), 3열 × 2행.
- * 목적지가 없는 항목은 링크 대신 비활성 버튼으로 두어 이동할 수 있는 것처럼 보이지 않게 한다.
+ * 목적지가 없는 항목은 눌러도 아무 일이 없는 버튼이 되지 않도록 링크·버튼이 아닌 요소로 두고,
+ * 아이콘을 옅게 하고 메뉴명 아래에 "준비 중"을 글자로 함께 표시한다(색만으로 전하지 않는다).
  */
 export default function HomeShortcuts() {
   return (
@@ -23,13 +26,14 @@ export default function HomeShortcuts() {
         4.5rem 바닥값 덕분에 글자를 키워 칸이 모자라면 열이 줄어(3→2→1) 라벨 단어가 끊기지 않는다.
         (gap-2 = 8px이라 3열 사이 간격은 16px)
       */}
-      <ul className="grid grid-cols-[repeat(auto-fit,minmax(max(4.5rem,calc((100%-16px)/3)),1fr))] gap-2">
+      <ul className="grid grid-cols-[repeat(auto-fit,minmax(max(4.5rem,calc((100%-16px)/3)),1fr))] gap-x-2 gap-y-7">
         {HOME_SHORTCUTS.map((item) => {
-          const tile = (
+          const ready = item.to !== null
+          const content = (
             <>
               <span
                 aria-hidden="true"
-                className={`flex h-12 w-12 items-center justify-center rounded-card text-metric ${TONE_CLASS[item.tone]}`}
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-card text-metric ${TONE_CLASS[item.tone]} ${ready ? '' : 'opacity-70'}`}
               >
                 {item.emoji}
               </span>
@@ -41,18 +45,17 @@ export default function HomeShortcuts() {
               {item.to ? (
                 <Link
                   to={item.to}
-                  className={`${tileClass} ${interactiveClass}`}
+                  className={`${cellClass} ${interactiveClass}`}
                 >
-                  {tile}
+                  {content}
                 </Link>
               ) : (
-                <button
-                  type="button"
-                  aria-disabled="true"
-                  className={`${tileClass} w-full cursor-not-allowed opacity-60`}
-                >
-                  {tile}
-                </button>
+                <div className={cellClass}>
+                  {content}
+                  <span className="-mt-1 text-support font-normal text-muted">
+                    준비 중
+                  </span>
+                </div>
               )}
             </li>
           )

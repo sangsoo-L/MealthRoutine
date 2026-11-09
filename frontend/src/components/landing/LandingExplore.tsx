@@ -37,7 +37,6 @@ export default function LandingExplore() {
       <LandingSectionHeader
         id="landing-explore-title"
         title={LANDING_EXPLORE.title}
-        description={LANDING_EXPLORE.description}
       />
       <ul className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(9.5rem,100%),1fr))] gap-3">
         {LANDING_EXPLORE.links.map((link) => (
@@ -56,10 +55,10 @@ export default function LandingExplore() {
                 <strong className="block text-section-title leading-snug font-semibold text-content">
                   {link.label} <span aria-hidden="true">›</span>
                 </strong>
-                <span className="mt-1 block text-body leading-snug font-normal text-balance text-muted">
+                <span className="mt-1 block text-body leading-snug font-normal text-balance text-content">
                   {link.description}
                 </span>
-                <span className="mt-auto block pt-3 text-support leading-snug font-normal text-muted">
+                <span className="mt-auto block pt-4 text-body leading-snug font-normal text-muted">
                   {link.status}
                 </span>
               </span>
