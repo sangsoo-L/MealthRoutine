@@ -28,7 +28,9 @@ from routers.exercise import router as exercise_router
 # 내부 API 경로는 Spring Boot 담당자와 협의 후 확정한다.
 from routers.diet import router as diet_router
 
-
+# 음식 사진 분석 Mock API 등록.
+# 내부 API 계약 확정 후 경로 및 응답 형식을 재검토한다.
+from routers.food import router as food_router
 
 
 app = FastAPI(
@@ -43,6 +45,8 @@ app.include_router(exercise_router)
 
 # AI 식단 추천 Mock API를 애플리케이션에 등록한다.
 app.include_router(diet_router)
+
+app.include_router(food_router)
 
 
 @app.get("/health")
