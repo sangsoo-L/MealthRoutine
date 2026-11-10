@@ -68,5 +68,12 @@ public class MealRecordService {
         return record;
     }
 
+    private void addItems(MealRecord record, List<MealRecordCreateRequest.Item> items){
+        for(MealRecordCreateRequest.Item item : items){
+            Food food = foodRepository.findById(item.foodId())
+                    .orElseThrow(() -> new IllegalArgumentException("음식을 찾을 수 없습니다. id="+ item.foodId()));
+            record.addItem(MealRecordItem.of(food,item.quantity()));
+        }
+    }
 
 }
