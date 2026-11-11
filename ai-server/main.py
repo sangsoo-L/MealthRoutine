@@ -20,17 +20,10 @@ Spring Boot 담당자와 협의한 후 확정해야 한다.
 
 from fastapi import FastAPI
 
-# 운동 추천 API 라우터를 불러온다.
-# 향후 음식 분석 및 식단 추천 라우터도 같은 방식으로 추가한다.
 from routers.exercise import router as exercise_router
-
-# AI 식단 추천 라우터 등록 (개발용 Mock API)
-# 내부 API 경로는 Spring Boot 담당자와 협의 후 확정한다.
 from routers.diet import router as diet_router
-
-# 음식 사진 분석 Mock API 등록.
-# 내부 API 계약 확정 후 경로 및 응답 형식을 재검토한다.
 from routers.food import router as food_router
+from routers.llm_preview import router as llm_preview_router
 
 
 app = FastAPI(
@@ -39,15 +32,10 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# 운동 추천 API를 FastAPI 애플리케이션에 등록한다.
-# 이 코드가 빠지면 Swagger UI에 운동 추천 POST API가 표시되지 않는다.
 app.include_router(exercise_router)
-
-# AI 식단 추천 Mock API를 애플리케이션에 등록한다.
 app.include_router(diet_router)
-
 app.include_router(food_router)
-
+app.include_router(llm_preview_router)
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
