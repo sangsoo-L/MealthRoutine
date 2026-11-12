@@ -9,11 +9,11 @@ import {
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext.ts'
 import Icon from '../components/icons/Icon.tsx'
+import type { ExerciseResult } from '../exercise/exerciseTypes.ts'
 import { EXPLORE_KEYWORD_GROUPS } from './exploreContent.ts'
 import { useRecentSearches } from './recentSearches.ts'
 import { searchBackend } from './searchBackend.ts'
 import type {
-  ExerciseResult,
   FoodResult,
   SearchCategory,
   SearchOutcome,
@@ -102,24 +102,62 @@ function ResultSection({
   )
 }
 
-/** 결과 항목. 상세 화면(운동·음식 상세)이 아직 없어서 이동하지 않는 비대화형 행이다. */
-function ResultRow({ name, meta }: { name: string; meta: string[] }) {
-  return (
-    <li className="rounded-card border border-line bg-surface px-4 py-3">
-      <p className="text-body leading-snug font-semibold text-content">
+/**
+ * 결과 항목. `to`가 있으면 행 전체가 상세 진입 링크다(운동: `/exercises/<운동 id>`, 운동 상세 E02).
+ * 어느 검색에서 왔는지(`from`)를 함께 넘겨 상세의 "이전"이 같은 검색어·범위의 결과로 돌아오게 한다.
+ * `to`가 없으면(음식: 상세 화면과 데이터 없음) 이동하지 않는 비대화형 행이다.
+ */
+function ResultRow({
+  name,
+  meta,
+  to,
+  from,
+}: {
+  name: string
+  meta: string[]
+  to?: string
+  from?: string
+}) {
+  const body = (
+    <>
+      <span className="block text-body leading-snug font-semibold text-content">
         {name}
-      </p>
+      </span>
       {meta.length > 0 ? (
-        <p className="mt-1 text-support leading-snug font-normal text-muted">
+        <span className="mt-1 block text-support leading-snug font-normal text-muted">
           {meta.join(' · ')}
-        </p>
+        </span>
       ) : null}
+    </>
+  )
+
+  if (!to) {
+    return (
+      <li className="rounded-card border border-line bg-surface px-4 py-3">
+        {body}
+      </li>
+    )
+  }
+  return (
+    <li>
+      <Link
+        to={to}
+        state={{ from }}
+        className={`flex min-h-14 items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3 transition-colors hover:border-exercise/40 motion-reduce:transition-none ${focusRing}`}
+      >
+        <span className="min-w-0">{body}</span>
+        <Icon name="chevron-right" size={18} className="shrink-0 text-muted" />
+      </Link>
     </li>
   )
 }
 
 function exerciseMeta(item: ExerciseResult): string[] {
-  return [item.bodyPart, item.difficulty].filter((v): v is string => !!v)
+  return [
+    item.bodyParts.join('·'),
+    item.difficulty,
+    item.tools.join('·'),
+  ].filter((v): v is string => !!v)
 }
 
 function foodMeta(item: FoodResult): string[] {
@@ -131,6 +169,8 @@ const noticePanel = 'rounded-card bg-page px-5 py-6 text-center'
 interface OutcomeViewProps {
   query: string
   category: SearchCategory
+  /** 결과 행의 상세 진입이 "이전"으로 돌아올 현재 검색 주소 */
+  from: string
   outcome: SearchOutcome | 'loading'
   onRetry(): void
   onCategory(category: SearchCategory): void
@@ -140,6 +180,7 @@ interface OutcomeViewProps {
 function OutcomeView({
   query,
   category,
+  from,
   outcome,
   onRetry,
   onCategory,
@@ -162,8 +203,13 @@ function OutcomeView({
           검색 서비스를 준비하고 있어요
         </p>
         <p className="mt-2 text-body leading-relaxed font-normal text-muted">
-          운동·음식 데이터가 아직 연결되지 않아 ‘{query}’ 결과를 보여 드릴 수
-          없어요. 검색어 문제는 아니에요.
+          {category === 'exercise'
+            ? '운동'
+            : category === 'food'
+              ? '음식'
+              : '운동·음식'}{' '}
+          데이터가 아직 연결되지 않아 ‘{query}’ 결과를 보여 드릴 수 없어요.
+          검색어 문제는 아니에요.
         </p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           <Link
@@ -209,16 +255,31 @@ function OutcomeView({
   const showFoods = category !== 'exercise'
   const exercises = showExercises ? outcome.exercises : []
   const foods = showFoods ? outcome.foods : []
+  // 데이터 소스가 없어 검색하지 못한 음식은 "결과 0건"이 아니다. 결과 없음과 섞지 않고 따로 안내한다.
+  const foodUnavailable = showFoods && !!outcome.unavailable?.includes('food')
+  const foodNote = foodUnavailable ? (
+    <p
+      role="status"
+      className="rounded-card bg-page px-4 py-3 text-support leading-relaxed font-normal text-muted"
+    >
+      음식 검색은 아직 준비 중이에요. 지금은 운동만 찾아 드려요.
+    </p>
+  ) : null
 
   if (exercises.length === 0 && foods.length === 0) {
     return (
-      <div role="status" className={noticePanel}>
-        <p className="text-section-title leading-snug font-semibold text-content">
-          검색 결과가 없어요.
-        </p>
-        <p className="mt-2 text-body leading-relaxed font-normal text-muted">
-          검색어를 다시 확인하거나 다른 단어로 검색해 보세요.
-        </p>
+      <div className="flex flex-col gap-3">
+        <div role="status" className={noticePanel}>
+          <p className="text-section-title leading-snug font-semibold text-content">
+            {foodUnavailable
+              ? '운동 검색 결과가 없어요.'
+              : '검색 결과가 없어요.'}
+          </p>
+          <p className="mt-2 text-body leading-relaxed font-normal text-muted">
+            검색어를 다시 확인하거나 다른 단어로 검색해 보세요.
+          </p>
+        </div>
+        {foodNote}
       </div>
     )
   }
@@ -245,6 +306,8 @@ function OutcomeView({
               key={item.id}
               name={item.name}
               meta={exerciseMeta(item)}
+              to={`/exercises/${item.id}`}
+              from={from}
             />
           ))}
         </ResultSection>
@@ -265,6 +328,7 @@ function OutcomeView({
           ))}
         </ResultSection>
       ) : null}
+      {foodNote}
     </div>
   )
 }
@@ -275,8 +339,10 @@ function OutcomeView({
  * 검색어·범위는 URL(?q=&c=)이 가진다: 새로고침·뒤로가기에서 같은 화면이 복원되고 추천 검색어가 주소만으로 검색을 시작한다.
  * 첫 검색은 history에 쌓고(뒤로가기 → 검색 초기 화면), 이어지는 검색·범위 변경은 대체해 뒤로가기가 검색 화면을 벗어나게 한다.
  * 검색어가 없으면 최근 검색어·추천 검색어, 있으면 범위 탭과 결과를 보여 준다.
- * 검색 API·데이터가 없어서(searchBackend) 지금은 어떤 검색어든 "준비 중" 상태가 나온다. 가짜 결과는 만들지 않는다.
- * 하단 탭은 그리지 않는다(키보드가 열리는 화면). 뒤로가기는 앱바가 아니라 이 화면의 헤더가 맡는다.
+ * 검색은 searchBackend가 맡는다: 운동은 운동 탐색(E01)과 같은 운동 데이터 경계를 재사용한다(개발 서버: Mock 운동, 운영 빌드: 미연결 "준비 중").
+ * 음식은 검색 데이터가 없어 항상 미연결이며, 전체 범위에서는 운동 결과와 함께 "음식 검색은 준비 중"을 따로 안내한다. 가짜 결과는 만들지 않는다.
+ * 운동 결과를 누르면 운동 상세(`/exercises/<id>`, E02)로 이동하고, 상세의 "이전"은 같은 검색어·범위의 결과로 돌아온다.
+ * 하단 탭은 그리지 않는다(키보드가 열리는 화면). 뒤로가기는 이 화면의 헤더가 맡는다(handle.bodyBack).
  */
 export default function SearchPage() {
   const [params] = useSearchParams()
@@ -329,6 +395,14 @@ export default function SearchPage() {
   }, [query, category, searchKey])
   const outcome: SearchOutcome | 'loading' =
     result?.key === searchKey ? result.outcome : 'loading'
+
+  // "다시 시도"를 누르면 그 버튼이 "검색하는 중" 안내로 바뀌며 사라져 포커스가 body로 빠진다. 결과 영역은 조회 중·결과·실패 화면에서도 그대로
+  // 남으므로, 재시도 직후 이 영역으로 포커스를 옮겨 이어서 Tab으로 새 결과나 새 "다시 시도" 버튼에 닿게 한다.
+  // attempt는 재시도 버튼에서만 오른다. 이 화면 안에서만 다루며 전역 포커스 관리는 아니다.
+  const resultsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (attempt > 0) resultsRef.current?.focus()
+  }, [attempt])
 
   /** 검색을 실행한다(앞뒤 공백 제거, 빈 검색어 무시, 최근 검색어 저장). */
   function runSearch(raw: string, nextCategory: SearchCategory = category) {
@@ -451,10 +525,17 @@ export default function SearchPage() {
                 )
               })}
             </div>
-            <div className="mt-6">
+            <div
+              ref={resultsRef}
+              tabIndex={-1}
+              role="region"
+              aria-label="검색 결과"
+              className="mt-6 outline-none"
+            >
               <OutcomeView
                 query={query}
                 category={category}
+                from={`${location.pathname}${location.search}`}
                 outcome={outcome}
                 onRetry={() => setAttempt((n) => n + 1)}
                 onCategory={changeCategory}

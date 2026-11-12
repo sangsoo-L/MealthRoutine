@@ -1,4 +1,14 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router'
+import ExperienceBanner from '../components/signup-experience/ExperienceBanner.tsx'
+import {
+  clearSurveyDraft,
+  loadSurveyDraft,
+  saveSurveyDraft,
+  saveSurveyResult,
+  signupExperienceAvailable,
+} from '../signup-experience/signupExperience.ts'
+import { useOnboardingSubject } from '../signup-experience/useOnboardingSubject.ts'
 import {
   ALLERGY_CUSTOM,
   ALLERGY_MAX_LENGTH,
@@ -82,12 +92,28 @@ function UnconnectedButton({
   )
 }
 
-/** A02 초기설문. 기능·문구 기준은 화면명세_v5.0.json과 v5.0 스토리보드의 survey 스크립트다. */
+/**
+ * A02 초기설문. 기능·문구 기준은 화면명세_v5.0.json과 v5.0 스토리보드의 survey 스크립트다.
+ *
+ * 개발용 가입 체험(signup-experience)과의 연결 — 저장 주체(subject)가 있을 때만 동작한다:
+ * 주체는 로그인한 회원 또는 개발용 가입 체험 중인 사용자이고, 둘 다 아니면(주소로 직접 접근) 예전과 똑같이 동작한다.
+ * - 진행 상태(단계·답변)를 개발용 Mock 저장소(sessionStorage, 계정별 키)에 남겨 새로고침해도 복구한다. 설문을 마치면 지운다.
+ * - 최종 확인에서 "이 목표로 시작하기"를 누르면 설문 결과를 Mock 저장소에 남기고 이해도 확인(/onboarding/assessment)으로 이동한다.
+ *   이 설문은 정답이 없는 프로필 설문이며 이해도 확인과 데이터·화면을 공유하지 않는다.
+ * - 실제 DB 저장은 하지 않는다. 운영 빌드에서는 저장·이동 코드가 없어(signupExperienceAvailable === false) 시작 버튼이 예전처럼 미연결이다.
+ */
 export default function SurveyPage() {
-  const [step, setStep] = useState(0)
+  const navigate = useNavigate()
+  const subject = useOnboardingSubject()
+  const subjectId = subject?.id ?? null
+  // 화면이 열릴 때 한 번만 복구한다. 저장된 값이 현재 설문 정의와 맞지 않으면 버려진다(null).
+  const [restored] = useState(() =>
+    subjectId ? loadSurveyDraft(subjectId) : null,
+  )
+  const [step, setStep] = useState(restored?.step ?? 0)
   const [direction, setDirection] = useState<Direction>('next')
-  const [answers, setAnswers] = useState<SurveyAnswers>({})
-  const [allergyText, setAllergyText] = useState('')
+  const [answers, setAnswers] = useState<SurveyAnswers>(restored?.answers ?? {})
+  const [allergyText, setAllergyText] = useState(restored?.allergyText ?? '')
 
   const headingRef = useRef<HTMLHeadingElement>(null)
   const allergyInputRef = useRef<HTMLInputElement>(null)
@@ -119,6 +145,17 @@ export default function SurveyPage() {
     }
   }, [customAllergy])
 
+  // 진행 상태 복구용 임시 저장(개발용 Mock, 주체가 있을 때만). 아직 아무것도 하지 않은 처음 상태는 저장하지 않고 남은 값을 지운다.
+  // 외부 저장소에 쓰기만 하며 화면 상태를 바꾸지 않는다.
+  useEffect(() => {
+    if (!subjectId) return
+    if (step === 0 && Object.keys(answers).length === 0 && allergyText === '') {
+      clearSurveyDraft(subjectId)
+      return
+    }
+    saveSurveyDraft(subjectId, { step, answers, allergyText })
+  }, [subjectId, step, answers, allergyText])
+
   function move(next: number) {
     movedRef.current = true
     setDirection(next < step ? 'back' : 'next')
@@ -147,18 +184,40 @@ export default function SurveyPage() {
     move(step + 1)
   }
 
+  // 시작(완료) 버튼: 개발 서버에서 저장 주체가 있을 때만 연결한다. 필수 항목(목표)에 답했고,
+  // 알레르기를 "직접 입력"으로 골랐다면 내용이 있어야 한다. 기존 필수 검증(목표 한 가지 필수)을 그대로 유지한다.
+  const canComplete = signupExperienceAvailable && subjectId !== null
+  const completeReady =
+    Boolean(answers.goal) &&
+    (answers.allergyMode !== ALLERGY_CUSTOM || allergyText.trim().length > 0)
+
+  function handleComplete() {
+    if (!subjectId || !completeReady) return
+    // 설문 결과는 이해도 확인과 별개의 키에 남긴다(실제 DB 저장이 아니다). 진행 상태는 지운다.
+    saveSurveyResult(subjectId, {
+      answers,
+      allergyText:
+        answers.allergyMode === ALLERGY_CUSTOM ? allergyText.trim() : '',
+      completedAt: new Date().toISOString(),
+    })
+    clearSurveyDraft(subjectId)
+    navigate('/onboarding/assessment')
+  }
+
   const progressPercent = isReview
     ? 100
     : Math.round(((step + 1) / QUESTION_COUNT) * 100)
 
   return (
-    // AppShell 본문의 여백(위아래 1.25rem)과 AppBar 높이(3.5rem)를 뺀 높이만큼 채워 하단 영역을 아래에 둔다.
+    // AppShell 본문의 위아래 여백(1.25rem×2)을 뺀 높이만큼 채워 하단 영역을 아래에 둔다(상단 바가 없어 그 높이는 빼지 않는다).
     // break-keep: 한글을 어절 단위로 줄바꿈한다. wrap-anywhere: 한 단어가 줄보다 길 때만 예외로 끊는다.
     //
     // 가로 여백을 px로 고정한다(-mx-5 px-[20px]): 본문 여백(rem)을 되찾은 뒤 20px를 다시 둔다.
     // rem 여백은 글자를 200%로 키우면 함께 두 배가 되어 320px 화면에서 질문 제목 한 단어(최대 222px)가
     // 들어갈 폭(174px)이 남지 않아 단어가 끊겼다. 기본 배율에서는 값이 같아 모양이 변하지 않고, 글자 크기는 줄이지 않는다.
-    <div className="-mx-5 flex min-h-[calc(100dvh-6rem)] flex-col px-[20px] break-keep wrap-anywhere">
+    <div className="-mx-5 flex min-h-[calc(100dvh-2.5rem)] flex-col px-[20px] break-keep wrap-anywhere">
+      {/* 개발용 가입 체험 중일 때만 보인다(그 외에는 렌더링되지 않는다). */}
+      <ExperienceBanner />
       <div className="mb-2.5 flex justify-between text-support font-normal text-muted">
         <span>
           {isReview
@@ -298,9 +357,20 @@ export default function SurveyPage() {
             </button>
           ) : null}
           {isReview ? (
-            <UnconnectedButton className="flex min-h-12 flex-1 basis-40 items-center justify-center gap-3 rounded-control bg-line text-body font-semibold text-muted">
-              {SURVEY_TEXT.start} <span aria-hidden="true">→</span>
-            </UnconnectedButton>
+            canComplete ? (
+              <button
+                type="button"
+                disabled={!completeReady}
+                onClick={handleComplete}
+                className={`flex min-h-12 flex-1 basis-40 cursor-pointer items-center justify-center gap-3 rounded-control bg-brand text-body font-semibold text-surface transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-line disabled:text-muted motion-reduce:transition-none ${focusRing}`}
+              >
+                {SURVEY_TEXT.start} <span aria-hidden="true">→</span>
+              </button>
+            ) : (
+              <UnconnectedButton className="flex min-h-12 flex-1 basis-40 items-center justify-center gap-3 rounded-control bg-line text-body font-semibold text-muted">
+                {SURVEY_TEXT.start} <span aria-hidden="true">→</span>
+              </UnconnectedButton>
+            )
           ) : customAllergy ? (
             <button
               type="button"

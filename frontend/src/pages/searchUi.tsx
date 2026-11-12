@@ -34,7 +34,7 @@ interface SearchHeaderProps {
  * 그룹은 flex items-center라 44px 뒤로가기 버튼이 제목+설명 덩어리 전체의 세로 중앙에 놓이고,
  * 아이콘은 버튼 안의 가로·세로 정중앙이다(음수 margin 보정 없음). 왼쪽 여백을 10px(pl-2.5)로 줄여 44px 버튼 안의
  * 아이콘 그림이 20px 기준선 근처(21.5px)에 오고, 아래 검색창은 ml-2.5로 같은 20px 기준선에 맞춘다.
- * -mx-5 -mt-5는 AppShell 본문 여백(20px)을 상쇄해 그라데이션이 앱바 바로 아래에서 전체 폭으로 시작하게 한다.
+ * -mx-5 -mt-5는 AppShell 본문 여백(20px)을 상쇄해 그라데이션이 화면 맨 위에서 전체 폭으로 시작하게 한다.
  */
 export function SearchHeader({
   tone,

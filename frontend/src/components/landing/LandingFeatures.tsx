@@ -33,8 +33,7 @@ function FeatureTile({ feature }: { feature: LandingFeature }) {
  * 주요 기능 소개(Section 03). 이동할 수 있는 카드와 소개만 하는 카드를 모양으로 구분한다.
  * - 가입 없이 이용: 테두리가 있는 흰 카드 + 오른쪽 화살표. 눌러서 운동 탐색·음식 검색으로 이동한다.
  * - 가입 후 이용: 테두리 없는 옅은 면 + 자물쇠 배지. 눌러도 아무 일도 없는 소개 카드다(링크·버튼이 아니다).
- * "둘러보기" 앵커의 도착 지점이다. 앱 틀의 AppBar(고정, 56px)에 제목이 가리지 않도록 scroll-mt-16을 둔다.
- * (랜딩 틀 승인 후 AppBar가 없어지면 이 여백은 단순한 위쪽 숨통이 된다)
+ * "둘러보기" 앵커의 도착 지점이다. scroll-mt-16은 앵커 도착 지점 위쪽의 숨통이다(상단 바는 없다).
  */
 export default function LandingFeatures() {
   return (

@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type Ref, type SubmitEvent } from 'react'
-import { Navigate } from 'react-router'
+import { Navigate, useMatches } from 'react-router'
+import { getRouteHandle } from '../app/routeHandle.ts'
 import { useAuth } from '../auth/authContext.ts'
 import {
   AuthBody,
@@ -14,6 +15,7 @@ import {
   noticeClass,
   primaryButtonClass,
 } from '../components/auth/authStyles.ts'
+import BackLink from '../components/layout/BackLink.tsx'
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -247,10 +249,16 @@ function LoginForm() {
  */
 export default function LoginPage() {
   const { status } = useAuth()
+  const matches = useMatches()
   if (status === 'authenticated') return <Navigate to="/home" replace />
+  // 상단 바가 없어서 뒤로가기(→홈)는 이 틀 안에서 직접 그린다(라우트 handle.bodyBack). 목적지는 handle.parent다.
+  const parent = getRouteHandle(matches.at(-1)?.handle).parent ?? null
 
   return (
     <AuthFrame>
+      <div className="px-5 pt-2">
+        <BackLink parent={parent} />
+      </div>
       <AuthHero
         plain
         title={
@@ -271,7 +279,7 @@ export default function LoginPage() {
 
       <AuthBody>
         <section aria-labelledby="login-form-title">
-          {/* AppBar 제목(로그인)과 중복이라 시각적으로는 숨기고 섹션 이름으로만 쓴다. */}
+          {/* 화면 제목(h1 로그인)은 AppShell이 보조기기용으로 넣으므로 여기는 섹션 이름으로만 쓴다. */}
           <h3 id="login-form-title" className="sr-only">
             로그인
           </h3>

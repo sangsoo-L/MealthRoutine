@@ -29,6 +29,12 @@ export type IconName =
   | 'star'
   | 'clipboard-plus'
   | 'lock'
+  // 마이페이지(P01)의 상세 설정·멤버십·주간 점수 (스토리보드 SVG 13종에 없어 추가)
+  | 'settings'
+  | 'crown'
+  | 'chart'
+  // 운동 검색 결과의 검색 조건 요약 (스토리보드 SVG 13종에 없어 추가)
+  | 'filter'
 
 /** 스토리보드가 쓰는 아이콘 크기(px). 18: 컴팩트 버튼, 20: 입력창 안, 21: 탭·앱바·액션(기본), 30: 큰 표시 */
 export type IconSize = 18 | 20 | 21 | 30

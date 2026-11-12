@@ -1,4 +1,9 @@
+import { useNavigate } from 'react-router'
 import Icon from '../components/icons/Icon.tsx'
+import {
+  signupExperienceAvailable,
+  startSignupExperience,
+} from '../signup-experience/signupExperience.ts'
 import {
   useEffect,
   useId,
@@ -130,10 +135,14 @@ function RegionAlert({
  * 현재 범위: 입력 상태·형식 검증·필드별 오류 처리까지. 실제 가입 요청(POST /api/v1/auth/signup)과
  * 휴대폰 본인인증, 이메일 중복확인·인증번호, 주소 검색은 연결하지 않는다.
  * 그래서 본인인증이 항상 미완료이고 주소를 채울 수 없어, 인증을 우회하지 않는 한 1단계에서 다음으로 갈 수 없다.
- * 후속 화면(2차 비밀번호 설정 P05, 초기설문 A02)으로 이동하지 않는다.
+ * 운영 빌드에서는 가입을 끝낼 수 없다. 개발 서버에서는 아래 [임시·개발 전용] 인증 대체 절차로 마지막 단계까지 갈 수 있고,
+ * 제출하면 개발용 가입 체험(signup-experience)을 시작해 운동·식단 이해도 확인(/onboarding/assessment)으로 바로 이동한다.
+ * 실제 계정은 만들지 않고 로그인 상태도 만들지 않으며, 정식 흐름의 2차 비밀번호 설정(P05)·초기설문(A02)은
+ * 이 체험 흐름에서만 건너뛴다(A02는 삭제하지 않았고 /survey로 직접 열 수 있다).
  * 단계는 URL이나 history에 넣지 않는다(새로고침하면 처음부터, 브라우저 뒤로 가기는 이 화면을 떠난다).
  */
 export default function SignupPage() {
+  const navigate = useNavigate()
   const [values, setValues] = useState<SignupValues>(INITIAL_VALUES)
   const [errors, setErrors] = useState<Errors>({})
   const [noticeVisible, setNoticeVisible] = useState(false)
@@ -484,8 +493,21 @@ export default function SignupPage() {
       showError(error)
       return
     }
-    // 추후 구현: POST /api/v1/auth/signup 연동, 가입 후 2차 비밀번호 설정(P05)·초기설문(A02) 이동.
     setErrors({})
+    // 개발 서버에서만: 검증을 통과했으면 개발용 가입 체험을 시작하고 운동·식단 이해도 확인으로 바로 이동한다.
+    // 초기설문(A02)은 거치지 않는다. 설문을 마친 것처럼 처리하거나 프로필 데이터를 만들지도 않는다(A02는 주소로 직접 열 수 있다).
+    // - 실제 계정을 만들지 않고 로그인 상태도 만들지 않는다(인증 상태는 그대로 비로그인이다).
+    // - 위 검증(인증 완료 포함)을 우회하지 않는다. 개발용 인증번호 대체 절차는 이 화면의 기존 [임시·개발 전용] 코드 그대로다.
+    // - 체험 표지는 가입 폼의 입력값을 받지도 저장하지도 않는다(signup-experience/signupExperience.ts).
+    // - [개발용 우회] 정식 흐름의 P05(2차 비밀번호 설정)·A02(초기설문)는 이 체험 흐름에서만 건너뛴다.
+    //   정식 흐름(A03 → P05 → A02 → 이해도 확인 → H01)에서 둘을 삭제하거나 정책을 바꾼 것이 아니다.
+    // 운영 빌드에서는 체험을 쓸 수 없어(signupExperienceAvailable === false) 기존처럼 안내 문구만 보이고, 위 인증 검증이 제출을 먼저 막는다.
+    // 추후 구현: POST /api/v1/auth/signup 연동, 가입 후 2차 비밀번호 설정(P05)·초기설문(A02) 이동.
+    if (signupExperienceAvailable) {
+      startSignupExperience()
+      navigate('/onboarding/assessment')
+      return
+    }
     setNoticeVisible(true)
   }
 
@@ -501,7 +523,7 @@ export default function SignupPage() {
         : validateSubmit(values, verified) === null
 
   return (
-    <AuthFrame appBar={false}>
+    <AuthFrame>
       <AuthHero
         title={
           <>

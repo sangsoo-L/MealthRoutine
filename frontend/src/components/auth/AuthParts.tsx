@@ -3,21 +3,13 @@ import { Link } from 'react-router'
 import { revealClass, secondaryLinkClass } from './authStyles.ts'
 
 /**
- * 로그인·회원가입 공통 틀. AppShell 본문의 여백을 상쇄해 흰 배경을 채운다. 3.5rem은 AppBar 높이(h-14)다.
- * appBar가 false이면(AppBar를 그리지 않는 화면) 그 높이를 빼지 않고 화면 전체 높이를 채운다.
+ * 로그인·회원가입 공통 틀. AppShell 본문의 여백을 상쇄해 흰 배경으로 화면 전체 높이를 채운다.
+ * 상단 바(AppBar)가 없으므로 뺄 높이가 없다.
  * break-keep: 한글을 단어(어절) 단위로 줄바꿈한다. wrap-anywhere: 한 단어가 줄보다 길 때만 예외로 끊는다.
  */
-export function AuthFrame({
-  children,
-  appBar = true,
-}: {
-  children: ReactNode
-  appBar?: boolean
-}) {
+export function AuthFrame({ children }: { children: ReactNode }) {
   return (
-    <div
-      className={`-mx-5 -my-5 flex ${appBar ? 'min-h-[calc(100vh-3.5rem)]' : 'min-h-screen'} flex-col bg-surface break-keep wrap-anywhere`}
-    >
+    <div className="-mx-5 -my-5 flex min-h-screen flex-col bg-surface break-keep wrap-anywhere">
       {children}
     </div>
   )

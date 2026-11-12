@@ -2,7 +2,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type KeyboardEvent,
   type ReactNode,
   type RefObject,
   type SubmitEvent,
@@ -20,27 +19,32 @@ import Icon from '../components/icons/Icon.tsx'
 
 import { getRouteHandle } from '../app/routeHandle.ts'
 
+import ExerciseConditionSheet from '../components/exercise/ExerciseConditionSheet.tsx'
+
+import ExerciseQueryInput from '../components/exercise/ExerciseQueryInput.tsx'
+
+import FilterListbox from '../components/exercise/FilterOptions.tsx'
+
 import BottomSheet from '../components/layout/BottomSheet.tsx'
 
 import { useBackTarget } from '../components/layout/useBackTarget.ts'
 
 import {
-  BODY_PART_GROUPS,
-  DIFFICULTIES,
   EMPTY_FILTERS,
   FILTER_LABELS,
-  MAX_EXERCISE_QUERY,
-  TOOLS,
+  type ExerciseCriteria,
+  type FilterKey,
+} from '../exercise/exerciseFilters.ts'
+
+import {
   criteriaSummary,
   criteriaUrl,
   exerciseBackend,
   parseCriteria,
-  type ExerciseCriteria,
   type ExerciseSearchOutcome,
-  type FilterKey,
 } from './exerciseSearch.ts'
 
-import type { ExerciseResult } from './searchTypes.ts'
+import type { ExerciseResult } from '../exercise/exerciseTypes.ts'
 
 const focusRing =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-exercise'
@@ -65,244 +69,45 @@ const SHEET_TITLES: Record<FilterKey, string> = {
 }
 
 /**
-
- * 시트 안의 선택지 하나(listbox의 option). 선택은 옅은 인디고 면·인디고 테두리·인디고 글자·굵게로 보이고
-
- * 체크 아이콘은 쓰지 않는다. 선택됨은 aria-selected가 보조기기에 전한다.
-
- * 목록 전체가 Tab 정지점 하나다(roving tabindex): tabStop인 항목만 tabIndex 0이고 나머지는 방향키로 옮긴다.
-
+ * 결과 한 건. 카드 전체가 운동 상세(E02) 진입 링크다(`/exercises/<운동 id>`). 상세 화면(ExerciseDetailPage)이 열린다.
+ * 어느 검색에서 왔는지(`from`)를 함께 넘겨 상세의 "이전"이 같은 검색 결과(조건 유지)로 돌아오게 한다. 이 화면(운동 탐색)의 "이전" 목적지(`origin`)도
+ * `fromState`로 맡겨 두어, 상세의 "이전"으로 결과에 돌아와도 운동 탐색의 "이전"이 처음 진입한 화면을 계속 가리키게 한다. 있는 정보만 보여 준다.
  */
-
-function Option({
-  label,
-
-  selected,
-
-  tabStop,
-
-  onSelect,
-
-  onActive,
-
-  chip = false,
+function ExerciseCard({
+  item,
+  from,
+  origin,
 }: {
-  label: string
-
-  selected: boolean
-
-  /** 목록에서 Tab으로 들어올 때 포커스를 받는 항목인지 */
-
-  tabStop: boolean
-
-  onSelect: () => void
-
-  /** 포커스를 받으면 알린다(roving tabindex 위치 갱신) */
-
-  onActive: () => void
-
-  /** true이면 내용 폭의 둥근 칩(부위), 아니면 전체 폭 행(난이도·도구) */
-
-  chip?: boolean
+  item: ExerciseResult
+  from: string
+  origin: string | null
 }) {
+  // 부위·도구는 배열 그대로 받아 여기서 "·"로 이어 보여 준다(순서: 난이도·부위·도구).
+  const meta = [
+    item.difficulty,
+    item.bodyParts.join('·'),
+    item.tools.join('·'),
+  ].filter((v): v is string => !!v)
+
   return (
-    <button
-      type="button"
-
-      role="option"
-
-      aria-selected={selected}
-
-      tabIndex={tabStop ? 0 : -1}
-
-      onFocus={onActive}
-
-      onClick={onSelect}
-
-      className={`min-h-12 cursor-pointer border text-body leading-snug transition-colors motion-reduce:transition-none ${focusRing} ${
-        chip
-          ? 'rounded-full px-4'
-          : 'flex w-full items-center rounded-control px-4 text-left'
-      } ${
-        selected
-          ? 'border-exercise bg-exercise-soft font-semibold text-exercise'
-          : 'border-line bg-surface font-normal text-content hover:border-exercise/50'
-      }`}
-    >
-      {label}
-    </button>
-  )
-}
-
-/** 방향키·Home·End로 시트 안 선택지 사이의 포커스를 옮긴다(선택은 Enter·Space). */
-
-function moveFocus(event: KeyboardEvent<HTMLElement>) {
-  const keys = [
-    'ArrowDown',
-
-    'ArrowRight',
-
-    'ArrowUp',
-
-    'ArrowLeft',
-
-    'Home',
-
-    'End',
-  ]
-
-  if (!keys.includes(event.key)) return
-
-  const items = [
-    ...(event.currentTarget
-
-      .closest('[role="dialog"]')
-
-      ?.querySelectorAll<HTMLElement>('[role="option"]') ?? []),
-  ]
-
-  const index = items.indexOf(document.activeElement as HTMLElement)
-
-  if (index < 0) return
-
-  event.preventDefault()
-
-  const last = items.length - 1
-
-  const next =
-    event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? last
-        : event.key === 'ArrowDown' || event.key === 'ArrowRight'
-          ? Math.min(index + 1, last)
-          : Math.max(index - 1, 0)
-
-  items[next].focus()
-}
-
-interface SheetBodyProps {
-  filterKey: FilterKey
-
-  value: string | null
-
-  onSelect: (value: string | null) => void
-}
-
-/** "전체"(조건 없음)를 가리키는 선택지 키. 다른 값과 겹치지 않는다. */
-
-const ALL_KEY = '__all__'
-
-/**
-
- * 필터별 선택지. 선택을 풀려면 "전체"를 고른다.
-
- * 접근성 패턴은 listbox(단일 선택 목록)다. 방향키는 포커스만 옮기고 선택은 Enter·Space로 하는데, 선택하면 시트가 닫히므로
-
- * 방향키로 선택까지 하는 radio 패턴과 맞지 않기 때문이다. Tab 정지점은 목록에서 하나(선택된 항목, 없으면 "전체")다.
-
- * 부위의 상체·하체·코어·전신은 listbox 안의 group이다.
-
- */
-
-function SheetBody({ filterKey, value, onSelect }: SheetBodyProps) {
-  const selectedKey = value ?? ALL_KEY
-
-  const [active, setActive] = useState(selectedKey)
-
-  const option = (key: string, label: string, chip: boolean) => (
-    <Option
-      key={key}
-
-      label={label}
-
-      chip={chip}
-
-      selected={selectedKey === key}
-
-      tabStop={active === key}
-
-      onActive={() => setActive(key)}
-
-      onSelect={() => onSelect(key === ALL_KEY ? null : key)}
-    />
-  )
-
-  if (filterKey === 'part') {
-    return (
-      <div
-        role="listbox"
-
-        aria-label={FILTER_LABELS.part}
-
-        onKeyDown={moveFocus}
-
-        className="flex flex-col gap-5"
+    <li>
+      <Link
+        to={`/exercises/${item.id}`}
+        state={{ from, fromState: origin ? { from: origin } : undefined }}
+        className={`flex min-h-14 items-center justify-between gap-3 rounded-card border border-line bg-surface p-4 transition-colors hover:border-exercise/40 motion-reduce:transition-none ${focusRing}`}
       >
-        <div>{option(ALL_KEY, '전체', true)}</div>
-
-        {BODY_PART_GROUPS.map((group, index) => (
-          <section key={group.label}>
-            <h3
-              id={`exercise-part-group-${index}`}
-
-              className="text-support leading-snug font-semibold text-muted"
-            >
-              {group.label}
-            </h3>
-
-            <div
-              role="group"
-
-              aria-labelledby={`exercise-part-group-${index}`}
-
-              className="mt-2 flex flex-wrap gap-2"
-            >
-              {group.parts.map((part) => option(part, part, true))}
-            </div>
-          </section>
-        ))}
-      </div>
-    )
-  }
-
-  const options = filterKey === 'difficulty' ? DIFFICULTIES : TOOLS
-
-  return (
-    <div
-      role="listbox"
-
-      aria-label={FILTER_LABELS[filterKey]}
-
-      onKeyDown={moveFocus}
-
-      className="flex flex-col gap-2"
-    >
-      {option(ALL_KEY, '전체', false)}
-
-      {options.map((item) => option(item, item, false))}
-    </div>
-  )
-}
-
-/** 결과 한 건. 운동 상세(E02) 화면이 아직 없어서 이동하지 않는 비대화형 카드다. 있는 정보만 보여 준다. */
-
-function ExerciseCard({ item }: { item: ExerciseResult }) {
-  const meta = [item.difficulty, item.bodyPart, item.tool].filter(
-    (v): v is string => !!v,
-  )
-
-  return (
-    <li className="rounded-card border border-line bg-surface p-4">
-      <p className="text-section-title leading-snug font-semibold text-content">
-        {item.name}
-      </p>
-
-      {meta.length > 0 ? (
-        <p className="mt-2 text-support leading-snug font-normal text-exercise">
-          {meta.join(' · ')}
-        </p>
-      ) : null}
+        <span className="min-w-0">
+          <span className="block text-section-title leading-snug font-semibold text-content">
+            {item.name}
+          </span>
+          {meta.length > 0 ? (
+            <span className="mt-2 block text-support leading-snug font-normal text-exercise">
+              {meta.join(' · ')}
+            </span>
+          ) : null}
+        </span>
+        <Icon name="chevron-right" size={18} className="shrink-0 text-muted" />
+      </Link>
     </li>
   )
 }
@@ -311,6 +116,12 @@ const noticePanel = 'rounded-card bg-surface px-5 py-6 text-center'
 
 interface ResultViewProps {
   outcome: ExerciseSearchOutcome | 'loading'
+
+  /** 카드의 상세 진입이 "이전"으로 돌아올 현재 검색 주소 */
+  from: string
+
+  /** 이 화면(운동 탐색)의 "이전" 목적지. 상세에서 돌아올 때 잃지 않도록 카드가 맡겨 둔다. */
+  origin: string | null
 
   onRetry: () => void
 
@@ -323,6 +134,10 @@ interface ResultViewProps {
 
 function ResultView({
   outcome,
+
+  from,
+
+  origin,
 
   onRetry,
 
@@ -429,7 +244,7 @@ function ResultView({
 
       <ul className="mt-3 flex flex-col gap-3">
         {outcome.items.map((item) => (
-          <ExerciseCard key={item.id} item={item} />
+          <ExerciseCard key={item.id} item={item} from={from} origin={origin} />
         ))}
       </ul>
     </>
@@ -500,7 +315,8 @@ function Header({
 
  *   조건 행을 누르면 아래에서 바텀시트가 올라와 단일 선택하고, 고르면 바로 반영하며 닫힌다(화면 안에서 펼치지 않는다).
 
- * - 결과: 조건 요약과 "조건 수정", 결과(준비 중·오류·결과 없음·목록). 조건 수정으로 돌아가면 입력값과 선택값이 그대로다.
+ * - 결과: 조건 요약과 "조건 수정", 결과(준비 중·오류·결과 없음·목록). "조건 수정"은 결과 화면 위에 바텀시트(ExerciseConditionSheet)를 열어
+ *   조건을 고쳐 다시 검색한다(검색 전 화면으로 이동하지 않는다).
 
  * 조건과 화면 상태는 주소(?q=&difficulty=&part=&tool=&view=results)에 둔다(스토리보드 data: 조건과 위치를 URL에 보관).
 
@@ -510,7 +326,7 @@ function Header({
 
  * 운동 검색 API·데이터가 없어서(exerciseBackend) 검색하기를 누르면 "준비 중" 상태가 나온다. 가짜 운동은 만들지 않는다.
 
- * 결과 카드의 "방법 보기"는 운동 상세(E02) 화면과 경로가 없어 두지 않았다.
+ * 결과 카드의 "방법 보기" 별도 버튼은 두지 않았다. 카드 전체가 운동 상세(E02) 진입 링크다.
 
  */
 
@@ -556,6 +372,11 @@ export default function ExercisesPage() {
   const chosen = useRef(false)
 
   const openSheet = sheet && sheet.at === paramsKey ? sheet.key : null
+
+  // 결과 화면의 "조건 수정" 시트. 어느 주소에서 열었는지 기억해, 시트가 열린 채 주소가 바뀌면(뒤로가기·앞으로가기) 수정 중이던 내용을 버리고 닫는다.
+  // 시트를 여닫는 것만으로는 주소가 바뀌지 않는다. 조건을 적용할 때(재검색)만 search()가 주소를 갱신한다.
+  const [editAt, setEditAt] = useState<string | null>(null)
+  if (editAt !== null && editAt !== paramsKey) setEditAt(null)
 
   // 검색 전 ↔ 결과 전환 시 새 화면의 제목으로 포커스를 옮겨 보조기기가 전환을 알 수 있게 한다(첫 표시에는 옮기지 않는다).
 
@@ -611,6 +432,21 @@ export default function ExercisesPage() {
   const outcome: ExerciseSearchOutcome | 'loading' =
     result?.key === searchKey ? result.outcome : 'loading'
 
+  // "다시 시도"를 누르면 그 버튼이 조회 중 안내로 바뀌며 사라져 포커스가 body로 빠진다. 결과 영역(section)은 조회 중·결과·실패 화면에서도
+  // 그대로 남으므로, 재시도 직후 이 영역으로 포커스를 옮겨 이어서 Tab으로 새 결과나 새 "다시 시도" 버튼에 닿게 한다.
+  // attempt는 같은 조건의 재검색에서도 오르므로 재시도 버튼을 눌렀을 때만 표시(retried)를 남긴다. 이 화면 안에서만 다루며 전역 포커스 관리는 아니다.
+  const resultsRef = useRef<HTMLElement>(null)
+
+  const retried = useRef(false)
+
+  useEffect(() => {
+    if (!retried.current) return
+
+    retried.current = false
+
+    resultsRef.current?.focus()
+  }, [attempt])
+
   function search(criteria: ExerciseCriteria) {
     const url = criteriaUrl(criteria, true)
 
@@ -622,7 +458,9 @@ export default function ExercisesPage() {
       return
     }
 
-    void navigate(url)
+    // 검색 중에도 이 화면의 "이전" 목적지(탐색에서 왔으면 탐색)를 잃지 않도록 state로 이어 준다. 이 화면에서 만든 경로만 전달한다.
+    // 브라우저 history 정책(검색마다 한 칸 쌓임)은 그대로다.
+    void navigate(url, { state: backTo ? { from: backTo } : undefined })
   }
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
@@ -652,51 +490,100 @@ export default function ExercisesPage() {
           headingRef={headingRef}
         />
 
+        {/*
+          검색 조건 요약 바. 제목·"조건 수정"·적용된 조건 칩을 하나의 은은한 면으로 묶어 한 덩어리의 필터 관리 영역으로 보이게 한다.
+          칩은 지금 적용된 조건을 보여 주는 요약일 뿐이라 제거 버튼이나 새 필터 변경 기능은 없다(바꾸려면 "조건 수정").
+          칩 글자에 항목 이름이 들어 있어("난이도: 초급") 색만으로 구분하지 않는다. 폭이 모자라면(글자 확대) 머리줄과 칩이 줄바꿈한다.
+        */}
         <section
-          aria-label="검색한 조건"
-
-          className="flex items-start justify-between gap-3"
+          aria-labelledby="exercise-criteria-title"
+          className="rounded-card border border-exercise/15 bg-exercise-soft/60 px-4 pt-1.5 pb-3.5"
         >
-          <ul className="flex min-w-0 flex-wrap gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-3">
+            <p
+              id="exercise-criteria-title"
+              className="flex items-center gap-1.5 text-body leading-snug font-semibold text-content"
+            >
+              <Icon
+                name="filter"
+                size={18}
+                className="shrink-0 text-exercise"
+              />
+              검색 조건
+            </p>
+
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              onClick={(event) => {
+                // Safari는 버튼을 눌러도 포커스를 주지 않아, 닫힌 뒤 돌아갈 곳(이 버튼)을 직접 정해 둔다.
+                event.currentTarget.focus()
+                setEditAt(paramsKey)
+              }}
+              className={`-mr-2 flex min-h-11 shrink-0 cursor-pointer items-center gap-0.5 rounded-control px-2 text-body leading-snug font-semibold text-exercise ${focusRing}`}
+            >
+              조건 수정
+              <Icon name="chevron-right" size={18} />
+            </button>
+          </div>
+
+          <ul className="mt-0.5 flex min-w-0 flex-wrap gap-2">
             {criteriaSummary(applied).map((label) => (
               <li
                 key={label}
-
-                className="rounded-full border border-exercise/20 bg-exercise-soft px-3 py-1 text-support leading-snug font-normal text-exercise"
+                className="rounded-full border border-exercise/20 bg-surface px-3 py-1 text-support leading-snug font-normal text-exercise"
               >
                 {label}
               </li>
             ))}
           </ul>
-
-          <Link
-            to={criteriaUrl(applied, false)}
-
-            className={`flex min-h-11 shrink-0 items-center px-1 text-body font-semibold text-exercise ${focusRing}`}
-          >
-            조건 수정
-          </Link>
         </section>
 
-        <section aria-label="검색 결과">
+        <section
+          ref={resultsRef}
+          tabIndex={-1}
+          aria-label="검색 결과"
+          className="outline-none"
+        >
           <ResultView
             outcome={outcome}
 
-            onRetry={() => setAttempt((n) => n + 1)}
+            from={`${location.pathname}${location.search}`}
+
+            origin={backTo}
+
+            onRetry={() => {
+              retried.current = true
+
+              setAttempt((n) => n + 1)
+            }}
 
             onResetFilters={() =>
-              search({ query: applied.query, filters: EMPTY_FILTERS })
+              // 검색어도 함께 비운다: 이름 때문에 결과가 없었다면 필터만 풀어도 같은 빈 화면이 반복된다.
+              search({ query: '', filters: EMPTY_FILTERS })
             }
 
             onBeginner={() =>
+              // 검색어도 함께 비운다(초급·맨몸 운동 전체를 보여 준다).
               search({
-                query: applied.query,
+                query: '',
 
                 filters: { difficulty: '초급', part: null, tool: '맨몸' },
               })
             }
           />
         </section>
+
+        {editAt === paramsKey ? (
+          <ExerciseConditionSheet
+            applied={applied}
+            onClose={(next) => {
+              setEditAt(null)
+              // 재검색으로 닫혔을 때만 조건을 적용한다(주소 갱신 + 결과 갱신). 그 밖의 닫기는 수정 사항을 버린다.
+              if (next) search(next)
+            }}
+          />
+        ) : null}
       </div>
     )
   }
@@ -718,43 +605,13 @@ export default function ExercisesPage() {
               운동 검색
             </label>
 
-            <div className="relative">
-              <Icon
-                name="search"
-
-                className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted"
-              />
-
-              {/* text-base(16px): 모바일 Safari가 16px 미만 입력창에 포커스하면 화면을 확대하므로 입력값에만 적용한다(placeholder는 본문 크기). */}
-
-              <input
-                id="exercise-query"
-
-                name="q"
-
-                type="search"
-
-                autoComplete="off"
-
-                spellCheck={false}
-
-                maxLength={MAX_EXERCISE_QUERY}
-
-                placeholder="운동 이름을 검색해 보세요"
-
-                value={form.query}
-
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-
-                    query: event.target.value,
-                  }))
-                }
-
-                className="h-12 w-full rounded-full border border-muted/75 bg-surface pr-4 pl-12 text-base font-normal text-content transition-colors placeholder:text-body placeholder:text-muted placeholder-shown:text-ellipsis hover:border-muted focus-visible:border-exercise focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-exercise motion-reduce:transition-none [&::-webkit-search-cancel-button]:appearance-none"
-              />
-            </div>
+            <ExerciseQueryInput
+              id="exercise-query"
+              value={form.query}
+              onChange={(query) =>
+                setForm((current) => ({ ...current, query }))
+              }
+            />
           </div>
         </Header>
 
@@ -878,7 +735,7 @@ export default function ExercisesPage() {
           onClose={() => setSheet(null)}
         >
           {(close, closing) => (
-            <SheetBody
+            <FilterListbox
               filterKey={openSheet}
 
               value={form.filters[openSheet]}

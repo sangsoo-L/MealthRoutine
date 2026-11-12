@@ -4,21 +4,12 @@
  * 운동·음식 검색 API(GET /api/v1/exercises, GET /api/v1/foods)는 명세서에 경로만 있고 요청·응답 구조가 정의되지 않았으며
  * 연결된 코드도 없다(frontend/docs/api-status.md). 그래서 아래 결과 타입은 화면을 그리기 위한 임시 형태이지 API 계약이 아니다.
  * 필드는 모두 "있을 때만" 보여 주며, 값이 없는 항목을 만들어 채우지 않는다.
+ * 운동 결과 타입(ExerciseResult)은 운동 도메인(exercise/exerciseTypes.ts)에 있다.
  */
+import type { ExerciseResult } from '../exercise/exerciseTypes.ts'
 
 /** 검색 범위. food는 URL 검색 파라미터(c)에도 같은 값으로 쓴다. */
 export type SearchCategory = 'all' | 'exercise' | 'food'
-
-export interface ExerciseResult {
-  id: string
-  name: string
-  /** 운동 부위. 없으면 표시하지 않는다. */
-  bodyPart?: string
-  /** 난이도. 없으면 표시하지 않는다. */
-  difficulty?: string
-  /** 운동 도구. 없으면 표시하지 않는다. */
-  tool?: string
-}
 
 export interface FoodResult {
   id: string
@@ -41,7 +32,9 @@ export interface FoodResult {
  * 검색 한 번의 결과.
  * - unavailable: 데이터 소스(검색 API·데이터)가 연결되지 않았다. "결과 없음"이나 "오류"가 아니다.
  * - error: 연결은 되어 있으나 검색에 실패했다.
- * - results: 검색에 성공했다. 두 목록이 모두 비어 있으면 "결과 없음"이다.
+ * - results: 검색에 성공했다. 검색한 구역의 목록이 모두 비어 있으면 "결과 없음"이다.
+ *   `unavailable`에 든 구역은 데이터 소스가 없어 검색하지 못한 구역이다. 그 구역의 빈 목록은 "결과 0건"이 아니라 "검색하지 않음"이며,
+ *   화면이 "준비 중"으로 따로 안내한다(결과 없음과 섞지 않는다).
  */
 export type SearchOutcome =
   | { status: 'unavailable' }
@@ -50,6 +43,8 @@ export type SearchOutcome =
       status: 'results'
       exercises: readonly ExerciseResult[]
       foods: readonly FoodResult[]
+      /** 데이터 소스가 연결되지 않아 검색하지 못한 구역. 없으면 모든 대상 구역을 검색했다. */
+      unavailable?: readonly ('exercise' | 'food')[]
     }
 
 /**

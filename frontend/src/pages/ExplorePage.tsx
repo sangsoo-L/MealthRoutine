@@ -169,7 +169,7 @@ function ExploreHelp() {
 export default function ExplorePage() {
   return (
     <div className="flex flex-col gap-10 pb-4 break-keep wrap-anywhere">
-      {/* -mt-5는 AppShell 본문의 위쪽 여백(20px)을 상쇄해 그라데이션이 앱바 바로 아래에서 시작하게 한다. */}
+      {/* -mt-5는 AppShell 본문의 위쪽 여백(20px)을 상쇄해 그라데이션이 화면 맨 위에서 시작하게 한다. */}
       <header className="-mx-5 -mt-5 bg-linear-to-b from-brand-soft to-page px-5 pt-8 pb-2">
         <h2 className="text-app-title leading-snug font-semibold text-content">
           {EXPLORE_COPY.title}

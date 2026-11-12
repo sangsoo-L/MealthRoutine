@@ -15,37 +15,38 @@ export type RouteTransitionKind = 'slide' | 'fade'
 export interface RouteHandle {
   /** 화면 ID (예: 'H01'). 화면명세에 없는 임시 화면은 null */
   screenId: string | null
-  /** AppBar 중앙에 표시할 화면 제목 */
+  /**
+   * 화면 제목. 상단 바(AppBar)는 없으므로 화면 안에 눈에 보이는 제목이 없는 화면은 AppShell이 이 값을
+   * 보조기기용 h1(sr-only)로 넣는다. 눈에 보이는 제목을 화면이 가지면 `ownH1`로 알린다.
+   */
   title: string
   /** 활성화할 하단 탭. 활성 탭이 없으면 null */
   tab: TabKey | null
   /** true이면 하단 탭(BottomNav)을 렌더하지 않음. 비회원 랜딩의 하단 탭 숨김은 `landing`이 따로 처리한다. */
   focus: boolean
-  /** true이면 AppBar를 숨기고 본문을 화면 중앙에 렌더. 인트로 스플래시 전용 (없으면 false) */
+  /** true이면 본문을 화면 정중앙에 렌더. 인트로 스플래시 전용 (없으면 false) */
   splash?: boolean
   /**
-   * true이면 비회원일 때만 자체 헤더를 쓰는 랜딩이라 AppBar와 하단 탭을 숨긴다. 로그인한 회원에게는 일반 화면이다.
-   * 비회원 홈(H01) 전용이다. splash와 달리 본문 배치는 그대로다. (없으면 false)
+   * true이면 비회원일 때만 자체 헤더(LandingHeader)를 쓰는 랜딩이라 하단 탭을 숨기고 공통 h1도 넣지 않는다.
+   * 로그인한 회원에게는 일반 화면이다. 비회원 홈(H01) 전용이다. (없으면 false)
    */
   landing?: boolean
   /**
-   * true이면 AppBar 중앙의 제목 글자 대신 MealthRoutine 로고(심볼 + 이름)를 보이고 우측 고객지원(도움말) 링크를 숨긴다.
-   * 로그인 회원의 홈(/home) 전용이다. 비회원일 때 같은 라우트는 AppBar 없이 랜딩 헤더를 쓴다. (없으면 false)
+   * true이면 화면이 자체 h1(보이는 제목이든 보조기기용이든)을 가지고 있다는 뜻이라 AppShell이 공통 h1을 넣지 않는다.
+   * 통합검색, 이해도 확인, 상세 설정이 쓴다. (없으면 false)
    */
-  brandHeader?: boolean
+  ownH1?: boolean
   /**
-   * true이면 AppBar를 렌더링하지 않는다(숨기는 것이 아니라 그리지 않는다). 본문 배치와 하단 탭 노출은 그대로다.
-   * 화면이 자체 상단 영역을 갖는 경우에 쓴다. 회원가입(A03)과 통합검색(/search)이 쓴다. (없으면 false)
-   */
-  hideAppBar?: boolean
-  /**
-   * true이면 AppBar에 뒤로가기를 그리지 않고(그 자리는 비운다) 화면 본문이 직접 그린다. 이동 목적지는 `parent`와 같은 규칙이다.
-   * 운동 탐색(E01)이 쓴다. (없으면 false)
+   * true이면 AppShell이 뒤로가기를 그리지 않는다. 화면이 직접 그리거나(운동·음식 탐색, 로그인) 아예 두지 않는 화면(회원가입,
+   * 통합검색)이다. 직접 그리는 화면은 `parent`와 같은 규칙(useBackTarget)을 쓴다. (없으면 false)
    */
   bodyBack?: boolean
   /** 도메인색 구분 */
   domain: Domain
-  /** 상위 화면 경로. 있을 때만 AppBar 뒤로가기를 표시하고 이 경로로 이동 */
+  /**
+   * 상위 화면 경로. 있고 `bodyBack`이 아니면 AppShell이 본문 위에 "이전" 뒤로가기를 그리고 이 경로로 이동한다(상세 화면용).
+   * 하단 탭의 대표 화면은 하단 탭이 이동을 맡으므로 null로 둔다.
+   */
   parent: string | null
   /**
    * 이 화면에 도착할 때의 전환 유형. 없으면 'slide'(일반 이동).

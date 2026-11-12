@@ -1,4 +1,5 @@
 import { useAuth } from '../auth/authContext.ts'
+import BodyInfoPrompt from '../components/body-measurements/BodyInfoPrompt.tsx'
 import HomeDiscovery from '../components/home/HomeDiscovery.tsx'
 import HomeGreeting from '../components/home/HomeGreeting.tsx'
 import HomeNotices from '../components/home/HomeNotices.tsx'
@@ -23,8 +24,10 @@ import { HOME_GUIDE_TEXT } from '../components/home/homeContent.ts'
  * 연결된 API와 기록 기능이 없어서 오늘의 기록은 "아직 기록이 없어요" 상태만 보여 주고, 가짜 기록이나 수치를 만들지 않는다.
  * 퀴즈 카드와 커뮤니티 바로가기는 이동할 화면이 없어 "준비 중" 표시가 있는 비대화형 요소다.
  *
- * 보류(스토리보드에는 있으나 선행 조건이 없는 부분): 신체 정보 미등록 안내 배너·팝업(P06 입력 화면과 신체 정보 등록 여부 데이터가 없음),
- * 등록 완료 시 루틴 탐색 배너(같은 이유로 등록 여부를 알 수 없음), 날씨 조건 인사(실제 날씨 연동 없음).
+ * 신체 정보 안내 팝업(BodyInfoPrompt): 로그인 상태에서 키·몸무게 중 하나라도 누락되면 바텀시트로 한 번 안내한다(입력은 같은 시트에서 한다).
+ *
+ * 보류(스토리보드에는 있으나 선행 조건이 없는 부분): 신체 정보 미등록 안내 배너(팝업만 구현), 등록 완료 시 루틴 탐색 배너,
+ * 날씨 조건 인사(실제 날씨 연동 없음).
  */
 export default function MemberHomePage() {
   const { user } = useAuth()
@@ -43,6 +46,7 @@ export default function MemberHomePage() {
       <HomeQuizCard />
       <HomeDiscovery note={HOME_GUIDE_TEXT.memberNote} />
       <HomeNotices />
+      <BodyInfoPrompt userId={user.id} />
     </div>
   )
 }

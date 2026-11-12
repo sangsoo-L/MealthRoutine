@@ -49,10 +49,10 @@ export interface ExploreKeywordGroup {
 }
 
 /**
- * 추천 검색어(시안용). 검색 화면이 검색어를 받을 수 있게 되기 전까지는 누를 수 없는 예시로만 보여 준다.
- * 검색어 전달이 가능해지면 항목마다 이동 경로를 추가한다.
+ * 추천 검색어(시안용). 누르면 그 검색어로 통합검색(/search)이 열린다.
+ * 운동 검색은 운동명만 대상이므로 운동 추천 검색어는 운동 데이터에 실제 있는 운동명이어야 한다(도구·부위 같은 조건어는 결과가 없다).
  */
 export const EXPLORE_KEYWORD_GROUPS: readonly ExploreKeywordGroup[] = [
-  { key: 'exercise', label: '운동', keywords: ['스쿼트', '맨몸 운동'] },
+  { key: 'exercise', label: '운동', keywords: ['스쿼트', '푸시업'] },
   { key: 'meal', label: '식단', keywords: ['계란', '닭가슴살'] },
 ]
