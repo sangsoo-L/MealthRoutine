@@ -3,6 +3,7 @@ package com.healthlab.mealthroutine.backend.diet.service;
 import com.healthlab.mealthroutine.backend.diet.domain.*;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordCreateRequest;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordResponse;
+import com.healthlab.mealthroutine.backend.diet.dto.MealRecordUpdateRequest;
 import com.healthlab.mealthroutine.backend.diet.repository.FoodRepository;
 import com.healthlab.mealthroutine.backend.diet.repository.MealRecordRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,11 +25,7 @@ public class MealRecordService {
     @Transactional
     public MealRecordResponse create(Long userId, MealRecordCreateRequest req) {
         MealRecord record = MealRecord.create(userId, req.mealAt(), req.mealType(), req.recordType(), req.notes()); // 1. 끼니 만들기
-        for (MealRecordCreateRequest.Item item : req.items()) { // 2. 음식마다
-            Food food = foodRepository.findById(item.foodId())
-                    .orElseThrow(() -> new IllegalArgumentException("음식을 찾을 수 없습니다 . id = " + item.foodId()));
-            record.addItem(MealRecordItem.of(food, item.quantity()));// 영양소 계산 + 연결
-        }
+        addItems(record,req.items());
         record.recalculateTotals(); // 3. 끼니 합계 계산
         MealRecord saved = mealRecordRepository.save(record); // 4. 저장 (아이템도 cascade로 같이)
         return MealRecordResponse.from(saved); // 5. DTO로 바꿔서 반환
@@ -51,6 +48,21 @@ public class MealRecordService {
         return MealRecordResponse.from(findOwned(userId,mealRecordId));
 
     }
+
+    @Transactional
+    public MealRecordResponse update(Long userId, Long mealRecordId, MealRecordUpdateRequest req){
+        MealRecord record = findOwned(userId,mealRecordId);
+        record.update(req.mealAt(),req.mealType(),req.recordType(),req.notes()); // 내 기록인지 확인하는곳
+
+        if(req.items() != null){ // 음식 목록을 보냈을 때만 교체함
+            record.clearItems();
+            addItems(record,req.items());
+            record.recalculateTotals();
+            mealRecordRepository.flush(); // 지금 바로 DB반영 ->  새 아이템 ID 생성하는부분
+        }
+        return MealRecordResponse.from(record); //
+    }
+
 
     @Transactional // 상태를 바꾸니까 쓰기 트랜잭션
     public void delete(Long userId,Long mealRecordId){
