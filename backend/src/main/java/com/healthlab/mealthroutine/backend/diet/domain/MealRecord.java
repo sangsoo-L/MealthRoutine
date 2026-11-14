@@ -28,16 +28,13 @@ public class MealRecord extends BaseTimeEntity {
     @Column(nullable = false)
     private LocalDateTime mealAt;
 
-    @Enumerated(EnumType.STRING) // DB에 "LUNCH" 문자열로 저장
-    @Column(nullable = false , length = 20)
+    @Column(nullable = false)
     private MealType mealType;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false , length = 20)
+    @Column(nullable = false)
     private RecordType recordType;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false , length = 20)
+    @Column(nullable = false)
     private RecordStatus recordStatus;
 
     @Column(precision = 9 , scale = 2)
