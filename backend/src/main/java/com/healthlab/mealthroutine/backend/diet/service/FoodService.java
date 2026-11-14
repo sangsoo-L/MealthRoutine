@@ -1,5 +1,7 @@
 package com.healthlab.mealthroutine.backend.diet.service;
 
+import com.healthlab.mealthroutine.backend.common.BusinessException;
+import com.healthlab.mealthroutine.backend.common.ErrorCode;
 import com.healthlab.mealthroutine.backend.diet.dto.FoodResponse;
 import com.healthlab.mealthroutine.backend.diet.repository.FoodRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,6 @@ public class FoodService {
     public FoodResponse get(Long foodId){
         return foodRepository.findById(foodId)
                 .map(FoodResponse::from)// 있으면 dto 로바꾸는거
-                .orElseThrow(() -> new IllegalArgumentException("음식을 찾을 수 없습니다. id="+foodId));
+                .orElseThrow(() -> new BusinessException(ErrorCode.FOOD_NOT_FOUND));
     }
 }

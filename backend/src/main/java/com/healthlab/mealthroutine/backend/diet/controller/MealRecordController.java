@@ -1,6 +1,7 @@
 package com.healthlab.mealthroutine.backend.diet.controller;
 
-import com.healthlab.mealthroutine.backend.diet.domain.MealRecord;
+import com.healthlab.mealthroutine.backend.common.ApiResponse;
+import com.healthlab.mealthroutine.backend.common.LoginUser;
 import com.healthlab.mealthroutine.backend.diet.domain.RecordType;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordCreateRequest;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordResponse;
@@ -19,51 +20,44 @@ import java.util.List;
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/meal-records")
 public class MealRecordController {
-    // TODO: 로그인 구현 후 @AuthenticationPrincipal로 교체
     private final MealRecordService mealRecordService;
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)  // 저장 성공 시 201
-    public MealRecordResponse create(
-            @RequestHeader("X-User-Id")Long userId,  // 로그인 전 임시: 헤더로 회원 번호 받기
-            @Valid @RequestBody MealRecordCreateRequest request){// JSON 본문 + 검증
-        return mealRecordService.create(userId,request);
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<MealRecordResponse> create(@LoginUser Long userId,
+                                                  @Valid @RequestBody MealRecordCreateRequest request) {
+        return ApiResponse.ok(mealRecordService.create(userId, request));
     }
     //curl -X POST http://localhost:8080/api/v1/meal-records -H "Content-Type: application/json" -H "X-User-Id: 1" -d @meal-test.json
 
-    @GetMapping //&recordType=PLAN 내일플랜볼수있음
-    public List<MealRecordResponse> getDaily(@RequestHeader("X-User-Id")Long userId,
-                                             @RequestParam@DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date,
-                                             @RequestParam(defaultValue="ACTUAL")RecordType recordType
-                                             ){
-        return mealRecordService.getDaily(userId, date, recordType);
+    @GetMapping
+    public ApiResponse<List<MealRecordResponse>> getDaily(@LoginUser Long userId,
+                                                          @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+                                                          @RequestParam(defaultValue = "actual") RecordType recordType) {
+        return ApiResponse.ok(mealRecordService.getDaily(userId, date, recordType));
     }
-    // curl -H "X-User-Id: 1" "http://localhost:8080/api/v1/meal-records?date=2026-11-09"
 
 
     @GetMapping("/{mealRecordId}")
-    public MealRecordResponse get(
-
-            @RequestHeader("X-User-Id")Long userId,
-            @PathVariable Long mealRecordId
-    ){
-        return mealRecordService.get(userId,mealRecordId);
+    public ApiResponse<MealRecordResponse> get(@LoginUser Long userId,
+                                               @PathVariable Long mealRecordId) {
+        return ApiResponse.ok(mealRecordService.get(userId, mealRecordId));
     }
 
     @PatchMapping("/{mealRecordId}")
-    public MealRecordResponse update(@RequestHeader("X-User-Id")Long userId,
-                                     @PathVariable Long mealRecordId,
-                                     @Valid @RequestBody MealRecordUpdateRequest request){
-        return mealRecordService.update(userId,mealRecordId,request);
+    public ApiResponse<MealRecordResponse> update(@LoginUser Long userId,
+                                                  @PathVariable Long mealRecordId,
+                                                  @Valid @RequestBody MealRecordUpdateRequest request) {
+        return ApiResponse.ok(mealRecordService.update(userId, mealRecordId, request));
     }
 
 
+
     @DeleteMapping("/{mealRecordId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@RequestHeader("X-User-Id")Long userId,
-                       @PathVariable Long mealRecordId
-                       ){
-        mealRecordService.delete(userId,mealRecordId);
-    } //curl -X DELETE -H "X-User-Id: 1" http://localhost:8080/api/v1/meal-records/1
+    public ApiResponse<Void> delete(@LoginUser Long userId,
+                                    @PathVariable Long mealRecordId) {
+        mealRecordService.delete(userId, mealRecordId);
+        return ApiResponse.ok();                     // 204 대신 200 + success: true
+    }
 
 }
