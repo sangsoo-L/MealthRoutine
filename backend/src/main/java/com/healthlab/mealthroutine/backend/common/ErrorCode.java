@@ -18,6 +18,7 @@ public enum ErrorCode {
     INVALID_SESSION_STATUS(HttpStatus.CONFLICT, "이미 종료된 운동 기록입니다."),
     FOOD_NOT_FOUND(HttpStatus.NOT_FOUND, "음식을 찾을 수 없습니다."),
     MEAL_RECORD_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 기록을 찾을 수 없습니다."),
+    DIET_GOAL_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 목표를 찾을 수 없습니다."),
     DATA_CONFLICT(HttpStatus.CONFLICT, "다른 데이터와 충돌하여 처리할 수 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 
