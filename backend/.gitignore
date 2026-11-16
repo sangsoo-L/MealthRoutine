@@ -5,7 +5,7 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 meal-test.json
-
+patch-*.json
 ### STS ###
 .apt_generated
 .classpath

@@ -4,6 +4,7 @@ import com.healthlab.mealthroutine.backend.diet.domain.MealRecord;
 import com.healthlab.mealthroutine.backend.diet.domain.RecordType;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordCreateRequest;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordResponse;
+import com.healthlab.mealthroutine.backend.diet.dto.MealRecordUpdateRequest;
 import com.healthlab.mealthroutine.backend.diet.service.MealRecordService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,14 @@ public class MealRecordController {
     ){
         return mealRecordService.get(userId,mealRecordId);
     }
+
+    @PatchMapping("/{mealRecordId}")
+    public MealRecordResponse update(@RequestHeader("X-User-Id")Long userId,
+                                     @PathVariable Long mealRecordId,
+                                     @Valid @RequestBody MealRecordUpdateRequest request){
+        return mealRecordService.update(userId,mealRecordId,request);
+    }
+
 
     @DeleteMapping("/{mealRecordId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

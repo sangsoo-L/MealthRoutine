@@ -105,4 +105,16 @@ public class MealRecord extends BaseTimeEntity {
     public void delete(){
         this.recordStatus = RecordStatus.DELETED;
     }
+    // 보낸 값만 수정 (null이면 기존 값 유지)
+    public void update(LocalDateTime mealAt , MealType mealType , RecordType recordType , String notes){
+        if (mealAt != null)this.mealAt = mealAt;
+        if (mealType != null)this.mealType = mealType;
+        if (recordType != null)this.recordType = recordType;
+        if (notes != null)this.notes = notes;
+    }
+
+    // 음식 목록 비우기 (orphanRemoval 덕분에 DB에서도 삭제됨)
+    public void clearItems(){
+        items.clear();
+    }
 }
