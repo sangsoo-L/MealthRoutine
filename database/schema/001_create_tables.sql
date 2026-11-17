@@ -2,6 +2,7 @@
 -- 식단 테이블 5개 변경(정민재): PK AUTO_INCREMENT, salt→sodium_mg, foods.category·reference_serving_size, meal_records.record_type, preference_meal 복합 UNIQUE, quantity_unit 삭제.
 -- workout_session_exercises.exercise_id 추가, 루틴 삭제 시 운동 기록의 연결만 해제(ON DELETE SET NULL).
 -- 회원 테이블 변경(회원 파트): users.user_id AUTO_INCREMENT(인라인 PK, PK_USERS ALTER 제거). ERDCloud는 AUTO_INCREMENT를 표현하지 못해 이 파일에서 관리.
+-- 회원 테이블 변경(회원 파트): users에 최신 ERD의 토큰·PIN 컬럼 6개 반영(refresh_token_hash·refresh_token_expires_at·reset_token_hash·reset_token_expires_at·pin_failed_count·pin_locked_until). 기존 DB는 database/migration/20261118_users_token_pin_columns.sql 참고.
 SET NAMES utf8mb4;
 
 CREATE TABLE `meal_record_items` (
@@ -120,6 +121,12 @@ CREATE TABLE `users` (
 	`account_status`	ENUM('active', 'suspended', 'pending_deletion', 'deleted')	NOT NULL	DEFAULT 'active'	COMMENT '계정 상태',
 	`user_role`	ENUM('user', 'subscribe_user','content_admin', 'privacy_admin', 'super_admin')	NOT NULL	DEFAULT 'user'	COMMENT '계정 권한',
 	`is_agreed_term`	BOOLEAN	NOT NULL	COMMENT '약관동의여부',
+	`refresh_token_hash`	VARCHAR(255)	NULL	COMMENT '리프레시 토큰 해시(원문 저장 금지)',
+	`refresh_token_expires_at`	DATETIME	NULL	COMMENT '리프레시 토큰 만료일시',
+	`reset_token_hash`	VARCHAR(255)	NULL	COMMENT '비밀번호 재설정 토큰 해시(원문 저장 금지)',
+	`reset_token_expires_at`	DATETIME	NULL	COMMENT '비밀번호 재설정 토큰 만료일시',
+	`pin_failed_count`	TINYINT UNSIGNED	NOT NULL	DEFAULT 0	COMMENT '2차비밀번호 연속 실패 횟수',
+	`pin_locked_until`	DATETIME	NULL	COMMENT '2차비밀번호 잠금 해제일시',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
 	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '수정일자',
 	`deleted_at`	DATETIME	NULL	COMMENT '삭제일자'
