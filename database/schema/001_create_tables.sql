@@ -1,6 +1,7 @@
 -- erdclould 기준. 운동 테이블 8개만 변경: PK AUTO_INCREMENT, 복합 UNIQUE, updated_at 자동 갱신,
 -- 식단 테이블 5개 변경(정민재): PK AUTO_INCREMENT, salt→sodium_mg, foods.category·reference_serving_size, meal_records.record_type, preference_meal 복합 UNIQUE, quantity_unit 삭제.
 -- workout_session_exercises.exercise_id 추가, 루틴 삭제 시 운동 기록의 연결만 해제(ON DELETE SET NULL).
+-- 회원 테이블 변경(회원 파트): users.user_id AUTO_INCREMENT(인라인 PK, PK_USERS ALTER 제거). ERDCloud는 AUTO_INCREMENT를 표현하지 못해 이 파일에서 관리.
 SET NAMES utf8mb4;
 
 CREATE TABLE `meal_record_items` (
@@ -111,7 +112,7 @@ CREATE TABLE `foods` (
 );
 
 CREATE TABLE `users` (
-	`user_id`	BIGINT	NOT NULL,
+	`user_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`email`	VARCHAR(255) UNIQUE	NULL	COMMENT '이메일',
 	`username`	VARCHAR(50)	NOT NULL	COMMENT '사용자 실명',
 	`password_hash`	VARCHAR(255)	NULL	COMMENT '비밀번호 원문 저장 금지',
@@ -505,10 +506,6 @@ ALTER TABLE `user_auth_identities` ADD CONSTRAINT `PK_USER_AUTH_IDENTITIES` PRIM
 
 ALTER TABLE `quiz_questions` ADD CONSTRAINT `PK_QUIZ_QUESTIONS` PRIMARY KEY (
 	`quiz_question_id`
-);
-
-ALTER TABLE `users` ADD CONSTRAINT `PK_USERS` PRIMARY KEY (
-	`user_id`
 );
 
 ALTER TABLE `diet_recommendation_items` ADD CONSTRAINT `PK_DIET_RECOMMENDATION_ITEMS` PRIMARY KEY (
