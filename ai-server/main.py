@@ -24,6 +24,7 @@ from routers.exercise import router as exercise_router
 from routers.diet import router as diet_router
 from routers.food import router as food_router
 from routers.llm_preview import router as llm_preview_router
+from routers.food_preview import router as food_preview_router
 
 
 app = FastAPI(
@@ -36,6 +37,7 @@ app.include_router(exercise_router)
 app.include_router(diet_router)
 app.include_router(food_router)
 app.include_router(llm_preview_router)
+app.include_router(food_preview_router)
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
