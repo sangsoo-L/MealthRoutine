@@ -7,6 +7,7 @@ import com.healthlab.mealthroutine.backend.diet.domain.RecordType;
 import com.healthlab.mealthroutine.backend.diet.repository.DietGoalRepository;
 import com.healthlab.mealthroutine.backend.diet.repository.MealRecordRepository;
 import com.healthlab.mealthroutine.backend.exercise.domain.GoalStatus;
+import com.healthlab.mealthroutine.backend.quiz.repository.QuizAttemptRepository;
 import com.healthlab.mealthroutine.backend.reward.repository.AttendanceRepository;
 import com.healthlab.mealthroutine.backend.reward.repository.RewardRuleRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class DailyScoreService {
     private final DietScoreCalculator calculator;
     private final RewardService rewardService;
     private final WorkoutCheck workoutCheck;
+    private final QuizAttemptRepository quizAttemptRepository;
 
     public record DailyScore(int dietScore , int missionScore , int total){}
 
@@ -54,14 +56,15 @@ public class DailyScoreService {
                 + calculator.macro(sum(records,MealRecord::getTotalFatG), num(goal.getTargetFatG()));
     }
 
-    private int missionScore(Long userId,LocalDate date) { // 미션 40점
-
+    private int missionScore(Long userId, LocalDate date) {      // 미션 40점
         int score = 0;
-
-        if(workoutCheck.hasCompletedWorkout(userId,date)) score += 20;
-        if(attendanceRepository.existsByUserIdAndAttendDate(userId,date)) score += 10;
-        // TODO 오늘의 퀴즈 10점(오답 5점) : 퀴즈기능 들어갈부분
+        if (workoutCheck.hasCompletedWorkout(userId, date)) score += 20;                // 운동 20
+        if (attendanceRepository.existsByUserIdAndAttendDate(userId, date)) score += 10; // 출석 10
+        score += quizAttemptRepository.findByUserIdAndAttemptDate(userId, date)
+                .map(a -> a.isCorrect() ? 10 : 5)                 // 정답 10, 오답이라도 참여 5
+                .orElse(0);                                       // 안 풀었으면 0
         return score;
+
     }
 
     @Transactional // 보상 지급은 쓰기

@@ -1,10 +1,14 @@
 package com.healthlab.mealthroutine.backend.quiz.domain;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 
 @Entity
+@Getter
+@NoArgsConstructor
 @Table(name ="quiz_attempts")
 public class QuizAttempt {
 
