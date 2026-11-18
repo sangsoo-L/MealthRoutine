@@ -1,4 +1,5 @@
 -- 보상 규칙 (정민재)
+SET NAMES utf8mb4;
 INSERT INTO reward_rules (rule_code, rule_description, xp_amount, points_amount, conditions_json)
 VALUES ('MEAL_RECORDED', '식단 기록', 10, 5, '{"dailyLimit": 3}'),      -- 하루 3번까지만 지급
        ('WORKOUT_COMPLETED', '운동 완료', 30, 10, '{"dailyLimit": 1}'), -- 하루 1번
