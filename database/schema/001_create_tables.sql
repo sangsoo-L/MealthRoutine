@@ -74,7 +74,7 @@ CREATE TABLE `exercise_routines` (
 );
 
 CREATE TABLE `quiz_questions` (
-	`quiz_question_id`	BIGINT	NOT NULL,
+	`quiz_question_id`	BIGINT	NOT NULL AUTO_INCREMENT	PRIMARY KEY,
 	`question_text`	TEXT	NOT NULL	COMMENT '퀴즈 질문',
 	`explanation`	TEXT	NULL	COMMENT '퀴즈 설명',
 	`topic`	VARCHAR(100)	NULL	COMMENT '주제',
@@ -174,13 +174,15 @@ CREATE TABLE `level_rules` (
 );
 
 CREATE TABLE `quiz_attempts` (
-	`quiz_attempt_id`	BIGINT	NOT NULL,
+	`quiz_attempt_id`	BIGINT	NOT NULL AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`quiz_question_id`	BIGINT	NOT NULL,
 	`user_guess_questions`	ENUM('O','X','A','B','C','D','E')	NULL	COMMENT '사용자 입력 정답',
 	`is_correct`	BOOLEAN	NOT NULL	COMMENT '정답 적중 여부',
 	`points_awarded`	INT	NOT NULL	DEFAULT 0	COMMENT '포인트 수령 값',
-	`attempted_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성 시각'
+    `attempt_date`	DATE	NOT NULL	COMMENT '푼 날짜 (하루 1회)',
+	`attempted_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성 시각',
+    UNIQUE KEY `UK_QUIZ_ATTEMPT_USER_DATE` (`user_id`, `attempt_date`)
 );
 
 CREATE TABLE `workout_sessions` (
@@ -519,9 +521,7 @@ ALTER TABLE `user_auth_identities` ADD CONSTRAINT `PK_USER_AUTH_IDENTITIES` PRIM
 	`auth_identity_id`
 );
 
-ALTER TABLE `quiz_questions` ADD CONSTRAINT `PK_QUIZ_QUESTIONS` PRIMARY KEY (
-	`quiz_question_id`
-);
+
 
 ALTER TABLE `diet_recommendation_items` ADD CONSTRAINT `PK_DIET_RECOMMENDATION_ITEMS` PRIMARY KEY (
 	`diet_recommendation_item_id`
@@ -538,9 +538,7 @@ ALTER TABLE `notification_preferences` ADD CONSTRAINT `PK_NOTIFICATION_PREFERENC
 
 
 
-ALTER TABLE `quiz_attempts` ADD CONSTRAINT `PK_QUIZ_ATTEMPTS` PRIMARY KEY (
-	`quiz_attempt_id`
-);
+
 
 ALTER TABLE `community_comments` ADD CONSTRAINT `PK_COMMUNITY_COMMENTS` PRIMARY KEY (
 	`comment_id`
