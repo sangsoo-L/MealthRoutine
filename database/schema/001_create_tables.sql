@@ -4,6 +4,7 @@
 -- workout_session_exercises.exercise_id 추가, 루틴 삭제 시 운동 기록의 연결만 해제(ON DELETE SET NULL).
 -- 회원 테이블 변경(회원 파트): users.user_id AUTO_INCREMENT(인라인 PK, PK_USERS ALTER 제거). ERDCloud는 AUTO_INCREMENT를 표현하지 못해 이 파일에서 관리.
 -- 회원 테이블 변경(회원 파트): users에 최신 ERD의 토큰·PIN 컬럼 6개 반영(refresh_token_hash·refresh_token_expires_at·reset_token_hash·reset_token_expires_at·pin_failed_count·pin_locked_until). 기존 DB는 database/migration/20261118_users_token_pin_columns.sql 참고.
+-- 출석 테이블 추가(정민재): attendances, (user_id, attend_date) UNIQUE로 하루 1회.
 SET NAMES utf8mb4;
 
 CREATE TABLE `meal_record_items` (
@@ -462,6 +463,13 @@ CREATE TABLE `point_transactions` (
 	`description`	VARCHAR(500)	NULL	COMMENT '설명',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
 	`point_idempotency_key`	VARCHAR(150) UNIQUE	NOT NULL	COMMENT '포인트 중복 지급 방지 키'
+);
+
+CREATE TABLE `attendances` (
+    `attendance_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
+    `user_id`	BIGINT	NOT NULL	COMMENT '회원 ID',
+    `attend_date`	DATE	NOT NULL	COMMENT '출석 날짜',
+     UNIQUE KEY `UK_ATTENDANCE_USER_DATE` (`user_id`, `attend_date`)
 );
 
 CREATE TABLE `community_posts` (
