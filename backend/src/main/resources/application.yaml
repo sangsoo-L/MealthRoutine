@@ -16,3 +16,10 @@ spring:
     properties:
       hibernate:
         default_batch_fetch_size: 100
+# JWT (decisions JWT-KEY-1~4, LOGIN-1). The key is never written here: JWT_SECRET comes from .env or the
+# environment and must be Base64 of 32+ random bytes. A missing or invalid key stops the server at startup.
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-ttl: 30m
+    refresh-ttl: 14d

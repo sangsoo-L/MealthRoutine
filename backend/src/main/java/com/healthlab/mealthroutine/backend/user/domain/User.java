@@ -6,13 +6,15 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * users table. Only columns that also exist in the team SQL are mapped, so ddl-auto=validate passes
- * on every teammate's DB (token/PIN columns are added when those features are built).
+ * users table. Columns are mapped only when a feature uses them; ddl-auto=validate needs every mapped
+ * column to exist, so teammates' existing DBs must have run database/migration/20261118_users_token_pin_columns.sql.
  */
 @Entity
 @Table(name = "users")
@@ -40,6 +42,20 @@ public class User {
 
     private boolean isAgreedTerm;
 
+    /** Read only until the PIN feature; used for pinRegistered. */
+    @Column(insertable = false, updatable = false)
+    private String pinHash;
+
+    /** SHA-256 of the current refresh token, never the token itself (P-01). */
+    private String refreshTokenHash;
+
+    private LocalDateTime refreshTokenExpiresAt;
+
+    /** When withdrawal was requested; the account can be restored before this + 7 days (LOGIN-2a). */
+    private LocalDateTime deletedAt;
+
+    private static final Duration WITHDRAWAL_GRACE = Duration.ofDays(7);
+
     private User(String email, String username, String passwordHash, boolean isAgreedTerm) {
         this.email = email;
         this.username = username;
@@ -49,5 +65,27 @@ public class User {
 
     public static User createLocal(String email, String username, String passwordHash) {
         return new User(email, username, passwordHash, true);
+    }
+
+    public boolean hasPin() {
+        return pinHash != null;
+    }
+
+    /** Pending deletion and still inside the window: now is strictly before deletedAt + 7 days. */
+    public boolean canRestoreFromWithdrawal(LocalDateTime now) {
+        return accountStatus == AccountStatus.PENDING_DELETION
+                && deletedAt != null
+                && now.isBefore(deletedAt.plus(WITHDRAWAL_GRACE));
+    }
+
+    public void restoreFromWithdrawal() {
+        this.accountStatus = AccountStatus.ACTIVE;
+        this.deletedAt = null;
+    }
+
+    /** A new login replaces the previous refresh token, which logs the other device out (one device, P-01). */
+    public void replaceRefreshToken(String tokenHash, LocalDateTime expiresAt) {
+        this.refreshTokenHash = tokenHash;
+        this.refreshTokenExpiresAt = expiresAt;
     }
 }
