@@ -70,7 +70,7 @@ public class DailyScoreService {
         if (total <= 0 )return;
         // TODO 보상 비율 확정 필요 (지금 -> 경험치 = 점수 , 포인트 = 점수/2 이런식으로 계산중)
         rewardService.grantAmount(userId,"DAILY_SCORE",total,total/2
-                ,"DAILY_SCORE: "+ userId +":" + date);
+                ,"DAILY_SCORE:" + userId + ":" + date);
     }
 
     private double sum(List<MealRecord> records, Function<MealRecord, BigDecimal> getter){ // 그날 합계
