@@ -17,27 +17,27 @@ public class RewardService {
     private final ExperienceTransactionRepository experienceTransactionRepository;
     private final PointTransactionRepository pointTransactionRepository;
 
-    public void grant(Long userId , String ruleCode , String key){
+    public void grant(Long userId , String ruleCode , String key){  // 규칙 테이블 보고 고정량 지급
         RewardRule rule = rewardRuleRepository.findByRuleCodeAndIsActiveTrue(ruleCode).orElse(null);
         if (rule == null) return; // 1. 없거나 꺼진 규칙 → 안 줌
-        if (experienceTransactionRepository.existsByExpIdempotencyKey(key)) return; // 2. 이미 준 보상 → 안 줌
+        grantAmount(userId,ruleCode,rule.getXpAmount(),rule.getPointsAmount(),key);
+    }
 
-        int xp = rule.getXpAmount();
-        int points = rule.getPointsAmount();
+    public void grantAmount(Long userId , String sourceType , int xp , int points, String key){
+        if (experienceTransactionRepository.existsByExpIdempotencyKey(key)) return; // 이미 준 보상 → 안 줌
 
-        experienceTransactionRepository.save(ExperienceTransaction.of(userId,xp,ruleCode,key)); // 3. 경험치 내역
-        if (points >0){  // 퀴즈 참여처럼 0포인트면 내역 안 남김
-            pointTransactionRepository.save(PointTransaction.earn(userId,points,ruleCode,key));
+        experienceTransactionRepository.save(ExperienceTransaction.of(userId, xp, sourceType, key));
+        if (points > 0) {
+            pointTransactionRepository.save(PointTransaction.earn(userId, points, sourceType, key));
         }
 
-        UserProgress progress = userProgressRepository.findById(userId) // 처음이면 레벨 1로 생성
+        UserProgress progress = userProgressRepository.findById(userId)
                 .orElseGet(() -> userProgressRepository.save(UserProgress.create(userId)));
-        progress.addXp(xp, calculateLevel(progress.getTotalXp() + xp)); // 더한 뒤 경험치로 레벨 계산
+        progress.addXp(xp, calculateLevel(progress.getTotalXp() + xp));
 
-        PointAccount account = pointAccountRepository.findById(userId) // 처음이면 잔액 0으로 생성
+        PointAccount account = pointAccountRepository.findById(userId)
                 .orElseGet(() -> pointAccountRepository.save(PointAccount.create(userId)));
         account.earn(points);
-        // progress, account는 save 안 해도 됨 -> 더티 체킹으로 자동 update
     }
 
     private int calculateLevel(long totalXp){
