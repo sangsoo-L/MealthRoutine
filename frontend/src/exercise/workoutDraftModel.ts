@@ -1,5 +1,11 @@
 import type { Exercise } from './exerciseTypes.ts'
+import {
+  RECORD_COMPONENTS,
+  toStoredRecordType,
+  type StoredRecordType,
+} from './recordMode.ts'
 import type {
+  DraftDay,
   DraftIssue,
   DraftItem,
   DraftSet,
@@ -28,19 +34,26 @@ export const MAX_SETS_PER_ITEM = 200
 
 const nowIso = () => new Date().toISOString()
 
-export function createEmptyDraft(now: () => string = nowIso): WorkoutDraft {
-  return { v: 1, day: 'today', items: [], updatedAt: now() }
+export function createEmptyDraft(
+  now: () => string = nowIso,
+  day: DraftDay = 'today',
+): WorkoutDraft {
+  return { v: 1, day, items: [], updatedAt: now() }
 }
 
 export function hasDraftContent(draft: WorkoutDraft): boolean {
   return draft.items.length > 0
 }
 
+/** 기본 기록 방식을 정하는 데 읽는 운동 값. 기록 방식 메타데이터(recordModes)는 없을 수 있다. */
+export type RecordTypeSource = Pick<Exercise, 'equipment' | 'targetMuscles'> &
+  Partial<Pick<Exercise, 'recordModes'>>
+
 /**
- * 운동의 기본 기록 방식(스토리보드 v5.0 W02의 규칙). 덤벨 운동은 중량형, 유산소·스트레칭은 시간형, 그 외는 횟수형이다.
- * 운동을 추가할 때 한 번 정해 명시 값으로 저장하고, 사용자가 이후 바꿀 수 있다.
+ * 기존 추론 규칙(스토리보드 v5.0 W02): 덤벨 운동은 중량형, 유산소·스트레칭은 시간형, 그 외는 횟수형이다.
+ * 기록 방식 메타데이터가 없는 운동의 하위 호환용으로 그대로 유지한다. 운동 이름·장비로 새 예외를 더하지 않는다.
  */
-export function defaultRecordType(
+function legacyRecordType(
   exercise: Pick<Exercise, 'equipment' | 'targetMuscles'>,
 ): RecordType {
   if ((exercise.equipment as readonly string[]).includes('덤벨'))
@@ -53,6 +66,51 @@ export function defaultRecordType(
     return 'time'
   }
   return 'reps'
+}
+
+/**
+ * 운동의 기본 기록 방식을 저장 코드(5종)로 정한다. 카탈로그 메타데이터의 기본값이 있으면 그것을 쓰고(weight_reps는 저장 코드 weight로 변환),
+ * 없으면 기존 추론 규칙을 쓴다. 운동을 추가할 때 한 번 정해 명시 값으로 저장하고, 사용자가 이후 허용된 방식 안에서 바꿀 수 있다.
+ * 복합 방식(time_reps·weight_time)도 그대로 돌려준다. 복합 방식 목록은 저장할 수 있지만 운동 시작은 막혀 있다(recordMode.RUNNABLE_RECORD_TYPES).
+ */
+export function resolveStoredRecordType(
+  exercise: RecordTypeSource,
+): StoredRecordType {
+  const mode = exercise.recordModes?.default
+  return mode === undefined
+    ? legacyRecordType(exercise)
+    : toStoredRecordType(mode)
+}
+
+/** 기록 방식 메타데이터가 없는 운동(옛 Mock·알 수 없는 운동)이 고를 수 있는 방식: 기존 3종 호환 정책. */
+export const LEGACY_ALLOWED_RECORD_TYPES: readonly RecordType[] = [
+  'time',
+  'weight',
+  'reps',
+]
+
+/**
+ * 운동에서 고를 수 있는 기록 방식(저장 코드). 메타데이터가 있으면 허용 목록(카탈로그 순서)이고, 없으면 기존 3종이다.
+ * 기본 방식은 항상 이 목록에 포함된다(메타데이터가 있으면 검증이 보장하고, 없으면 기존 추론이 3종 중 하나다).
+ */
+export function allowedRecordTypes(
+  exercise: RecordTypeSource,
+): readonly RecordType[] {
+  const modes = exercise.recordModes
+  return modes
+    ? modes.allowed.map(toStoredRecordType)
+    : LEGACY_ALLOWED_RECORD_TYPES
+}
+
+/** 운동 id별 허용 기록 방식. 저장 직전 재검증(validateDraft·normalizeDraft)과 W02의 선택지 제한이 같은 표를 쓴다. */
+export type AllowedRecordTypes = ReadonlyMap<string, readonly RecordType[]>
+
+export function buildAllowedRecordTypes(
+  exercises: readonly (RecordTypeSource & Pick<Exercise, 'id'>)[],
+): Map<string, readonly RecordType[]> {
+  return new Map(
+    exercises.map((exercise) => [exercise.id, allowedRecordTypes(exercise)]),
+  )
 }
 
 /** 새로 만든 세트. 이전 세트의 값을 복사하지 않는다. */
@@ -77,7 +135,7 @@ export function createDraftItem(
     itemId: idFactory(),
     exerciseId: exercise.id,
     name: exercise.name,
-    recordType: defaultRecordType(exercise),
+    recordType: resolveStoredRecordType(exercise),
     sets: [createDefaultSet()],
   }
 }
@@ -153,14 +211,19 @@ export function moveItemInDraft(
   return touch(draft, items, now)
 }
 
-/** 기록 방식을 바꾼다. 세트의 입력값은 그대로 보존한다(최종 검토에서 방식에 맞게 걸러 낸다). */
+/**
+ * 기록 방식을 바꾼다. 세트의 입력값은 그대로 보존한다(최종 검토에서 방식에 맞게 걸러 낸다).
+ * allowedTypes를 주면 그 목록에 없는 방식은 받지 않는다(같은 초안을 돌려준다). 이미 그 방식이면 바꾸지 않는다.
+ */
 export function setItemRecordType(
   draft: WorkoutDraft,
   itemId: string,
   recordType: RecordType,
   now: () => string = nowIso,
+  allowedTypes?: readonly RecordType[],
 ): WorkoutDraft {
   if (!RECORD_TYPES.includes(recordType)) return draft
+  if (allowedTypes && !allowedTypes.includes(recordType)) return draft
   return updateItem(
     draft,
     itemId,
@@ -266,19 +329,25 @@ export const ISSUE_MESSAGES = {
   duplicateExercise: '같은 운동이 중복되어 있어요.',
   duplicateItem: '운동 항목이 중복되어 있어요.',
   recordType: '기록 방식을 선택해 주세요.',
+  recordTypeNotAllowed:
+    '이 운동에서는 사용할 수 없는 기록 방식이에요. 허용된 방식으로 바꿔 주세요.',
   noSets: '세트가 하나 이상 있어야 해요.',
 } as const
 
 /**
  * 초안 전체를 검증한다. 오류가 있는 운동·세트를 가리키는 목록을 돌려준다.
- * - 운동 1개 이상, 운동당 세트 1개 이상, 운동 id·항목 id 중복 없음, 기록 방식은 허용된 세 가지.
- * - 횟수형: reps는 1 이상의 정수. 중량형: reps + weightKg는 비어 있어도 되지만 입력했다면 0 이상의 유한한 숫자.
- *   시간형: targetSeconds는 1~3600의 정수(reps는 보이지 않는 값이라 검사하지 않는다).
+ * - 운동 1개 이상, 운동당 세트 1개 이상, 운동 id·항목 id 중복 없음, 기록 방식은 저장 코드 5종 중 하나.
+ * - 목표값은 방식의 구성값(recordMode.RECORD_COMPONENTS)에 따라 검사한다. 시간: targetSeconds 1~3600의 정수. 횟수: reps 1 이상의 정수.
+ *   중량: weightKg는 비어 있어도 되지만(목표 중량은 선택) 입력했다면 0 이상의 유한한 숫자. 구성값이 아닌 값(보이지 않는 입력)은 검사하지 않는다.
+ *   시간형 reps, 횟수형 targetSeconds처럼 방식과 관계없는 값은 초안에 남아 있어도 오류가 아니다(정규화에서 걸러 낸다).
  * - knownExerciseIds를 주면 그 목록에 없는 운동 id를 오류로 본다(운동 정보를 읽을 수 없을 때는 주지 않는다).
+ * - allowedRecordTypes를 주면 그 운동에서 허용하지 않는 기록 방식을 오류로 본다(허용 정보가 없는 운동은 판단하지 않는다).
+ *   화면에서 선택지를 제한해도 저장 직전에 이 검증을 다시 한다. 기존에 저장된 목록은 이 검증을 받지 않는다(읽기 경로에서 호출하지 않는다).
  */
 export function validateDraft(
   draft: WorkoutDraft,
   knownExerciseIds?: ReadonlySet<string>,
+  allowed?: AllowedRecordTypes,
 ): DraftValidation {
   const issues: DraftIssue[] = []
   if (draft.items.length === 0) {
@@ -318,6 +387,14 @@ export function validateDraft(
       })
       continue
     }
+    const allowedTypes = allowed?.get(item.exerciseId)
+    if (allowedTypes && !allowedTypes.includes(item.recordType)) {
+      issues.push({
+        itemId: item.itemId,
+        field: 'recordType',
+        message: ISSUE_MESSAGES.recordTypeNotAllowed,
+      })
+    }
     if (item.sets.length === 0) {
       issues.push({
         itemId: item.itemId,
@@ -326,9 +403,10 @@ export function validateDraft(
       })
       continue
     }
+    const parts = RECORD_COMPONENTS[item.recordType]
     item.sets.forEach((set, setIndex) => {
       const at = { itemId: item.itemId, setIndex }
-      if (item.recordType === 'time') {
+      if (parts.time) {
         if (
           !isInt(set.targetSeconds) ||
           set.targetSeconds < MIN_TARGET_SECONDS ||
@@ -340,13 +418,12 @@ export function validateDraft(
             message: ISSUE_MESSAGES.time,
           })
         }
-        return
       }
-      if (!isInt(set.reps) || set.reps < 1) {
+      if (parts.reps && (!isInt(set.reps) || set.reps < 1)) {
         issues.push({ ...at, field: 'reps', message: ISSUE_MESSAGES.reps })
       }
       if (
-        item.recordType === 'weight' &&
+        parts.weight &&
         set.weightKg !== undefined &&
         (!Number.isFinite(set.weightKg) || set.weightKg < 0)
       ) {
@@ -362,28 +439,34 @@ export function validateDraft(
 }
 
 /**
- * 최종 검토용 결과. 유효한 초안에서만 만들 수 있고(그렇지 않으면 null), 선택한 기록 방식과 관계없는 필드를 걸러 낸 **새 값**이다.
- * 원본 초안은 바꾸지 않는다. W11(최종 검토)이 구현되면 같은 함수를 쓴다.
+ * 최종 검토용 결과. 유효한 초안에서만 만들 수 있고(그렇지 않으면 null), 선택한 기록 방식의 구성값만 담은 **새 값**이다
+ * (다른 방식에서 입력했다가 남은 값은 걸러 낸다). 원본 초안은 바꾸지 않는다. W11(최종 검토)과 저장소가 같은 함수를 쓴다.
  */
 export function normalizeDraft(
   draft: WorkoutDraft,
   knownExerciseIds?: ReadonlySet<string>,
+  allowed?: AllowedRecordTypes,
 ): readonly NormalizedItem[] | null {
-  if (!validateDraft(draft, knownExerciseIds).ok) return null
-  return draft.items.map((item): NormalizedItem => ({
-    exerciseId: item.exerciseId,
-    name: item.name,
-    recordType: item.recordType,
-    sets: item.sets.map((set): NormalizedSet => {
-      if (item.recordType === 'time') {
-        return { targetSeconds: set.targetSeconds as number }
-      }
-      if (item.recordType === 'weight') {
-        return set.weightKg === undefined
-          ? { reps: set.reps as number }
-          : { reps: set.reps as number, weightKg: set.weightKg }
-      }
-      return { reps: set.reps as number }
-    }),
-  }))
+  if (!validateDraft(draft, knownExerciseIds, allowed).ok) return null
+  return draft.items.map((item): NormalizedItem => {
+    const parts = RECORD_COMPONENTS[item.recordType]
+    return {
+      exerciseId: item.exerciseId,
+      name: item.name,
+      recordType: item.recordType,
+      sets: item.sets.map((set): NormalizedSet => {
+        const normalized: {
+          reps?: number
+          targetSeconds?: number
+          weightKg?: number
+        } = {}
+        if (parts.reps) normalized.reps = set.reps as number
+        if (parts.time) normalized.targetSeconds = set.targetSeconds as number
+        if (parts.weight && set.weightKg !== undefined) {
+          normalized.weightKg = set.weightKg
+        }
+        return normalized as NormalizedSet
+      }),
+    }
+  })
 }

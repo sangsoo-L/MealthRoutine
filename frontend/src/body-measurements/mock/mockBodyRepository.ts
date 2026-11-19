@@ -83,7 +83,10 @@ export function createMockBodyRepository(options: {
         const current = readStored(userId)
         const currentStatus = statusOf(current)
         // 입력하지 않은 항목은 기존의 유효한 값만 이어받는다(유효하지 않은 값은 버린다).
+        // 키·몸무게·갱신 시각 외의 필드(운동 목표 화면이 같은 객체에 넣는 exerciseGoalProfile 등)는 이 저장이 알지 못하는
+        // 값이므로 그대로 이어받는다. 객체를 새로 만들면서 빠뜨리면 나이·성별이 사라져 목표 설정을 다시 해야 한다.
         const next: StoredBody = {
+          ...current,
           v: 1,
           heightCm: hasHeight
             ? input.heightCm

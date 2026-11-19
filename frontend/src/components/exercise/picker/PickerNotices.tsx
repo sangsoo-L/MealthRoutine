@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import Icon from '../../icons/Icon.tsx'
 
 export const pickerFocusRing =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-exercise'
@@ -54,3 +55,29 @@ export function PickerLoading() {
 /** 목록 위·아래에 끼우는 작은 안내 상자(보조 안내). */
 export const pickerInlineNotice =
   'rounded-card border border-line bg-surface p-4 text-body leading-relaxed font-normal text-content break-keep wrap-anywhere'
+
+/**
+ * 직접 검색의 검색 전 안내. 조건을 정하고 "검색하기"를 누르면 결과가 나온다는 것을 알린다(결과·개수는 검색한 뒤에만 보인다).
+ * 아이콘은 검색 상태를 알리는 하나뿐이며 장식이다(의미는 글자가 전한다).
+ */
+export function PickerSearchGuide() {
+  return (
+    <div
+      role="status"
+      className="rounded-card bg-surface px-5 py-8 text-center break-keep wrap-anywhere"
+    >
+      <span
+        aria-hidden="true"
+        className="mx-auto flex size-12 items-center justify-center rounded-full bg-exercise-soft text-exercise"
+      >
+        <Icon name="search" size={21} />
+      </span>
+      <p className="mt-4 text-section-title leading-snug font-semibold text-content">
+        어떤 운동을 찾고 계신가요?
+      </p>
+      <p className="mt-2 text-body leading-relaxed font-normal text-muted">
+        운동명이나 난이도, 운동 부위를 선택해 원하는 운동을 찾아보세요.
+      </p>
+    </div>
+  )
+}

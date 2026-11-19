@@ -1,4 +1,5 @@
 import type { ExerciseDifficulty, ExerciseTool } from './exerciseTaxonomy.ts'
+import type { CatalogRecordModes } from './recordMode.ts'
 
 /**
  * 운동 도메인의 운동(마스터) 타입. 탐색·상세·루틴·기록이 모두 이 `id`를 같은 운동의 식별자로 쓴다.
@@ -7,8 +8,8 @@ import type { ExerciseDifficulty, ExerciseTool } from './exerciseTaxonomy.ts'
  * 실제 API 응답 구조가 아니다. 실제 정책이 정해지면 변환을 저장소 구현에 둔다.
  */
 
-/** 큰 분류. 개발용 Mock 데이터의 분류이며 운동 부위 필터의 큰 분류(상체·하체·코어·전신)와 값이 겹친다. */
-export type ExerciseCategory = '상체' | '하체' | '전신'
+/** 큰 분류. 운동 부위 필터의 큰 분류(상체·하체·코어·전신, exerciseTaxonomy.BODY_PART_GROUPS)와 같은 값이다. */
+export type ExerciseCategory = '상체' | '하체' | '코어' | '전신'
 
 export interface Exercise {
   /** 운동 식별자. 루틴·운동 기록이 같은 값으로 이 운동을 가리킨다. */
@@ -20,10 +21,21 @@ export interface Exercise {
   difficulty: ExerciseDifficulty
   /** 필요한 도구. 맨몸이면 ['맨몸'] */
   equipment: readonly ExerciseTool[]
-  /** 단계별 운동 방법 */
+  /** 단계별 운동 방법. 단계로 나뉜 데이터가 없으면 빈 배열이다(이때 화면은 description을 보여 준다). */
   instructions: readonly string[]
   /** 주의사항 */
   precautions: readonly string[]
+  /** 간단한 소개(한 문장 요약). 없으면 소개 영역을 그리지 않는다. */
+  summary?: string
+  /** 자세한 수행 방법(문단). instructions(단계)가 비어 있을 때 운동 방법으로 보여 준다. */
+  description?: string
+  /**
+   * 기록 방식 메타데이터(기본 1개와 허용 목록, 카탈로그 코드). 없으면 기존 추론 규칙으로 기본 방식을 정한다.
+   * 저장 코드와 다르다(중량+횟수형이 여기서는 `weight_reps`, 저장에서는 `weight`): 변환은 recordMode.toStoredRecordType.
+   */
+  recordModes?: CatalogRecordModes
+  /** 출처 주소(http·https). 없으면 링크를 그리지 않는다. */
+  sourceUrl?: string
   /** 대표 이미지. 없으면 화면이 공통 플레이스홀더를 쓴다(이미지가 있는 것처럼 보이지 않는다). */
   imageUrl?: string
 }

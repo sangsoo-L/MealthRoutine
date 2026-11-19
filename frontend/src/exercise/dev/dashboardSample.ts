@@ -15,7 +15,7 @@ import {
  * [개발 전용] 운동 대시보드(W01)의 상태별 화면 확인용 예시. 개발 서버에서만 불러온다(exerciseDashboardSource.ts가 import.meta.env.DEV로 동적 import).
  * 운영 빌드에는 포함되지 않는다. 실제 운동 기록이 아니며 어디에도 저장하지 않고 저장소를 호출하지도 않는다. 주소에 `?sample=<이름>`을 붙였을 때만 쓴다.
  *
- * 이름: loading·error·empty·before·after·filled·multiple·boundary·partial-error·partial-unavailable·corrupt·corrupt-only·long.
+ * 이름: loading·error·empty·before·after·filled·multiple·boundary·partial-error·partial-unavailable·corrupt·corrupt-only·long·many.
  * 운동 이름과 수치는 화면 확인용 가짜 값이며 운동 마스터 Mock과 관계가 없다.
  */
 
@@ -70,6 +70,27 @@ const SAMPLES: Record<string, ExerciseDashboardSlots> = {
             trailing: '중량형',
           },
           { name: '월 푸시업', detail: '15회 × 1세트', trailing: '횟수형' },
+        ],
+      },
+    },
+    routines: { status: 'ready', data: { count: 2 } },
+    ...UNAVAILABLE_TAIL,
+  },
+  many: {
+    goal: { status: 'empty' },
+    today: {
+      status: 'ready',
+      data: {
+        phase: 'planned',
+        listName: '운동이 많은 목록',
+        exerciseCount: 5,
+        setCount: 11,
+        items: [
+          { name: '덤벨 스쿼트', detail: '10회 × 3세트', trailing: '중량형' },
+          { name: '월 푸시업', detail: '15회 × 2세트', trailing: '횟수형' },
+          { name: '플랭크', detail: '60초 × 2세트', trailing: '시간형' },
+          { name: '런지', detail: '12회 × 2세트', trailing: '횟수형' },
+          { name: '브릿지', detail: '15회 × 2세트', trailing: '횟수형' },
         ],
       },
     },
@@ -195,11 +216,20 @@ export function getSample(
     'corrupt',
     'corrupt-only',
     'long',
+    'many',
   ]
   if (!knownNames.includes(name)) return null
   if (name === 'loading' || name === 'error') return SAMPLES[name]
   const base =
-    SAMPLES[name === 'empty' ? 'empty' : name === 'before' ? 'before' : 'after']
+    SAMPLES[
+      name === 'empty'
+        ? 'empty'
+        : name === 'before'
+          ? 'before'
+          : name === 'many'
+            ? 'many'
+            : 'after'
+    ]
   let records =
     name === 'empty' || name === 'corrupt-only'
       ? []
@@ -208,7 +238,7 @@ export function getSample(
           sampleRecord('sample-previous', offsetDate(today, -2), 76_000),
           sampleRecord('sample-older', offsetDate(today, -4)),
         ]
-  if (name === 'before')
+  if (name === 'before' || name === 'many')
     records = records.filter((record) => record.performedDate < today)
   if (name === 'multiple')
     records = [0, 1, 2].map((index) => {

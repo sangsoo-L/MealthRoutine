@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router'
 import {
   composeCard,
   composeCardActive,
-  composeCardMuted,
   composeFocusRing,
   composePrimaryButton,
   composeSecondaryButton,
@@ -12,15 +11,18 @@ import {
 import { useWorkoutDraft } from '../exercise/workoutDraftContext.ts'
 
 const PATH_COMPOSE = '/records/exercise/compose'
+const PATH_AI_PLAN = '/ai/exercise/plan'
+const PATH_METHOD = '/records/exercise/new'
 /** W10(운동 목록)이 아직 없어 임시로 운동 기록 대시보드(W01)로 돌아간다. */
 const PATH_BACK = '/records/exercise'
 
 type Panel = null | 'resume' | 'confirm'
 
 /**
- * W12 운동 목록 구성 방법 선택. AI 추천(준비 중)과 직접 구성 중 하나를 고른다. 회원 전용이며 비회원은 라우트의 AuthGate가 안내한다.
+ * W12 운동 목록 구성 방법 선택. AI 추천(로컬 예시)과 직접 구성 중 하나를 고른다. 회원 전용이며 비회원은 라우트의 AuthGate가 안내한다.
  *
- * - AI 추천: 이번 단계는 미구현이라 누를 수 없는 "준비 중" 항목이다(AI 호출·체험 횟수·멤버십 로직 없음).
+ * - AI 추천: 실제 AI가 아니라 로컬 예시 추천(I02-1, `/ai/exercise/plan`)으로 연결되는 링크다. "로컬 예시"로 표시하고 AI 호출·체험 횟수·멤버십 로직은 없다.
+ *   추천을 "목록 등록"하면 W02(운동 편집)로 이어진다.
  * - 직접 구성: 기존에 구성하던 운동이 없으면 새 빈 초안으로 W02에 간다. 있으면 시안의 즉시 초기화 대신 "이어서 하기"와 "새로 구성하기"를
  *   고르게 한다(새로 구성하기는 한 번 더 확인하고, 취소하면 초안은 그대로다). 이는 작업이 사라지는 것을 막는 UX 보완이다.
  */
@@ -68,22 +70,23 @@ export default function ExerciseMethodPage() {
         className="flex flex-col gap-3"
       >
         <li>
-          <div
-            className={composeCardMuted}
-            aria-label="AI 추천으로 시작하기, 준비 중"
-            role="group"
+          <Link
+            to={PATH_AI_PLAN}
+            state={{ from: PATH_METHOD }}
+            data-method-ai=""
+            className={`${composeCard} flex w-full cursor-pointer flex-col items-start text-left transition-colors hover:border-exercise/40 motion-reduce:transition-none ${composeFocusRing}`}
           >
-            <div className="flex items-start justify-between gap-3">
+            <span className="flex w-full items-start justify-between gap-3">
               <span className={composeSectionTitle}>AI 추천으로 시작하기</span>
-              <span className="inline-flex shrink-0 items-center rounded-full bg-exercise-soft px-2.5 py-1 text-support leading-none font-normal text-exercise">
-                준비 중
+              <span className="inline-flex shrink-0 items-center rounded-full bg-exercise-soft px-2.5 py-1 text-support leading-none font-semibold text-exercise">
+                로컬 예시
               </span>
-            </div>
-            <p className="mt-2 text-body leading-relaxed font-normal break-keep text-muted">
+            </span>
+            <span className="mt-2 text-body leading-relaxed font-normal break-keep text-muted">
               난이도·운동 부위·도구를 선택하면 추천 구성을 확인하고 수정할 수
-              있어요.
-            </p>
-          </div>
+              있어요. 지금은 예시 체험이며 실제 AI 추천은 아니에요.
+            </span>
+          </Link>
         </li>
         <li>
           <button

@@ -10,8 +10,14 @@ import {
   goalHeading,
   goalSecondary,
 } from '../components/exercise/goal/goalStyles.ts'
-import { exerciseGoalMessage } from '../exercise-goal/exerciseGoalMessages.ts'
-import { TIER_LABEL } from '../exercise-goal/exerciseGoalPolicy.ts'
+import {
+  exerciseGoalMessage,
+  ineligibleGoalMessage,
+} from '../exercise-goal/exerciseGoalMessages.ts'
+import {
+  TIER_LABEL,
+  goalProfileIneligibility,
+} from '../exercise-goal/exerciseGoalPolicy.ts'
 import { useExerciseGoal } from '../exercise-goal/useExerciseGoal.ts'
 import { FOCUS_LABEL } from '../health-goal/goalPolicy.ts'
 
@@ -28,6 +34,11 @@ function GoalPageBody({ ownerId }: { ownerId: string }) {
   } = useExerciseGoal(ownerId)
   const [editingProfile, setEditingProfile] = useState(false)
   const navigate = useNavigate()
+  // 저장은 정상이지만 목표 계산 범위를 벗어난 신체 정보(손상이 아니다). 목표 입력 대신 값을 확인·수정하게 한다.
+  const ineligible =
+    state.status === 'unlocked' && state.profile
+      ? goalProfileIneligibility(state.profile)
+      : []
   const context =
     state.status === 'locked' || state.status === 'unlocked'
       ? state.context
@@ -155,10 +166,15 @@ function GoalPageBody({ ownerId }: { ownerId: string }) {
               지금 숨기기
             </button>
           </div>
-          {!state.profile || editingProfile ? (
+          {!state.profile || editingProfile || ineligible.length > 0 ? (
             <GoalProfileForm
               profile={state.profile}
               prefill={state.prefill}
+              notice={
+                ineligible.length > 0
+                  ? ineligibleGoalMessage(ineligible)
+                  : undefined
+              }
               save={async (profile) => {
                 await saveProfile(profile)
                 setEditingProfile(false)

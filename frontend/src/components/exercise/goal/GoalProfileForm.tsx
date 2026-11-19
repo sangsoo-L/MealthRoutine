@@ -13,11 +13,14 @@ import {
 export default function GoalProfileForm({
   profile,
   prefill,
+  notice,
   save,
   cancel,
 }: {
   profile: ExerciseGoalProfile | null
   prefill?: Partial<ExerciseGoalProfile>
+  /** 저장된 값이 계산 범위를 벗어났을 때 입력란 위에 보이는 안내(손상이 아니다) */
+  notice?: string
   save: (value: Omit<ExerciseGoalProfile, 'updatedAt'>) => Promise<void>
   cancel: () => void
 }) {
@@ -101,6 +104,14 @@ export default function GoalProfileForm({
         성인용 목표를 계산해요. 직접 입력한 정보이며 본인인증 정보는 아니에요.
         기존 키·몸무게를 수정하면 신체 정보에도 반영돼요.
       </p>
+      {notice ? (
+        <p
+          role="note"
+          className="mt-3 rounded-control bg-warning-soft px-3 py-2 text-support leading-relaxed text-warning"
+        >
+          {notice}
+        </p>
+      ) : null}
       <form noValidate onSubmit={submit} className="mt-4 flex flex-col gap-4">
         <div>
           <label htmlFor="goal-profile-age" className="mb-2 block text-body">

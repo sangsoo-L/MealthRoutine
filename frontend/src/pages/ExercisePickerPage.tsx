@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react'
-import { useMatches, useNavigate } from 'react-router'
+import { useMatches, useNavigate, useSearchParams } from 'react-router'
 import { getRouteHandle } from '../app/routeHandle.ts'
 import { useAuth } from '../auth/authContext.ts'
 import ExercisePicker, {
@@ -7,7 +7,8 @@ import ExercisePicker, {
 } from '../components/exercise/picker/ExercisePicker.tsx'
 import { useBackTarget } from '../components/layout/useBackTarget.ts'
 import type { ExerciseCatalogState } from '../exercise/useExerciseCatalog.ts'
-import { useWorkoutDraft } from '../exercise/workoutDraftContext.ts'
+import { useDayWorkoutDraft } from '../exercise/workoutDraftContext.ts'
+import type { DraftDay } from '../exercise/workoutDraftTypes.ts'
 import {
   addExercisesToDraft,
   MAX_ITEMS,
@@ -31,6 +32,8 @@ export interface PickerResultState {
  *   일부만 추가되면 W02에서 추가·건너뜀 개수를 알린다.
  * - 선택한 id를 운동 목록에서 찾지 못하면(삭제된 운동 등) 일부만 몰래 추가하지 않고 아무것도 추가하지 않은 채 안내한다.
  *
+ * `?day=tomorrow`이면 내일 운동 계획 초안(오늘 초안과 별도)에 담고 `?day=tomorrow`인 W02로 돌아간다. day가 없으면 오늘 초안이다(기존 동작 그대로).
+ *
  * 뒤로가기·취소 목적지는 useBackTarget 규칙을 따른다: 진입한 화면(state.from)을 알면 그곳, 모르면(주소 직접 입력 등) 라우트에 정의된 임시 상위 화면이다.
  * 계정이 바뀌면 key로 본체를 다시 만들어 이전 사용자의 선택·검색 상태가 남지 않게 한다.
  */
@@ -41,7 +44,9 @@ export default function ExercisePickerPage() {
   const backTo = useBackTarget(
     getRouteHandle(matches.at(-1)?.handle).parent ?? null,
   )
-  const { status, draft, addExercises } = useWorkoutDraft()
+  const [params] = useSearchParams()
+  const day: DraftDay = params.get('day') === 'tomorrow' ? 'tomorrow' : 'today'
+  const { status, draft, addExercises } = useDayWorkoutDraft(day)
   // 등록에 성공한 뒤 이동이 끝나기 전의 반복 클릭을 무시한다(같은 운동을 다시 추가하거나 이동 기록이 여러 개 쌓이지 않게).
   const registered = useRef(false)
 
@@ -99,10 +104,15 @@ export default function ExercisePickerPage() {
         added,
         skipped: exercises.length - added,
       }
-      navigate(PATH_COMPOSE, { state: result })
+      navigate(
+        day === 'tomorrow' ? `${PATH_COMPOSE}?day=tomorrow` : PATH_COMPOSE,
+        {
+          state: result,
+        },
+      )
       return { ok: true }
     },
-    [status, draft, addExercises, navigate],
+    [status, draft, addExercises, navigate, day],
   )
 
   return (

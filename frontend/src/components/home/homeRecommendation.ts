@@ -12,7 +12,7 @@
 
 /**
  * 추천 대상 화면의 준비 상태.
- * available: 정식 화면이 있다. preparing: 경로만 있는 임시 화면이라 배너가 "화면 준비 중"을 함께 표시한다.
+ * available: 정식 화면이 있다. preparing: 경로만 있는 임시 화면이라 배너가 "화면 준비 중"을 함께 표시한다(지금 추천 대상은 모두 available).
  */
 export type RecommendationAvailability = 'available' | 'preparing'
 
@@ -35,18 +35,16 @@ export interface HomeRecommendation {
 export const PREPARING_LABEL = '화면 준비 중'
 
 /**
- * 기본 추천. 운동 찾기(E01)는 아직 임시 화면이라 availability가 preparing이고,
- * 설명도 지금 할 수 있는 것처럼 쓰지 않고 준비 중임을 밝힌다. 정식 화면이 생기면 available로 바꾸고 설명을 정한다.
+ * 기본 추천. 운동 찾기(E01)는 정식 화면이 있어 available이고 바로 이동할 수 있다.
  */
 export const DEFAULT_RECOMMENDATION: HomeRecommendation = {
   id: 'start-with-exercise',
   label: '오늘의 추천',
   title: '오늘은 가볍게 운동부터 시작해 볼까요?',
-  description:
-    '운동 찾기 화면을 준비하고 있어요. 준비되면 내게 맞는 운동을 찾아볼 수 있어요.',
+  description: '이름이나 조건으로 내가 할 수 있는 운동을 찾아볼 수 있어요.',
   ctaLabel: '운동 찾기로 이동',
   href: '/exercises',
-  availability: 'preparing',
+  availability: 'available',
   emoji: '💪',
 }
 

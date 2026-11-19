@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { clearRememberedRecordsDomain } from '../app/recordsTab.ts'
 import { clearAccountScopedData } from './accountScope.ts'
 import { AuthContext, type AuthContextValue } from './authContext.ts'
 import { authBackend } from './authBackend.ts'
@@ -42,6 +43,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     authBackend.clear()
     clearAccountScopedData()
+    clearRememberedRecordsDomain()
     setUser(null)
   }, [])
 

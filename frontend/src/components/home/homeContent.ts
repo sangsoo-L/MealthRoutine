@@ -41,8 +41,7 @@ export const HOME_SHORTCUTS: readonly HomeShortcut[] = [
 
 /**
  * "운동·식단 알아가기 퀴즈" 카드. 문구는 v5.0 H01의 퀴즈 배너 원문이다.
- * v5.0에서 이 카드는 오늘의 퀴즈(H02)로 이동하지만, H02의 URL이 정해지지 않았다(screen-route-map: 미정·미구현).
- * 그래서 `to`는 null(비활성)로 두고, 경로가 확정되면 값만 채운다.
+ * 이 카드는 오늘의 퀴즈(H02, `/quiz`)로 이동한다(사용자 승인으로 URL 확정). 오늘의 퀴즈를 마치면 회원 홈이 이 카드를 숨긴다.
  */
 export const HOME_QUIZ = {
   kicker: '처음이라면, 가볍게',
@@ -53,7 +52,7 @@ export const HOME_QUIZ = {
   /** 장식 그림의 글자(보조기기에서는 숨긴다) */
   artLabel: '오늘의 상식',
   artProgress: '● ○ ○',
-  to: null as string | null,
+  to: '/quiz' as string | null,
 } as const
 
 /** "처음이라면 여기부터"의 검색 이용 순서(3단계) */

@@ -10,6 +10,8 @@
  * 음식 검색 API(GET /api/v1/foods)는 명세서에 경로만 있고 요청·응답 구조가 정의되지 않았다(frontend/docs/api-status.md).
  * 아래 값은 화면을 그리기 위한 것이며 API 코드값이 아니다. 백엔드와 확정되면 맞춘다.
  */
+import { createFoodRepository } from '../food/foodSource.ts'
+import type { Food } from '../food/foodTypes.ts'
 import type { FoodResult } from './searchTypes.ts'
 
 export const FOOD_TYPES = ['음식·요리', '가공식품', '식재료'] as const
@@ -248,10 +250,64 @@ export interface FoodBackend {
 }
 
 /**
- * 현재 연결. 음식 검색 API와 데이터가 없어서 항상 "데이터 소스 미연결"을 돌려준다.
- * 가짜 음식을 만들지 않고, 결과 없음·오류로도 처리하지 않는다.
+ * 검색 조건으로 음식을 거른다(순수 함수).
+ * - 검색어: 이름에 포함(대소문자·앞뒤 공백 무시). 분류가 없는 음식도 이름으로 찾을 수 있다.
+ * - 식품 구분·음식 종류: 음식 데이터에 이 분류 정보가 없으면(지금의 개발용 예시) 해당 조건을 건 검색에서 제외한다(알 수 없는 값을 맞는 것으로 보지 않는다).
+ * - 상세 필터(100g당 열량 범위·단백질 최소): 값이 있는 음식만 비교한다. 값이 없는(null) 음식은 그 조건을 건 검색에서 제외한다(0으로 취급하지 않는다).
+ * 입력을 바꾸지 않으며 결과는 입력 순서를 따른다.
+ */
+export function filterFoods(
+  foods: readonly Food[],
+  criteria: FoodCriteria,
+): FoodResult[] {
+  const query = criteria.query.trim().toLowerCase()
+  const minKcal = criteria.nutrition.minKcal.trim()
+  const maxKcal = criteria.nutrition.maxKcal.trim()
+  const minProtein = criteria.nutrition.minProtein.trim()
+  return foods
+    .filter((food) => {
+      if (query !== '' && !food.name.toLowerCase().includes(query)) return false
+      if (criteria.type !== null || criteria.kind !== null) return false
+      const { kcal, protein } = food.per100g
+      if (minKcal !== '' && (kcal === null || kcal < Number(minKcal)))
+        return false
+      if (maxKcal !== '' && (kcal === null || kcal > Number(maxKcal)))
+        return false
+      if (
+        minProtein !== '' &&
+        (protein === null || protein < Number(minProtein))
+      )
+        return false
+      return true
+    })
+    .map((food) => ({
+      id: food.id,
+      name: food.name,
+      per100g: true,
+      kcal: food.per100g.kcal,
+      protein: food.per100g.protein,
+      ...(food.category ? { category: food.category } : {}),
+      sourceLabel: food.source.label,
+    }))
+}
+
+/**
+ * 현재 연결. 개발 서버에서는 개발용 예시 음식 4개(스토리보드 foodDB, food/dev/)에 연결하고, 운영 빌드에는 음식 데이터가 없어
+ * "데이터 소스 미연결"(준비 중)을 돌려준다. 가짜 음식을 만들지 않고, 결과 없음·오류로도 처리하지 않는다.
+ * 실제 음식 검색 API가 정해지면 food/foodSource.ts의 저장소를 교체한다(이 경계는 그대로).
  */
 export const foodBackend: FoodBackend = {
-  connected: false,
-  search: () => Promise.resolve({ status: 'unavailable' }),
+  connected: createFoodRepository() !== null,
+  async search(criteria) {
+    const repository = createFoodRepository()
+    if (!repository) return { status: 'unavailable' }
+    try {
+      return {
+        status: 'results',
+        items: filterFoods(await repository.list(), criteria),
+      }
+    } catch {
+      return { status: 'error' }
+    }
+  },
 }

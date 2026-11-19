@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext.ts'
 import ComposeItemCard from '../components/exercise/compose/ComposeItemCard.tsx'
 import {
@@ -13,9 +13,17 @@ import {
   moveButtonId,
 } from '../components/exercise/compose/composeStyles.ts'
 import { useExerciseCatalog } from '../exercise/useExerciseCatalog.ts'
-import { normalizeDraft, validateDraft } from '../exercise/workoutDraftModel.ts'
-import { useWorkoutDraft } from '../exercise/workoutDraftContext.ts'
-import type { DraftIssue } from '../exercise/workoutDraftTypes.ts'
+import {
+  LEGACY_ALLOWED_RECORD_TYPES,
+  buildAllowedRecordTypes,
+  normalizeDraft,
+  validateDraft,
+} from '../exercise/workoutDraftModel.ts'
+import { RECORD_COMPONENTS } from '../exercise/recordMode.ts'
+import { useDayWorkoutDraft } from '../exercise/workoutDraftContext.ts'
+import type { DraftDay, DraftIssue } from '../exercise/workoutDraftTypes.ts'
+import { tomorrowOf } from '../exercise/workoutPlanModel.ts'
+import { PATH_MY_EXERCISE } from '../exercise/myExercise.ts'
 
 /** W13이 등록 결과를 알리는 라우터 state(추가·건너뛴 개수). 올바른 모양일 때만 쓴다. */
 function readPickerResult(
@@ -33,15 +41,21 @@ function readPickerResult(
 
 const PATH_SELECT = '/records/exercise/select'
 const PATH_COMPOSE = '/records/exercise/compose'
+const PATH_REVIEW = '/records/exercise/review'
 /** W10(목록 선택)이 아직 없어 임시로 운동 기록 대시보드(W01)로 돌아간다. */
 const PATH_BACK = '/records/exercise'
 
-/** 오늘 날짜(이 기기의 로컬 날짜, YYYY-MM-DD). 표시용이며 저장하지 않는다(날짜 기준·시간대는 미확정). */
+/** 오늘 날짜(이 기기의 로컬 날짜, YYYY-MM-DD). 표시용이며 초안에는 저장하지 않는다(내일 계획의 날짜는 W11이 저장할 때 정한다). */
 function todayLabel(): string {
   const now = new Date()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
   return `${now.getFullYear()}-${month}-${day}`
+}
+
+/** 내일 날짜(오늘의 다음 날, YYYY-MM-DD). 표시용이다. */
+function tomorrowLabel(): string {
+  return tomorrowOf(todayLabel())
 }
 
 /** 첫 오류가 가리키는 입력의 DOM id. 운동·세트 단위가 아니면 운동 카드, 운동이 없으면 "운동 등록하기"다. */
@@ -62,19 +76,30 @@ const stepBadge =
  * W02 직접 운동 목록 구성. 운동 편집 화면이며 편집 중인 값은 앱 수준 초안(WorkoutDraftProvider)이 가진다. 회원 전용이고 비회원은 라우트의
  * AuthGate가 기존 로그인 안내를 보여 준다.
  *
- * 이번 단계에서 하지 않는 것: 운동 선택 결과를 초안에 반영하는 일(W13-C), 최종 검토 화면(W11)으로 이동·목록 저장, 수행 기록 생성.
- * "운동 등록하기"는 W13으로 이동하되 선택 결과는 아직 연결되지 않아 안내한다. 내일 운동은 지원하지 않는다(오늘만).
+ * "운동 목록 등록 · 최종 검토"는 입력이 올바르면 W11(최종 검토)로 이동한다. 목록 저장과 초안 정리는 W11이 하며, 이 화면은 저장하지 않는다.
+ * 올바르지 않으면 이 화면에 머물며 오류를 알린다. "운동 등록하기"는 W13으로 이동해 선택한 운동을 초안에 담는다.
+ * 수행 기록 생성은 하지 않는다.
+ *
+ * `?day=tomorrow`이면 내일 운동 계획을 구성한다. 오늘 초안과 별도의 내일 초안(day="tomorrow"인 WorkoutDraftProvider)을 편집하므로 서로 덮어쓰지 않고,
+ * W13·W11도 같은 day로 이어진다. 날짜 선택 버튼으로 오늘/내일 구성을 오가도 각 초안은 그대로 남는다. 내일 계획은 운동 목록·기록·통계에 반영되지 않는다.
  */
 function ComposeBody() {
   const location = useLocation()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const day: DraftDay = params.get('day') === 'tomorrow' ? 'tomorrow' : 'today'
+  const tomorrow = day === 'tomorrow'
+  const dayQuery = tomorrow ? '?day=tomorrow' : ''
   // W13에서 돌아왔을 때의 안내. 새로고침·뒤로가기로 다시 나타나지 않도록 읽은 뒤 history state를 비운다(같은 경로라 화면 전환 없음).
   const [pickerResult] = useState(() => readPickerResult(location.state))
   useEffect(() => {
     if (pickerResult)
-      navigate(location.pathname, { replace: true, state: null })
-  }, [pickerResult, navigate, location.pathname])
-  const draftState = useWorkoutDraft()
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: null,
+      })
+  }, [pickerResult, navigate, location.pathname, location.search])
+  const draftState = useDayWorkoutDraft(day)
   const { draft } = draftState
   const catalog = useExerciseCatalog()
 
@@ -86,32 +111,43 @@ function ComposeBody() {
         : undefined,
     [catalog.state],
   )
-  const validation = useMemo(() => validateDraft(draft, known), [draft, known])
+  // 운동별 허용 기록 방식. 운동 정보를 읽을 수 있을 때만 만든다(읽지 못하면 허용 여부를 판단하지 않고 기존 3종만 보여 준다).
+  const allowed = useMemo(
+    () =>
+      catalog.state.status === 'ready'
+        ? buildAllowedRecordTypes(catalog.state.exercises)
+        : undefined,
+    [catalog.state],
+  )
+  const validation = useMemo(
+    () => validateDraft(draft, known, allowed),
+    [draft, known, allowed],
+  )
   // 입력 아래 오류는 항상 보인다. "운동 없음"은 최종 검토를 눌렀을 때만 알린다.
   const liveIssues = validation.ok
     ? []
     : validation.issues.filter((issue) => issue.field !== 'items')
 
   // 최종 검토 결과 안내. 초안이 바뀌면(updatedAt) 지난 안내는 더 이상 맞지 않아 사라진다.
-  const [attempt, setAttempt] = useState<
-    | { at: string; kind: 'errors'; issues: readonly DraftIssue[] }
-    | { at: string; kind: 'pending' }
-    | null
-  >(null)
+  const [attempt, setAttempt] = useState<{
+    at: string
+    kind: 'errors'
+    issues: readonly DraftIssue[]
+  } | null>(null)
   const visibleAttempt =
     attempt && attempt.at === draft.updatedAt ? attempt : null
 
   function handleReview() {
-    const result = validateDraft(draft, known)
+    const result = validateDraft(draft, known, allowed)
     if (!result.ok) {
       setAttempt({ at: draft.updatedAt, kind: 'errors', issues: result.issues })
       const target = document.getElementById(focusTargetId(result.issues[0]))
       target?.focus()
       return
     }
-    // W11(최종 검토)이 없어 이동·목록 저장·초안 삭제를 하지 않는다. 걸러 낸 결과가 유효한지만 확인하고 준비 중임을 알린다.
-    if (normalizeDraft(draft, known) === null) return
-    setAttempt({ at: draft.updatedAt, kind: 'pending' })
+    // 걸러 낸 결과가 유효할 때만 W11(최종 검토)로 이동한다. 이동해도 초안은 그대로이며, 저장에 성공해야만 W11이 초안을 비운다.
+    if (normalizeDraft(draft, known, allowed) === null) return
+    void navigate(`${PATH_REVIEW}${dayQuery}`)
   }
 
   // 삭제·이동·세트 삭제 뒤에는 눌렀던 버튼이 사라지거나 비활성이 되어 포커스가 문서 처음으로 빠진다. 화면 안에서만 가까운 곳으로 옮긴다
@@ -156,7 +192,9 @@ function ComposeBody() {
       const item = draft.items.find((entry) => entry.itemId === itemId)
       if (item) {
         const next = Math.min(setIndex, item.sets.length - 2)
-        const field = item.recordType === 'time' ? 'targetSeconds' : 'reps'
+        const field = RECORD_COMPONENTS[item.recordType].time
+          ? 'targetSeconds'
+          : 'reps'
         pendingFocus.current = focusId(fieldId(itemId, next, field))
       }
       draftState.removeSet(itemId, setIndex)
@@ -192,7 +230,9 @@ function ComposeBody() {
           직접 운동 목록 구성
         </h1>
         <p className="mt-2 text-body leading-relaxed font-normal text-muted">
-          운동을 추가하고 세트별 목표를 정해 주세요.
+          {tomorrow
+            ? '내일 할 운동을 추가하고 세트별 목표를 정해 주세요. 내일 계획은 오늘 운동 목록·기록과 따로 저장돼요.'
+            : '운동을 추가하고 세트별 목표를 정해 주세요.'}
         </p>
       </header>
 
@@ -208,28 +248,48 @@ function ComposeBody() {
           aria-label="운동 날짜"
           className="mt-3 grid grid-cols-2 gap-2"
         >
-          <button
-            type="button"
-            aria-pressed="true"
-            className={`flex min-h-14 cursor-default flex-col items-start justify-center rounded-card border border-exercise bg-exercise-soft px-4 text-left ${composeFocusRing}`}
-          >
-            <span className="text-body font-semibold text-exercise">
-              오늘 운동 목록
-            </span>
-            <span className="text-support font-normal text-muted">
-              {todayLabel()}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-disabled="true"
-            className={`flex min-h-14 cursor-not-allowed flex-col items-start justify-center rounded-card border border-line bg-surface px-4 text-left ${composeFocusRing}`}
-          >
-            <span className="text-body font-normal text-muted">
-              내일 운동 목록
-            </span>
-            <span className="text-support font-normal text-muted">준비 중</span>
-          </button>
+          {(
+            [
+              { value: 'today', label: '오늘 운동 목록', date: todayLabel() },
+              {
+                value: 'tomorrow',
+                label: '내일 운동 목록',
+                date: tomorrowLabel(),
+              },
+            ] as const
+          ).map((option) => {
+            const selected = option.value === day
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  if (selected) return
+                  void navigate(
+                    option.value === 'tomorrow'
+                      ? `${PATH_COMPOSE}?day=tomorrow`
+                      : PATH_COMPOSE,
+                    { replace: true },
+                  )
+                }}
+                className={`flex min-h-14 flex-col items-start justify-center rounded-card border px-4 text-left ${composeFocusRing} ${
+                  selected
+                    ? 'cursor-default border-exercise bg-exercise-soft'
+                    : 'cursor-pointer border-line bg-surface hover:border-exercise/40'
+                }`}
+              >
+                <span
+                  className={`text-body ${selected ? 'font-semibold text-exercise' : 'font-normal text-muted'}`}
+                >
+                  {option.label}
+                </span>
+                <span className="text-support font-normal text-muted">
+                  {option.date}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </section>
 
@@ -243,8 +303,8 @@ function ComposeBody() {
           </h2>
           <Link
             id="compose-add-link"
-            to={PATH_SELECT}
-            state={{ from: PATH_COMPOSE }}
+            to={`${PATH_SELECT}${dayQuery}`}
+            state={{ from: `${PATH_COMPOSE}${dayQuery}` }}
             className={composeSecondaryButton}
           >
             ＋ 운동 등록하기
@@ -288,6 +348,9 @@ function ComposeBody() {
                   issues={liveIssues.filter(
                     (issue) => issue.itemId === item.itemId,
                   )}
+                  allowedTypes={
+                    allowed?.get(item.exerciseId) ?? LEGACY_ALLOWED_RECORD_TYPES
+                  }
                   actions={actions}
                 />
               ))}
@@ -297,9 +360,9 @@ function ComposeBody() {
       </section>
 
       <p className="text-support leading-relaxed font-normal text-muted">
-        시간형은 초, 중량형은 횟수·kg, 횟수형은 횟수로 설정해요. 덤벨은 한 손에
-        드는 1개 기준이에요. 처음 채워진 값은 편집용 예시이며 최종 검토에서
-        확정해요.
+        목표는 시간은 초, 횟수는 회, 중량은 kg으로 설정해요. 기록 방식은
+        운동마다 쓸 수 있는 것만 보여요. 덤벨은 한 손에 드는 1개 기준이에요.
+        처음 채워진 값은 편집용 예시이며 최종 검토에서 확정해요.
       </p>
 
       <div className="flex flex-col gap-3">
@@ -325,25 +388,20 @@ function ComposeBody() {
             </ul>
           </div>
         ) : null}
-        {/* 안내가 나타날 때 보조기기가 읽도록 항상 그려 두는 영역 */}
-        <div id="compose-review-live" aria-live="polite">
-          {visibleAttempt?.kind === 'pending' ? (
-            <p
-              className={`${composeCard} text-body leading-relaxed font-normal text-content`}
-            >
-              운동 목록 최종 검토 기능을 준비하고 있어요.
-            </p>
-          ) : null}
-        </div>
         <button
           type="button"
           onClick={handleReview}
           className={composePrimaryButton}
         >
-          운동 목록 등록 · 최종 검토
+          {tomorrow
+            ? '내일 계획 등록 · 최종 검토'
+            : '운동 목록 등록 · 최종 검토'}
         </button>
-        <Link to={PATH_BACK} className={composeSecondaryButton}>
-          목록 선택으로 돌아가기
+        <Link
+          to={tomorrow ? PATH_MY_EXERCISE : PATH_BACK}
+          className={composeSecondaryButton}
+        >
+          {tomorrow ? '나의 운동으로 돌아가기' : '목록 선택으로 돌아가기'}
         </Link>
       </div>
     </div>

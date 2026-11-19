@@ -1,9 +1,15 @@
+import {
+  HEIGHT_RANGE,
+  WEIGHT_RANGE,
+  isValidMeasurement,
+} from '../../body-measurements/bodyValidation.ts'
 import { mockKey } from '../../dev-mock/devMockStorage.ts'
 import { loadExerciseGoalContext } from '../exerciseGoalContext.ts'
 import {
   calculateExerciseGoal,
   parseExerciseGoal,
   sameGoalContext,
+  isStoredGoalProfile,
   validGoalProfile,
 } from '../exerciseGoalPolicy.ts'
 import {
@@ -167,6 +173,19 @@ export function createLocalExerciseGoalRepository(
     if (!meta || typeof meta !== 'object') return null
     const p = meta as Record<string, unknown>
     if (p.ownerId !== ownerId) throw new ExerciseGoalError('corrupt')
+    // 나이·성별은 이 화면이 검증해서 저장한 값이라, 형식이 어긋나면 손상이다.
+    if (
+      typeof p.age !== 'number' ||
+      !Number.isInteger(p.age) ||
+      (p.sex !== 'male' && p.sex !== 'female')
+    )
+      throw new ExerciseGoalError('corrupt')
+    // 키·몸무게가 비었거나 신체 정보 기준으로 무효이면 손상이 아니라 "아직 입력이 필요한 상태"다(프로필 없음).
+    if (
+      !isValidMeasurement(body.heightCm, HEIGHT_RANGE) ||
+      !isValidMeasurement(body.weightKg, WEIGHT_RANGE)
+    )
+      return null
     const profile = {
       age: p.age,
       sex: p.sex,
@@ -174,7 +193,8 @@ export function createLocalExerciseGoalRepository(
       weightKg: body.weightKg,
       updatedAt: body.updatedAt,
     }
-    if (!validGoalProfile(profile)) throw new ExerciseGoalError('corrupt')
+    // 구조가 정상이면 목표 계산 범위 밖이어도 돌려준다. 계산 가능 여부는 호출한 쪽이 goalProfileIneligibility로 판단한다.
+    if (!isStoredGoalProfile(profile)) throw new ExerciseGoalError('corrupt')
     return profile
   }
   function profilePrefill(
@@ -189,19 +209,13 @@ export function createLocalExerciseGoalRepository(
     const body = raw as Record<string, unknown>
     if (body.v !== 1) throw new ExerciseGoalError('corrupt')
     const result: Partial<ExerciseGoalProfile> = {}
-    for (const [field, min, max] of [
-      ['heightCm', 100, 230],
-      ['weightKg', 25, 250],
+    // 사전 입력값은 신체 정보로 저장된 유효한 값이면 계산 범위와 무관하게 보여 준다. 범위 밖이면 입력 화면이 범위를 안내한다.
+    for (const [field, range] of [
+      ['heightCm', HEIGHT_RANGE],
+      ['weightKg', WEIGHT_RANGE],
     ] as const) {
       const value = body[field]
-      if (
-        typeof value === 'number' &&
-        Number.isFinite(value) &&
-        value >= min &&
-        value <= max &&
-        Math.abs(value * 10 - Math.round(value * 10)) < 1e-8
-      )
-        result[field] = value
+      if (isValidMeasurement(value, range)) result[field] = value
     }
     return result
   }
@@ -295,8 +309,22 @@ export function createLocalExerciseGoalRepository(
       authorize(access)
       checkWrite('body')
       const profile = { ...input, updatedAt: new Date(now()).toISOString() }
+      // 목표로 계산할 수 있는 값만 목표용 프로필로 저장한다(범위 밖 값은 입력 화면이 안내한다).
       if (!validGoalProfile(profile)) throw new ExerciseGoalError('validation')
-      write(mockKey('body', ownerId), {
+      // 같은 객체의 다른 필드(홈 신체 정보 저장이 쓰는 값, 이후 추가될 필드)를 지우지 않도록 기존 객체를 읽어 이어받는다.
+      // 읽을 수 없거나 형식이 손상된 객체 위에는 덮어쓰지 않는다.
+      const key = mockKey('body', ownerId)
+      const existing = read(key)
+      if (
+        existing !== undefined &&
+        (typeof existing !== 'object' ||
+          existing === null ||
+          Array.isArray(existing) ||
+          (existing as Record<string, unknown>).v !== 1)
+      )
+        throw new ExerciseGoalError('corrupt')
+      write(key, {
+        ...(existing as Record<string, unknown> | undefined),
         v: 1,
         heightCm: profile.heightCm,
         weightKg: profile.weightKg,

@@ -10,8 +10,8 @@ import type { Exercise, ExerciseQuery } from './exerciseTypes.ts'
  * 운동 `id`는 이후 루틴·운동 기록이 같은 값으로 참조한다. 운동 데이터는 계정과 무관한 공용 데이터라서 계정별로 나뉘지 않는다.
  */
 export interface ExerciseRepository {
-  /** 'mock'이면 개발용 예시 데이터이며 개발 서버에서만 쓴다. */
-  readonly kind: 'mock' | 'api'
+  /** 'mock'은 개발용 예시 데이터, 'seed'는 운동 JSON 시드(exercise/seed/)이며 둘 다 개발 서버에서만 쓴다. */
+  readonly kind: 'mock' | 'seed' | 'api'
 
   /** 조건에 맞는 운동 목록. 조건이 모두 비어 있으면 전체다. 조회가 실패하면 예외를 던진다. */
   list(query: ExerciseQuery): Promise<readonly Exercise[]>

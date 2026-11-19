@@ -1,6 +1,9 @@
+import { useLocation } from 'react-router'
 import { useAuth } from '../auth/authContext.ts'
 import { useBodyMeasurementStatus } from '../body-measurements/useBodyMeasurementStatus.ts'
 import { useHealthGoal } from '../health-goal/useHealthGoal.ts'
+import { useWeightCheck } from '../weight-log/useWeightCheck.ts'
+import NotificationBellLink from '../components/notifications/NotificationBellLink.tsx'
 import BodyInfoSummary from '../components/mypage/BodyInfoSummary.tsx'
 import DevDataNotice from '../components/mypage/DevDataNotice.tsx'
 import GrowthSummary from '../components/mypage/GrowthSummary.tsx'
@@ -9,12 +12,15 @@ import MembershipSummary from '../components/mypage/MembershipSummary.tsx'
 import PointSummary from '../components/mypage/PointSummary.tsx'
 import ProfileHeader from '../components/mypage/ProfileHeader.tsx'
 import WeeklyActivity from '../components/mypage/WeeklyActivity.tsx'
+import WeightLogSummary from '../components/mypage/WeightLogSummary.tsx'
 import { useKnowledgeLevels } from '../mypage/useKnowledgeLevels.ts'
 import { useMyPageSummary } from '../mypage/useMyPageSummary.ts'
 
 /**
  * P01 마이페이지. 스토리보드 v5.0의 7개 섹션을 같은 순서로 보여 준다.
  * 프로필 머리글 → 나의 성장(활동 레벨·종합 이해도) → 보유 포인트 → 멤버십 상태 → 이번 주 활동 → 나의 건강 목표 → 나의 신체 정보.
+ * 나의 신체 정보 묶음 맨 아래에는 사용자 지시로 "몸무게 기록" 진입점(WeightLogSummary)이 있다(스토리보드에는 없는 구성). 이력이 없는 기존 사용자가
+ * 월간 몸무게 기록을 시작하는 곳이며, 몸무게 수치는 받지도 보여 주지도 않는다.
  * 상단 바(AppBar)가 없어서 프로필이 화면의 시작점이다. 화면 제목(h1 "마이페이지")은 AppShell이 보조기기용으로 넣는다.
  *
  * 데이터:
@@ -37,6 +43,9 @@ export default function MyPage() {
   const knowledge = useKnowledgeLevels(user?.id ?? '')
   const body = useBodyMeasurementStatus(user?.id ?? '')
   const goal = useHealthGoal(user?.id ?? '')
+  const weight = useWeightCheck(user?.id ?? '')
+  // 월간 몸무게 알림에서 들어오면(/mypage#weight-log) 몸무게 기록 섹션의 진입 버튼으로 포커스를 옮긴다.
+  const { hash } = useLocation()
 
   // AuthGate 안에 있어 로그인한 회원에게만 렌더링된다. 사용자가 없는 경우는 도달하지 않는다.
   if (!user) return null
@@ -56,7 +65,11 @@ export default function MyPage() {
   return (
     <div className="flex flex-col gap-5 break-keep wrap-anywhere">
       {showDevNotice ? <DevDataNotice /> : null}
-      <ProfileHeader nickname={user.nickname} entitlement={user.entitlement} />
+      <ProfileHeader
+        nickname={user.nickname}
+        entitlement={user.entitlement}
+        actions={<NotificationBellLink userId={user.id} from="/mypage" />}
+      />
       <GrowthSummary
         level={summary.level}
         knowledge={knowledge.state}
@@ -75,6 +88,16 @@ export default function MyPage() {
           onRetry={goal.reload}
         />
         <BodyInfoSummary body={body.state} save={body.save} />
+        <WeightLogSummary
+          body={body.state}
+          weight={weight.state}
+          retrying={weight.retrying}
+          onRetry={weight.reload}
+          log={weight.log}
+          notificationSync={weight.notificationSync}
+          onRetryNotificationSync={weight.retryNotificationSync}
+          focusEntry={hash === '#weight-log'}
+        />
       </div>
     </div>
   )

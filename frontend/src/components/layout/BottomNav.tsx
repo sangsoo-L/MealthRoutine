@@ -1,4 +1,6 @@
-import { Link } from 'react-router'
+import { useEffect } from 'react'
+import { Link, useLocation } from 'react-router'
+import { rememberRecordsDomain, recordsTabPath } from '../../app/recordsTab.ts'
 import { TABS, type TabKey } from '../../app/routeHandle.ts'
 import Icon from '../icons/Icon.tsx'
 
@@ -17,8 +19,13 @@ interface BottomNavProps {
 
 /**
  * 하단 탭 내비게이션. 활성 탭은 URL 접두사가 아니라 `activeTab`(handle.tab)으로 판단한다.
+ * "기록" 탭의 목적지는 현재 기록 맥락(운동/식단)과 마지막으로 본 기록 대시보드를 따른다(recordsTab.ts). 나머지 탭은 TABS의 경로 그대로다.
  */
 export default function BottomNav({ activeTab }: BottomNavProps) {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    rememberRecordsDomain(pathname)
+  }, [pathname])
   return (
     <nav
       aria-label="밀스루틴 주요 메뉴"
@@ -33,7 +40,7 @@ export default function BottomNav({ activeTab }: BottomNavProps) {
           return (
             <li key={tab.key}>
               <Link
-                to={tab.to}
+                to={tab.key === 'records' ? recordsTabPath(pathname) : tab.to}
                 aria-current={isActive ? 'page' : undefined}
                 className={isActive ? activeClass : inactiveClass}
               >

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
 import Icon from '../../icons/Icon.tsx'
 import type { IconName } from '../../icons/iconTypes.ts'
 
@@ -42,35 +43,67 @@ export function PendingBadge() {
   )
 }
 
-/** 목적지가 없는 운동 관리 행을 링크처럼 보이게 하지 않는다. */
+/**
+ * 운동 관리 행. 목적지가 없는 행(준비 중·불러오는 중·오류)은 링크처럼 보이게 하지 않는다.
+ * `to`가 있으면(이동할 곳이 하나뿐인 행) 행 전체가 하나의 링크이고 오른쪽에 `linkLabel`과 화살표를 둔다.
+ * 링크 안에 다른 링크·버튼을 넣지 않는다(오류의 다시 시도처럼 안에 버튼이 필요한 상태에서는 `to`를 넘기지 않는다).
+ */
 export function ManagementRow({
   titleId,
   title,
   icon,
   children,
   trailing,
+  to,
+  linkLabel,
 }: {
   titleId: string
   title: string
   icon: IconName
   children: ReactNode
   trailing?: ReactNode
+  to?: string
+  linkLabel?: string
 }) {
+  // 링크 행은 줄바꿈을 허용한다: 넓으면 한 줄, 글자를 크게 키운 좁은 폭(200% 확대)에서는 오른쪽 이동 글자가 다음 줄로 내려가 가로로 넘치지 않는다.
+  // 본문의 기준 폭(basis-32)이 그 판단 기준이다(본문이 이 폭보다 좁아져야 하면 줄을 바꾼다).
+  const body = (
+    <>
+      <span
+        aria-hidden="true"
+        className="flex size-9 shrink-0 items-center justify-center rounded-control bg-page text-muted"
+      >
+        <Icon name={icon} size={20} />
+      </span>
+      <div className={to ? 'min-w-0 grow basis-32' : 'min-w-0 flex-1'}>
+        <h3 id={titleId} className={dashboardSectionTitle}>
+          {title}
+        </h3>
+        {children}
+      </div>
+    </>
+  )
+  if (to) {
+    return (
+      <div role="group" aria-labelledby={titleId}>
+        <Link
+          to={to}
+          className={`flex min-h-11 flex-wrap items-start gap-3 p-4 hover:bg-page ${dashboardFocusRing}`}
+        >
+          {body}
+          <span className="ml-auto flex shrink-0 items-center gap-1 self-center text-support font-semibold text-exercise">
+            {trailing}
+            {linkLabel}
+            <Icon name="chevron-right" size={18} />
+          </span>
+        </Link>
+      </div>
+    )
+  }
   return (
     <div role="group" aria-labelledby={titleId} className="p-4">
       <div className="flex items-start gap-3">
-        <span
-          aria-hidden="true"
-          className="flex size-9 shrink-0 items-center justify-center rounded-control bg-page text-muted"
-        >
-          <Icon name={icon} size={20} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 id={titleId} className={dashboardSectionTitle}>
-            {title}
-          </h3>
-          {children}
-        </div>
+        {body}
         {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>
     </div>
@@ -108,8 +141,8 @@ export function PendingButton({
 }
 
 /**
- * 운동 목록 만들기 CTA의 자리. 눌러도 이동하지 않는 비활성 버튼이며, 비활성인 이유를 글자로 안내한다.
- * W12와 운동 선택(W13-C)은 존재하지만 최종 검토(W11) 연결 전에는 활성화하지 않는다.
+ * 운동 목록 만들기를 쓸 수 없을 때(운동 목록 저장소가 연결되지 않은 빌드)의 CTA. 눌러도 이동하지 않는 비활성 버튼이며, 비활성인 이유를 글자로 안내한다.
+ * 저장소가 있는 개발 서버에서는 CreateListLink를 쓴다.
  * 안내 문장이 곧 이 카드의 "준비 중" 표시라 배지·접미 글자를 따로 두지 않는다.
  */
 export function CreateListCta({ id }: { id: string }) {
@@ -126,6 +159,19 @@ export function CreateListCta({ id }: { id: string }) {
         최종 검토 기능을 준비 중이에요.
       </p>
     </div>
+  )
+}
+
+/** 오늘 저장한 운동 목록이 없을 때의 CTA. 운동 목록 구성 방법 선택(W12)으로 이동한다. */
+export function CreateListLink() {
+  return (
+    <Link
+      to="/records/exercise/new"
+      className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-control bg-exercise px-4 py-2 text-body font-semibold text-surface hover:bg-exercise/90 ${dashboardFocusRing}`}
+    >
+      운동 목록 만들기
+      <Icon name="arrow-right" size={18} />
+    </Link>
   )
 }
 

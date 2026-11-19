@@ -1,3 +1,5 @@
+import { findUnrunnableItems } from '../recordMode.ts'
+import { validateNewCompletedSet } from '../completedSetValidation.ts'
 import {
   abandonStatus,
   applyProgress,
@@ -17,15 +19,27 @@ import {
 } from '../workoutModel.ts'
 import {
   WorkoutStoreError,
+  type WorkoutStoreErrorCode,
   type CompleteSessionResult,
   type ListQueryResult,
   type SaveListFromDraftInput,
   type SaveListResult,
   type StartSessionResult,
   type WorkoutListRepository,
+  type CreateRoutineInput,
+  type SaveRoutineResult,
+  type UpdateRoutineInput,
   type WorkoutRecordRepository,
+  type WorkoutRoutineRepository,
   type WorkoutSessionRepository,
 } from '../workoutRepositories.ts'
+import {
+  buildRoutine,
+  buildRoutineUpdate,
+  parseWorkoutRoutine,
+  sameRoutineContent,
+  type WorkoutRoutine,
+} from '../workoutRoutineModel.ts'
 import {
   DEV_CATALOG_VERSION,
   type LocalDate,
@@ -38,6 +52,7 @@ import {
   INDEX,
   STORE_LISTS,
   STORE_RECORDS,
+  STORE_ROUTINES,
   STORE_SESSIONS,
   newRecordId,
   requestResult,
@@ -66,7 +81,7 @@ const DEFAULT_RECENT_LIMIT = 20
 const MAX_RECENT_LIMIT = 100
 
 /** 계정 id는 저장값 검증과 같은 규칙(비어 있지 않은 200자 이하)을 따른다. 쓰기는 되고 읽기는 실패하는 일을 막는다. */
-function assertOwner(ownerId: string): void {
+export function assertOwner(ownerId: string): void {
   if (!isValidOwnerId(ownerId)) {
     throw new WorkoutStoreError('validation', { code: 'invalidOwner' })
   }
@@ -77,7 +92,7 @@ function corrupt(): WorkoutStoreError {
 }
 
 /** 저장된 값을 검증한다. 값이 없으면 null, 모양이 맞지 않으면 손상 오류다. */
-function parseStored<T>(
+export function parseStored<T>(
   raw: unknown,
   parse: (value: unknown) => T | null,
 ): T | null {
@@ -92,7 +107,7 @@ function parseStored<T>(
  * - 값이 없거나 다른 계정의 값이면 null(손상 여부와 관계없이 없음과 같다. 존재 여부를 드러내지 않는다).
  * - 소유자 정보 자체를 읽을 수 없는 값, 이 계정의 손상된 값은 손상 오류다(저장값은 바꾸거나 지우지 않는다).
  */
-function parseOwned<T>(
+export function parseOwned<T>(
   raw: unknown,
   parse: (value: unknown) => T | null,
   ownerId: string,
@@ -110,10 +125,10 @@ function parseOwned<T>(
  * 쓰기 직전의 최종 레코드를 읽기와 같은 검증(parse)으로 확인한다. 통과하지 못하면 validation이며 아무것도 쓰지 않는다.
  * 저장에 성공한 값이 나중에 읽기 검증에서 손상으로 판정되는 일을 막는다.
  */
-function assertWritable<T>(
+export function assertWritable<T>(
   value: T,
   parse: (raw: unknown) => unknown,
-  code?: 'invalidDraft' | 'invalidProgress',
+  code?: WorkoutStoreErrorCode,
 ): T {
   if (parse(value) === null) {
     throw new WorkoutStoreError('validation', code ? { code } : undefined)
@@ -122,7 +137,7 @@ function assertWritable<T>(
 }
 
 /** [ownerId, *] 복합 인덱스에서 이 계정의 전체 범위. 배열 키는 다른 모든 키 종류보다 뒤에 정렬된다. */
-function ownerRange(ownerId: string): IDBKeyRange {
+export function ownerRange(ownerId: string): IDBKeyRange {
   return IDBKeyRange.bound([ownerId], [ownerId, []])
 }
 
@@ -131,7 +146,7 @@ function ownerRange(ownerId: string): IDBKeyRange {
  * parse 밖에서 던져진 예외(코드 오류 등)는 삼키지 않고 그대로 전파한다. 소유자를 읽을 수 없는 행은 손상으로 세고,
  * 다른 계정의 행은 세지도 보이지도 않는다(조회 범위가 계정별이라 정상적으로는 섞이지 않는다).
  */
-function splitRows<T extends { ownerId: string }>(
+export function splitRows<T extends { ownerId: string }>(
   raws: readonly unknown[],
   parse: (value: unknown) => T | null,
   ownerId: string,
@@ -153,7 +168,7 @@ function splitRows<T extends { ownerId: string }>(
 }
 
 /** 커서로 최대 limit개를 모은다. */
-function collectCursor(
+export function collectCursor(
   request: IDBRequest<IDBCursorWithValue | null>,
   limit: number,
 ): Promise<unknown[]> {
@@ -174,6 +189,15 @@ function collectCursor(
 
 function byCreatedAt(a: WorkoutList, b: WorkoutList): number {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0
+}
+
+/** 계획 날짜 내림차순, 같은 날짜는 저장 시각이 늦은 쪽이 먼저, 그것도 같으면 id가 큰 쪽이 먼저. */
+function byPlannedDateDesc(a: WorkoutList, b: WorkoutList): number {
+  if (a.plannedDate !== b.plannedDate) {
+    return a.plannedDate < b.plannedDate ? 1 : -1
+  }
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0
 }
 
 function byStartedAt(a: WorkoutSession, b: WorkoutSession): number {
@@ -225,6 +249,7 @@ export function createIndexedDbWorkoutListRepository(
         requestId: input.requestId,
         draft: input.draft,
         knownExerciseIds: input.knownExerciseIds,
+        allowedRecordTypes: input.allowedRecordTypes,
         catalogVersion: DEV_CATALOG_VERSION,
         now: now(),
       })
@@ -310,6 +335,29 @@ export function createIndexedDbWorkoutListRepository(
         return { items: valid.sort(byCreatedAt), skippedCount }
       })
     },
+
+    async listBefore(date: LocalDate): Promise<ListQueryResult<WorkoutList>> {
+      if (!isLocalDate(date)) {
+        throw new WorkoutStoreError('validation')
+      }
+      return runTransaction([STORE_LISTS], 'readonly', async (tx) => {
+        // [ownerId] 이상 [ownerId, date] 미만: 이 계정의 계획 날짜가 date보다 이른 키 전체(상한은 포함하지 않는다). 개수는 제한하지 않는다.
+        const raws = await requestResult(
+          tx
+            .objectStore(STORE_LISTS)
+            .index(INDEX.listsByOwnerDate)
+            .getAll(IDBKeyRange.bound([ownerId], [ownerId, date], false, true)),
+        )
+        const { valid, skippedCount } = splitRows(
+          raws,
+          parseWorkoutList,
+          ownerId,
+        )
+        // 정상 행도 한 번 더 확인한다(키 범위와 저장된 값이 어긋난 경우를 보여 주지 않는다).
+        const before = valid.filter((list) => list.plannedDate < date)
+        return { items: before.sort(byPlannedDateDesc), skippedCount }
+      })
+    },
   }
 }
 
@@ -373,6 +421,12 @@ export function createIndexedDbWorkoutSessionRepository(
             ownerId,
           )
           if (!list) throw new WorkoutStoreError('notFound')
+          // 진행(W14)·결과(W15)가 처리하지 못하는 복합 기록 방식이 있으면 세션을 만들지도, 이어 가지도 않는다.
+          if (findUnrunnableItems(list.items).length > 0) {
+            throw new WorkoutStoreError('validation', {
+              code: 'unsupportedRecordType',
+            })
+          }
           const [active] = await activeSessions(tx)
           if (active) {
             if (active.listId === listId) {
@@ -464,6 +518,21 @@ export function createIndexedDbWorkoutSessionRepository(
               code: 'noCompletedSets',
             })
           }
+          // 신규 완료 기록(A안): 저장할 완료 세트는 그 방식의 구성값이 모두 유효해야 한다. 화면(W15)의 확인과 별개로 저장 직전에 다시 확인한다.
+          // 이 확인은 새 기록을 만드는 이 경로에만 있다. 저장된 기록·세션을 읽는 경로(parse*)와 이미 완료된 세션의 멱등 반환(위)에는 없어 과거 기록은 그대로 읽힌다.
+          session.listSnapshot.items.forEach((item, i) => {
+            item.sets.forEach((_, j) => {
+              const done = session.performed[i]?.[j]
+              if (
+                done?.completed &&
+                !validateNewCompletedSet(item.recordType, done).ok
+              ) {
+                throw new WorkoutStoreError('validation', {
+                  code: 'invalidProgress',
+                })
+              }
+            })
+          })
           assertWritable(record, parseWorkoutRecord, 'invalidProgress')
           // bySession이 unique라 같은 세션의 기록이 이미 있으면 여기서 실패하고 트랜잭션 전체가 되돌아간다.
           await requestResult(records.add(record))
@@ -572,6 +641,166 @@ export function createIndexedDbWorkoutRecordRepository(
           ownerId,
         ),
       )
+    },
+  }
+}
+
+// ─── 운동 루틴 ──────────────────────────────────────────────
+
+/** 루틴을 최근 수정 순서로 정렬한다(같은 시각이면 id가 큰 쪽이 먼저). */
+function byUpdatedDesc(a: WorkoutRoutine, b: WorkoutRoutine): number {
+  if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : -1
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0
+}
+
+export function createIndexedDbWorkoutRoutineRepository(
+  ownerId: string,
+  options: LocalRepositoryOptions = {},
+): WorkoutRoutineRepository {
+  assertOwner(ownerId)
+  const now = options.now ?? (() => new Date())
+  const newId = options.newId ?? newRecordId
+
+  return {
+    kind: 'local',
+
+    async create(input: CreateRoutineInput): Promise<SaveRoutineResult> {
+      if (!isValidRequestId(input.requestId)) {
+        throw new WorkoutStoreError('validation', { code: 'invalidRequestId' })
+      }
+      const candidate = buildRoutine({
+        id: newId(),
+        ownerId,
+        requestId: input.requestId,
+        name: input.name,
+        description: input.description,
+        draft: input.draft,
+        knownExerciseIds: input.knownExerciseIds,
+        allowedRecordTypes: input.allowedRecordTypes,
+        now: now(),
+      })
+      if (!candidate) {
+        throw new WorkoutStoreError('validation', {
+          code: 'invalidRoutineMeta',
+        })
+      }
+      // 읽기와 같은 검증을 한 번 더 거친다(저장에 성공한 값이 나중에 손상으로 읽히지 않게).
+      assertWritable(candidate, parseWorkoutRoutine, 'invalidDraft')
+      return runTransaction([STORE_ROUTINES], 'readwrite', async (tx) => {
+        const store = tx.objectStore(STORE_ROUTINES)
+        const existing = parseStored(
+          await requestResult(
+            store
+              .index(INDEX.routinesByOwnerRequest)
+              .get([ownerId, input.requestId]),
+          ),
+          parseWorkoutRoutine,
+        )
+        if (existing) {
+          // 같은 요청의 재전송이면 처음 저장한 루틴을 돌려준다. 같은 요청 id에 다른 내용이 오면 조용히 넘기지 않는다.
+          if (!sameRoutineContent(existing, candidate)) {
+            throw new WorkoutStoreError('conflict', { code: 'requestConflict' })
+          }
+          return { routine: existing, created: false }
+        }
+        await requestResult(store.add(candidate))
+        return { routine: candidate, created: true }
+      })
+    },
+
+    async get(routineId: string): Promise<WorkoutRoutine | null> {
+      return runTransaction([STORE_ROUTINES], 'readonly', async (tx) =>
+        parseOwned(
+          await requestResult(tx.objectStore(STORE_ROUTINES).get(routineId)),
+          parseWorkoutRoutine,
+          ownerId,
+        ),
+      )
+    },
+
+    async list(): Promise<ListQueryResult<WorkoutRoutine>> {
+      return runTransaction([STORE_ROUTINES], 'readonly', async (tx) => {
+        const raws = await collectCursor(
+          tx
+            .objectStore(STORE_ROUTINES)
+            .index(INDEX.routinesByOwnerUpdated)
+            .openCursor(ownerRange(ownerId), 'prev'),
+          Number.POSITIVE_INFINITY,
+        )
+        const { valid, skippedCount } = splitRows(
+          raws,
+          parseWorkoutRoutine,
+          ownerId,
+        )
+        return { items: valid.toSorted(byUpdatedDesc), skippedCount }
+      })
+    },
+
+    async update(
+      routineId: string,
+      input: UpdateRoutineInput,
+    ): Promise<WorkoutRoutine> {
+      if (!Number.isInteger(input.expectedRevision)) {
+        throw new WorkoutStoreError('validation')
+      }
+      const at = now()
+      return runTransaction([STORE_ROUTINES], 'readwrite', async (tx) => {
+        const store = tx.objectStore(STORE_ROUTINES)
+        // 같은 트랜잭션 안에서 소유자와 revision을 다시 확인한다. 다른 계정의 루틴은 없는 것과 같다.
+        const existing = parseOwned(
+          await requestResult(store.get(routineId)),
+          parseWorkoutRoutine,
+          ownerId,
+        )
+        if (!existing) throw new WorkoutStoreError('notFound')
+        if (existing.revision !== input.expectedRevision) {
+          throw new WorkoutStoreError('conflict', {
+            code: 'revisionMismatch',
+            currentRevision: existing.revision,
+          })
+        }
+        const next = buildRoutineUpdate(existing, {
+          name: input.name,
+          description: input.description,
+          draft: input.draft,
+          knownExerciseIds: input.knownExerciseIds,
+          allowedRecordTypes: input.allowedRecordTypes,
+          now: at,
+        })
+        if (!next) {
+          throw new WorkoutStoreError('validation', {
+            code: 'invalidRoutineMeta',
+          })
+        }
+        assertWritable(next, parseWorkoutRoutine, 'invalidDraft')
+        await requestResult(store.put(next))
+        return next
+      })
+    },
+
+    async delete(
+      routineId: string,
+      deleteOptions?: { expectedRevision?: number },
+    ): Promise<void> {
+      return runTransaction([STORE_ROUTINES], 'readwrite', async (tx) => {
+        const store = tx.objectStore(STORE_ROUTINES)
+        const existing = parseOwned(
+          await requestResult(store.get(routineId)),
+          parseWorkoutRoutine,
+          ownerId,
+        )
+        if (!existing) throw new WorkoutStoreError('notFound')
+        if (
+          deleteOptions?.expectedRevision !== undefined &&
+          deleteOptions.expectedRevision !== existing.revision
+        ) {
+          throw new WorkoutStoreError('conflict', {
+            code: 'revisionMismatch',
+            currentRevision: existing.revision,
+          })
+        }
+        await requestResult(store.delete(routineId))
+      })
     },
   }
 }

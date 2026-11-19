@@ -1,6 +1,9 @@
 import { useId, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { SettingsMenuGroup } from '../../settings/settingsMenu.ts'
+import {
+  SETTINGS_PATH,
+  type SettingsMenuGroup,
+} from '../../settings/settingsMenu.ts'
 import Icon from '../icons/Icon.tsx'
 import { chipClass } from '../mypage/myStyles.ts'
 import { rowActionClass, rowBaseClass } from './settingsStyles.ts'
@@ -33,7 +36,15 @@ export function SettingsList({
  * 이동 메뉴 행. 경로가 있으면 행 전체가 링크(오른쪽 화살표)이고, 없으면 눌리지 않는 행 + "준비 중" 칩이다.
  * 준비 중 행은 링크·버튼이 아니라서 키보드 포커스를 받지 않고, 칩 글자가 이름과 함께 읽혀 상태가 전달된다.
  */
-function MenuRow({ label, to }: { label: string; to: string | null }) {
+function MenuRow({
+  label,
+  to,
+  returnHere = false,
+}: {
+  label: string
+  to: string | null
+  returnHere?: boolean
+}) {
   if (to === null) {
     return (
       <li>
@@ -48,7 +59,11 @@ function MenuRow({ label, to }: { label: string; to: string | null }) {
   }
   return (
     <li>
-      <Link to={to} className={`${rowActionClass} font-semibold text-content`}>
+      <Link
+        to={to}
+        state={returnHere ? { from: SETTINGS_PATH } : undefined}
+        className={`${rowActionClass} font-semibold text-content`}
+      >
         <span className="min-w-0">{label}</span>
         <Icon name="chevron-right" size={18} className="shrink-0 text-muted" />
       </Link>
@@ -60,7 +75,12 @@ export default function SettingsGroup({ group }: { group: SettingsMenuGroup }) {
   return (
     <SettingsList title={group.title}>
       {group.items.map((item) => (
-        <MenuRow key={item.label} label={item.label} to={item.to} />
+        <MenuRow
+          key={item.label}
+          label={item.label}
+          to={item.to}
+          returnHere={item.returnHere}
+        />
       ))}
     </SettingsList>
   )

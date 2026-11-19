@@ -18,13 +18,21 @@ import {
   removeSetFromItem,
   setItemRecordType,
   updateSetInItem,
+  validateDraft,
 } from './workoutDraftModel.ts'
 import {
+  TomorrowWorkoutDraftContext,
   WorkoutDraftContext,
   type WorkoutDraftContextValue,
 } from './workoutDraftContext.ts'
 import { readWorkoutDraft, saveWorkoutDraft } from './workoutDraftStorage.ts'
-import type { DraftSet, RecordType, WorkoutDraft } from './workoutDraftTypes.ts'
+import { shouldClearDraft } from './workoutListView.ts'
+import type {
+  DraftDay,
+  DraftSet,
+  RecordType,
+  WorkoutDraft,
+} from './workoutDraftTypes.ts'
 
 interface ProviderState {
   /** 이 상태가 속한 사용자 id. 비회원이면 null. 화면 밖으로 내보내거나 저장 키에 쓰지 않는다. */
@@ -40,20 +48,20 @@ interface ProviderState {
  * 사용자에 맞는 처음 상태. 저장된 초안은 **읽기만** 한다(렌더 중에 불러도 저장소를 바꾸지 않는다).
  * 쓸 수 없는 저장값(손상·다른 버전·다른 소유자)은 빈 초안으로 시작하며, 그 저장값은 아래 저장 효과가 빈 초안을 저장하면서 지운다.
  */
-function initialState(userId: string | null): ProviderState {
+function initialState(userId: string | null, day: DraftDay): ProviderState {
   if (!userId) {
     return {
       owner: null,
-      draft: createEmptyDraft(),
+      draft: createEmptyDraft(undefined, day),
       discardedNotice: false,
       storageUnavailable: false,
       saveFailed: false,
     }
   }
-  const read = readWorkoutDraft(userId)
+  const read = readWorkoutDraft(userId, undefined, day)
   return {
     owner: userId,
-    draft: read.draft ?? createEmptyDraft(),
+    draft: read.draft ?? createEmptyDraft(undefined, day),
     discardedNotice: read.discarded,
     storageUnavailable: read.storageUnavailable,
     saveFailed: false,
@@ -78,18 +86,26 @@ function stamp(): () => string {
  * 이 상태는 편집 중인 임시 값이다. 운동 목록 확정·수행 기록·루틴의 영구 저장은 이 Provider가 하지 않는다.
  */
 export default function WorkoutDraftProvider({
+  day = 'today',
   children,
 }: {
+  /**
+   * 이 Provider가 맡는 날짜 구분. today(기본)는 오늘의 운동 목록 초안이고, tomorrow는 내일 운동 계획 초안이다.
+   * 같은 앱에 두 Provider를 함께 두며, 각각 다른 공유 상태와 임시 저장 키를 쓴다.
+   */
+  day?: DraftDay
   children: ReactNode
 }) {
   const { status: authStatus, user } = useAuth()
   // 인증이 확정된 회원일 때만 사용자 id를 쓴다(FavoritesProvider와 같은 기준).
   const userId = authStatus === 'authenticated' && user ? user.id : null
 
-  const [state, setState] = useState<ProviderState>(() => initialState(userId))
+  const [state, setState] = useState<ProviderState>(() =>
+    initialState(userId, day),
+  )
 
   // 사용자가 바뀌면 지난 사용자의 상태를 바로 버리고 새 사용자의 저장된 초안을 읽는다(렌더 중 상태 보정, 읽기만 한다).
-  if (state.owner !== userId) setState(initialState(userId))
+  if (state.owner !== userId) setState(initialState(userId, day))
 
   // 초안이 바뀐 뒤에 저장한다(빈 초안은 저장값을 지운다). 비회원은 저장하지 않는다. 결과(저장 실패 여부)는 효과 안에서 바로 상태로
   // 쓰지 않고 다음 틱에 반영하며, 그 사이 사용자가 바뀌었으면 반영하지 않는다.
@@ -125,9 +141,37 @@ export default function WorkoutDraftProvider({
   // 새로 시작해도 "저장돼 있던 구성을 버렸다"는 안내는 W02에서 보이도록 유지한다(다음 실제 편집에서 사라진다).
   const startNew = useCallback(() => {
     setState((prev) =>
-      prev.owner === null ? prev : { ...prev, draft: createEmptyDraft() },
+      prev.owner === null
+        ? prev
+        : { ...prev, draft: createEmptyDraft(undefined, day) },
     )
-  }, [])
+  }, [day])
+  // 초급 운동 추천 확정: 초안 전체를 바꾼다. 형식이 올바르지 않은 초안은 받지 않는다(기존 validateDraft). 사용자가 바뀐 상태에는 적용하지 않는다.
+  const replaceDraft = useCallback(
+    (draft: WorkoutDraft): boolean => {
+      if (userId === null || draft.day !== day || !validateDraft(draft).ok)
+        return false
+      setState((prev) =>
+        prev.owner !== userId
+          ? prev
+          : { ...prev, draft, discardedNotice: false },
+      )
+      return true
+    },
+    [userId, day],
+  )
+  // 저장에 성공한 초안만 비운다. 비교와 초기화를 한 번의 상태 갱신 안에서 하므로, 저장하는 사이에 들어온 편집은 지우지 않는다.
+  const clearSaved = useCallback(
+    (expectedUpdatedAt: string) => {
+      setState((prev) =>
+        prev.owner === null ||
+        !shouldClearDraft(prev.draft.updatedAt, expectedUpdatedAt)
+          ? prev
+          : { ...prev, draft: createEmptyDraft(undefined, day) },
+      )
+    },
+    [day],
+  )
   const addExercises = useCallback(
     (exercises: readonly Exercise[]) => {
       const now = stamp()
@@ -155,9 +199,15 @@ export default function WorkoutDraftProvider({
     [apply],
   )
   const setRecordType = useCallback(
-    (itemId: string, recordType: RecordType) => {
+    (
+      itemId: string,
+      recordType: RecordType,
+      allowedTypes?: readonly RecordType[],
+    ) => {
       const now = stamp()
-      apply((draft) => setItemRecordType(draft, itemId, recordType, now))
+      apply((draft) =>
+        setItemRecordType(draft, itemId, recordType, now, allowedTypes),
+      )
     },
     [apply],
   )
@@ -196,6 +246,8 @@ export default function WorkoutDraftProvider({
         state.storageUnavailable || state.saveFailed ? 'unavailable' : 'ok',
       discardedNotice: state.discardedNotice,
       startNew,
+      replaceDraft,
+      clearSaved,
       addExercises,
       removeItem,
       moveItem,
@@ -207,6 +259,8 @@ export default function WorkoutDraftProvider({
     [
       state,
       startNew,
+      replaceDraft,
+      clearSaved,
       addExercises,
       removeItem,
       moveItem,
@@ -217,5 +271,7 @@ export default function WorkoutDraftProvider({
     ],
   )
 
-  return <WorkoutDraftContext value={value}>{children}</WorkoutDraftContext>
+  const Context =
+    day === 'tomorrow' ? TomorrowWorkoutDraftContext : WorkoutDraftContext
+  return <Context value={value}>{children}</Context>
 }

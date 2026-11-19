@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { ENTITLEMENT_LABEL } from '../../auth/entitlements.ts'
 import type { Entitlement } from '../../auth/authTypes.ts'
@@ -8,6 +9,8 @@ import { focusRing } from './myStyles.ts'
 interface ProfileHeaderProps {
   nickname: string
   entitlement: Entitlement
+  /** 설정 버튼 옆에 놓을 아이콘 링크(알림 벨). 없으면 설정 버튼만 보인다. */
+  actions?: ReactNode
 }
 
 /**
@@ -22,6 +25,7 @@ interface ProfileHeaderProps {
 export default function ProfileHeader({
   nickname,
   entitlement,
+  actions,
 }: ProfileHeaderProps) {
   const paid = entitlement !== 'free'
 
@@ -54,13 +58,16 @@ export default function ProfileHeader({
           </p>
         </div>
       </div>
-      <Link
-        to={MY_DESTINATIONS.settings.to}
-        aria-label="상세 설정"
-        className={`flex size-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface hover:text-brand motion-reduce:transition-none ${focusRing}`}
-      >
-        <Icon name="settings" />
-      </Link>
+      <div className="flex shrink-0 items-center">
+        {actions}
+        <Link
+          to={MY_DESTINATIONS.settings.to}
+          aria-label="상세 설정"
+          className={`flex size-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface hover:text-brand motion-reduce:transition-none ${focusRing}`}
+        >
+          <Icon name="settings" />
+        </Link>
+      </div>
     </section>
   )
 }

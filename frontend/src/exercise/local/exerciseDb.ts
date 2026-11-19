@@ -4,21 +4,42 @@ import { WorkoutStoreError } from '../workoutRepositories.ts'
  * [개발 전용] 운동 로컬 MVP의 IndexedDB 연결·트랜잭션 도구. 개발 서버에서만 불러온다(exercise/workoutSource.ts가 import.meta.env.DEV로
  * 동적 import). 운영 빌드에는 포함되지 않는다. 브라우저 기본 IndexedDB API만 쓴다.
  *
- * - DB 하나(mealthroutine-exercise)에 Object Store 세 개(workoutLists·workoutSessions·workoutRecords). 운동 카탈로그는 넣지 않는다.
+ * - DB 하나(mealthroutine-exercise)에 Object Store 아홉 개(workoutLists·workoutSessions·workoutRecords, v2에서 workoutRoutines, v3에서 mealRecords, v4에서 mealPlans, v5에서 workoutPlans, v6에서 dailyQuizzes·rewardLedger 추가). 운동 카탈로그는 넣지 않는다.
  * - 연결은 하나를 만들어 재사용한다. 다른 탭이 버전을 올리거나 DB를 지우면(versionchange, 개발자 도구의 DB 삭제 포함) 이 연결을
  *   닫고, 이후 요청은 versionChange 오류다(페이지를 다시 열어야 한다). 브라우저가 연결을 강제로 닫으면(close 이벤트) 다음 요청에서 다시 연다.
  * - IndexedDB는 접근 통제 수단이 아니다. 같은 출처의 스크립트·개발자 도구는 값을 읽고 바꿀 수 있으므로 읽은 값은 외부 입력으로 검증한다.
  */
 
 export const EXERCISE_DB_NAME = 'mealthroutine-exercise'
-export const EXERCISE_DB_VERSION = 1
+/**
+ * v2: 운동 루틴(W06~W08) 저장소 workoutRoutines 추가. v3: 식단 기록(D01·D02) 저장소 mealRecords 추가.
+ * v4: 내일 식단 계획(D02-1) 저장소 mealPlans 추가(실제 섭취 기록 mealRecords와 분리한 계획 전용 저장소).
+ * v6: 오늘의 알아가기 퀴즈(H02) 저장소 dailyQuizzes(계정+날짜당 출제·응시 1행)와 rewardLedger(보상 지급 내역, 계정+보상 키 유일) 추가.
+ * v5: 내일 운동 계획(W02·W11·W10, day=tomorrow) 저장소 workoutPlans 추가(운동 목록 workoutLists·수행 기록과 분리한 계획 전용 저장소, 계정당 날짜별 1개).
+ * 각 단계는 저장소만 더하고 기존 저장소·인덱스·행은 바꾸지 않는다(운동 데이터와 같은 DB를 쓰는 것은 계정 격리와 업그레이드 규칙을 하나로 두기 위해서다).
+ */
+export const EXERCISE_DB_VERSION = 6
 
 export const STORE_LISTS = 'workoutLists'
 export const STORE_SESSIONS = 'workoutSessions'
 export const STORE_RECORDS = 'workoutRecords'
+export const STORE_ROUTINES = 'workoutRoutines'
+export const STORE_MEALS = 'mealRecords'
+export const STORE_MEAL_PLANS = 'mealPlans'
+export const STORE_WORKOUT_PLANS = 'workoutPlans'
+export const STORE_DAILY_QUIZZES = 'dailyQuizzes'
+export const STORE_REWARD_LEDGER = 'rewardLedger'
 
 export type StoreName =
-  typeof STORE_LISTS | typeof STORE_SESSIONS | typeof STORE_RECORDS
+  | typeof STORE_LISTS
+  | typeof STORE_SESSIONS
+  | typeof STORE_RECORDS
+  | typeof STORE_ROUTINES
+  | typeof STORE_MEALS
+  | typeof STORE_MEAL_PLANS
+  | typeof STORE_WORKOUT_PLANS
+  | typeof STORE_DAILY_QUIZZES
+  | typeof STORE_REWARD_LEDGER
 
 export const INDEX = {
   listsByOwnerDate: 'byOwnerDate',
@@ -30,6 +51,16 @@ export const INDEX = {
   recordsBySession: 'bySession',
   recordsByOwnerDate: 'byOwnerDate',
   recordsByOwnerCompleted: 'byOwnerCompleted',
+  routinesByOwnerUpdated: 'byOwnerUpdated',
+  routinesByOwnerRequest: 'byOwnerRequest',
+  mealsByOwnerDate: 'byOwnerDate',
+  mealsByOwnerRequest: 'byOwnerRequest',
+  mealPlansByOwnerDate: 'byOwnerDate',
+  mealPlansByOwnerRequest: 'byOwnerRequest',
+  workoutPlansByOwnerDate: 'byOwnerDate',
+  workoutPlansByOwnerRequest: 'byOwnerRequest',
+  quizzesByOwnerDate: 'byOwnerDate',
+  ledgerByOwnerKey: 'byOwnerKey',
 } as const
 
 /** 버전별 스키마 생성. 새 버전은 아래에 단계를 더하고 oldVersion부터 차례로 실행한다(기존 단계는 고치지 않는다). */
@@ -54,6 +85,65 @@ function upgrade(db: IDBDatabase, oldVersion: number): void {
       'ownerId',
       'completedAt',
     ])
+  }
+  // v2: 운동 루틴. 새 저장소만 만들고 기존 저장소는 건드리지 않는다(신규 사용자는 oldVersion 0이라 두 단계가 모두 실행된다).
+  if (oldVersion < 2) {
+    const routines = db.createObjectStore(STORE_ROUTINES, { keyPath: 'id' })
+    routines.createIndex(INDEX.routinesByOwnerUpdated, ['ownerId', 'updatedAt'])
+    routines.createIndex(
+      INDEX.routinesByOwnerRequest,
+      ['ownerId', 'requestId'],
+      {
+        unique: true,
+      },
+    )
+  }
+  // v3: 식단 기록. 새 저장소만 만들고 기존 저장소는 건드리지 않는다(v1·v2에서 올라오는 사용자와 신규 사용자 모두 이 단계가 실행된다).
+  if (oldVersion < 3) {
+    const meals = db.createObjectStore(STORE_MEALS, { keyPath: 'id' })
+    meals.createIndex(INDEX.mealsByOwnerDate, ['ownerId', 'localDate'])
+    meals.createIndex(INDEX.mealsByOwnerRequest, ['ownerId', 'requestId'], {
+      unique: true,
+    })
+  }
+  // v4: 내일 식단 계획. 새 저장소만 만들고 기존 저장소는 건드리지 않는다(v1~v3에서 올라오는 사용자와 신규 사용자 모두 이 단계가 실행된다).
+  if (oldVersion < 4) {
+    const plans = db.createObjectStore(STORE_MEAL_PLANS, { keyPath: 'id' })
+    plans.createIndex(INDEX.mealPlansByOwnerDate, ['ownerId', 'planDate'])
+    plans.createIndex(INDEX.mealPlansByOwnerRequest, ['ownerId', 'requestId'], {
+      unique: true,
+    })
+  }
+  // v5: 내일 운동 계획. 새 저장소만 만들고 기존 저장소는 건드리지 않는다(v1~v4에서 올라오는 사용자와 신규 사용자 모두 이 단계가 실행된다).
+  // 계정당 계획 날짜별 계획은 1개뿐이므로 계정+날짜 인덱스를 유일(unique)로 둬서 동시 저장에도 같은 날짜의 중복 계획이 저장소 계층에서 막힌다.
+  if (oldVersion < 5) {
+    const workoutPlans = db.createObjectStore(STORE_WORKOUT_PLANS, {
+      keyPath: 'id',
+    })
+    workoutPlans.createIndex(
+      INDEX.workoutPlansByOwnerDate,
+      ['ownerId', 'planDate'],
+      { unique: true },
+    )
+    workoutPlans.createIndex(
+      INDEX.workoutPlansByOwnerRequest,
+      ['ownerId', 'requestId'],
+      { unique: true },
+    )
+  }
+  // v6: 알아가기 퀴즈. 새 저장소만 만든다. 계정+날짜당 퀴즈 1행(출제·응시 결과)과, 계정+보상 키당 지급 내역 1행을 유일 인덱스로 보장해
+  // 연타·새로고침·여러 탭 동시 제출에도 응시와 보상이 중복되지 않는다.
+  if (oldVersion < 6) {
+    const quizzes = db.createObjectStore(STORE_DAILY_QUIZZES, { keyPath: 'id' })
+    quizzes.createIndex(INDEX.quizzesByOwnerDate, ['ownerId', 'localDate'], {
+      unique: true,
+    })
+    const ledger = db.createObjectStore(STORE_REWARD_LEDGER, {
+      keyPath: 'transactionId',
+    })
+    ledger.createIndex(INDEX.ledgerByOwnerKey, ['ownerId', 'rewardKey'], {
+      unique: true,
+    })
   }
 }
 

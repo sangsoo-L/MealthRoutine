@@ -1,6 +1,7 @@
 import type {
   WorkoutListRepository,
   WorkoutRecordRepository,
+  WorkoutRoutineRepository,
   WorkoutSessionRepository,
 } from './workoutRepositories.ts'
 
@@ -42,5 +43,14 @@ export function createWorkoutRecordRepository(
 ): WorkoutRecordRepository | null {
   return localModule
     ? localModule.createIndexedDbWorkoutRecordRepository(ownerId)
+    : null
+}
+
+/** 운동 루틴(W06~W08) 저장소. 운영 빌드에는 저장 수단이 없어 null이며 화면은 "준비 중"으로 안내한다(가짜 루틴을 만들지 않는다). */
+export function createWorkoutRoutineRepository(
+  ownerId: string,
+): WorkoutRoutineRepository | null {
+  return localModule
+    ? localModule.createIndexedDbWorkoutRoutineRepository(ownerId)
     : null
 }

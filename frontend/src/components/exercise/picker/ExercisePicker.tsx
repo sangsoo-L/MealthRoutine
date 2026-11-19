@@ -1,15 +1,14 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type SubmitEvent,
-} from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import {
+  groupedPickerParts,
+  EMPTY_PICKER_CRITERIA,
+  isDefaultPickerCriteria,
+  pickerCriteriaSummary,
   pickFavoriteExercises,
-  searchPickerExercises,
+  samePickerCriteria,
+  searchByCriteria,
+  type PickerCriteria,
 } from '../../../exercise/exercisePickerSearch.ts'
 import type { Exercise } from '../../../exercise/exerciseTypes.ts'
 import { useFavorites } from '../../../exercise/favoritesContext.ts'
@@ -19,19 +18,28 @@ import {
 } from '../../../exercise/useExerciseCatalog.ts'
 import { useExerciseSelection } from '../../../exercise/useExerciseSelection.ts'
 import Icon from '../../icons/Icon.tsx'
-import ExerciseQueryInput from '../ExerciseQueryInput.tsx'
 import { FAVORITE_MESSAGES } from '../favoriteMessages.ts'
 import {
   PickerLoading,
   PickerNotice,
+  PickerSearchGuide,
   pickerFocusRing,
   pickerInlineNotice,
   pickerSecondaryButton,
 } from './PickerNotices.tsx'
 import PickerRow, { type PickerStar } from './PickerRow.tsx'
+import PickerSearchForm from './PickerSearchForm.tsx'
 import SelectedFooter from './SelectedFooter.tsx'
 
 type Tab = 'favorites' | 'search'
+
+/** 호출부가 바꿀 수 있는 문구. 모두 선택이며 없는 항목은 W13 기본 문구를 쓴다. */
+export interface PickerCopy {
+  title?: string
+  description?: string
+  /** 선택한 개수를 받아 하단 완료 버튼 문구를 만든다. */
+  completeLabel?: (count: number) => string
+}
 
 const TABS: ReadonlyArray<{ key: Tab; label: string }> = [
   { key: 'favorites', label: '즐겨찾기' },
@@ -51,14 +59,23 @@ export type PickerCompleteResult = { ok: true } | { ok: false; message: string }
  * - 선택과 즐겨찾기 별은 독립이다. 별을 해제해도, 탭·검색어를 바꿔도 선택은 유지되고 하단 선택 목록에서 확인·해제한다.
  * - 즐겨찾기 상태는 공유 상태(FavoritesProvider)를 쓰고 E02와 같은 값이다. 운동 정보는 운동 목록을 한 번 조회해(useExerciseCatalog)
  *   즐겨찾기 id와 매칭한다. 즐겨찾기 조회 실패와 운동 목록 조회 실패는 따로 안내하고, 즐겨찾기가 실패해도 직접 검색·선택은 계속 쓸 수 있다.
- * - 탭을 옮겨도 검색어·검색 여부·선택이 유지된다. 검색은 "검색하기"를 제출했을 때만 하며, 그 전에는 결과를 보이지 않는다.
+ * - 직접 검색은 "입력 중인 조건"(draft: 검색어·난이도·운동 부위)과 "실제로 검색한 조건"(applied)을 따로 가진다. 처음에는 결과를 보이지 않고 안내만 보이며,
+ *   "검색하기"(검색창 Enter 포함)를 제출했을 때만 draft로 검색한다(검색어 AND 난이도 AND 운동 부위). 조건을 바꾸면 이전 결과는 새 조건의 결과가 아니므로
+ *   숨기고 안내로 돌아간다. 초기화는 조건을 처음 상태로 돌리고 결과를 숨긴다(전체 운동을 자동으로 보여 주지 않는다).
+ * - 탭을 옮겨도 draft·applied·선택이 유지된다. 검색 조건은 목록을 거르는 표시 조건일 뿐이며 선택한 운동(selection)에는 영향을 주지 않는다.
  */
 export default function ExercisePicker({
   backTo,
   onComplete,
+  copy,
 }: {
   /** 뒤로가기·취소 목적지. 없으면 두 링크를 그리지 않는다. */
   backTo: string | null
+  /**
+   * 호출부가 문구만 바꿔 쓰는 선택 값. 주지 않으면 W13 기본 문구(운동 검색·등록)를 그대로 쓴다.
+   * 초급 추천 화면(W01-2)처럼 "목록에 등록"이 아닌 맥락에서만 넘기며, 동작과 구조는 바뀌지 않는다.
+   */
+  copy?: PickerCopy
   /**
    * 등록을 눌렀을 때 호출한다. 첫 인자는 선택한 운동 id(선택 순서)다. 두 번째 인자는 이 화면이 화면을 그리는 데 쓴 운동 목록(카탈로그) 상태로,
    * 호출부가 같은 데이터에서 운동 객체를 고르게 한다(호출부가 따로 조회하지 않는다). 두 번째 인자를 쓰지 않는 호출부도 그대로 동작한다.
@@ -73,9 +90,9 @@ export default function ExercisePicker({
   const selection = useExerciseSelection()
 
   const [tab, setTab] = useState<Tab>('favorites')
-  const [query, setQuery] = useState('')
-  // 검색을 제출한 검색어. null이면 아직 검색하지 않았다.
-  const [submitted, setSubmitted] = useState<string | null>(null)
+  // 입력 중인 조건과, 검색하기로 적용한 조건. applied가 null이면 아직 검색하지 않았다.
+  const [draft, setDraft] = useState<PickerCriteria>(EMPTY_PICKER_CRITERIA)
+  const [applied, setApplied] = useState<PickerCriteria | null>(null)
   const [announce, setAnnounce] = useState('')
   const [starNotice, setStarNotice] = useState(false)
   // seq는 같은 선택에서 등록을 다시 눌렀을 때 안내를 다시 읽어 주도록 새 요소로 만드는 번호다.
@@ -116,12 +133,18 @@ export default function ExercisePicker({
         : null,
     [exercises, favorites.status, favorites.ids],
   )
+  // 입력 중인 조건이 적용한 조건과 같을 때만 결과가 유효하다(조건을 바꿨다면 새 검색 전까지 보이지 않는다).
+  const resultsValid = applied !== null && samePickerCriteria(draft, applied)
   const searchItems = useMemo(
     () =>
-      exercises && submitted !== null
-        ? searchPickerExercises(exercises, submitted)
+      exercises && applied && resultsValid
+        ? searchByCriteria(exercises, applied)
         : null,
-    [exercises, submitted],
+    [exercises, applied, resultsValid],
+  )
+  const partGroups = useMemo(
+    () => (exercises ? groupedPickerParts(exercises) : []),
+    [exercises],
   )
 
   // 선택이 바뀌면 지난 "등록" 안내는 더 이상 맞지 않아 보이지 않는다(ids는 선택이 바뀔 때만 새 값이 된다).
@@ -185,16 +208,43 @@ export default function ExercisePicker({
     }
   }
 
-  function renderRows(items: readonly Exercise[]): ReactNode {
+  function renderRows(
+    items: readonly Exercise[],
+    variant: 'list' | 'search' = 'list',
+  ): ReactNode {
     return (
       <>
-        <p role="status" className="text-body font-normal text-muted">
-          {items.length}개 운동
-        </p>
+        {variant === 'search' && applied ? (
+          // 검색 결과 위: 어떤 조건의 결과인지(조건 요약)와 개수. 항목 이름이 글자에 들어 있어 색만으로 구분하지 않는다.
+          <div>
+            <p className="text-body font-normal text-muted">
+              조건에 맞는 운동{' '}
+              <strong className="font-semibold text-content">
+                {items.length}개
+              </strong>
+              를 찾았어요.
+            </p>
+            <ul className="mt-2 flex min-w-0 flex-wrap gap-2">
+              {pickerCriteriaSummary(applied).map((label) => (
+                <li
+                  key={label}
+                  className="rounded-full border border-exercise/20 bg-exercise-soft/60 px-3 py-1 text-support leading-snug font-normal break-keep wrap-anywhere text-exercise"
+                >
+                  {label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p role="status" className="text-body font-normal text-muted">
+            {items.length}개 운동
+          </p>
+        )}
         <ul className="mt-3 flex flex-col gap-3">
           {items.map((exercise) => (
             <PickerRow
               key={exercise.id}
+              variant={variant}
               exercise={exercise}
               selected={selection.isSelected(exercise.id)}
               onToggleSelect={() =>
@@ -318,25 +368,17 @@ export default function ExercisePicker({
   function renderSearchResults(): ReactNode {
     const catalogNotice = renderCatalogNotice()
     if (catalogNotice) return catalogNotice
-    if (!searchItems) {
-      return (
-        <PickerNotice
-          role="status"
-          title="운동을 검색해 주세요"
-          body="운동명이나 부위·도구 이름으로 찾아볼 수 있어요."
-        />
-      )
-    }
+    if (!searchItems) return <PickerSearchGuide />
     if (searchItems.length === 0) {
       return (
         <PickerNotice
           role="status"
-          title="검색 결과가 없어요"
-          body="운동명이나 부위·도구 이름으로 찾아볼 수 있어요."
+          title="조건에 맞는 운동이 없어요"
+          body="검색어나 필터를 변경해 보세요."
         />
       )
     }
-    return renderRows(searchItems)
+    return renderRows(searchItems, 'search')
   }
 
   /** 직접 검색 탭에서 즐겨찾기 상태 안내(검색과 선택은 막지 않는 보조 안내). */
@@ -365,9 +407,15 @@ export default function ExercisePicker({
     return null
   }
 
-  function handleSearch(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setSubmitted(query.trim())
+  /** 입력 중인 조건으로 검색한다. 결과는 이 조건으로만 보인다. */
+  function handleSearch() {
+    setApplied({ ...draft, query: draft.query.trim() })
+  }
+
+  /** 조건을 처음 상태로 돌리고 결과를 숨긴다. 선택한 운동(selection)은 그대로 둔다. */
+  function handleReset() {
+    setDraft(EMPTY_PICKER_CRITERIA)
+    setApplied(null)
   }
 
   function handleComplete() {
@@ -402,10 +450,11 @@ export default function ExercisePicker({
           ) : null}
           <div className={`min-w-0 flex-1 ${backTo ? 'ml-1' : 'ml-2.5'}`}>
             <h1 className="text-app-title leading-snug font-semibold text-content">
-              운동 검색·등록
+              {copy?.title ?? '운동 검색·등록'}
             </h1>
             <p className="mt-2 text-body leading-relaxed font-normal text-muted">
-              운동을 여러 개 선택한 뒤 목록에 추가해 주세요.
+              {copy?.description ??
+                '운동을 여러 개 선택한 뒤 목록에 추가해 주세요.'}
             </p>
           </div>
         </div>
@@ -434,30 +483,31 @@ export default function ExercisePicker({
       </div>
 
       {tab === 'search' ? (
-        <form role="search" onSubmit={handleSearch} className="mt-4">
-          <label htmlFor="picker-query" className="sr-only">
-            운동명·부위·도구 검색
-          </label>
-          <ExerciseQueryInput
-            id="picker-query"
-            value={query}
-            onChange={setQuery}
-            placeholder="운동명·부위·도구 검색"
-            inputClassName="scroll-mb-(--picker-footer-h)"
-          />
-          <button
-            type="submit"
-            className={`mt-3 flex min-h-12 w-full scroll-mb-(--picker-footer-h) cursor-pointer items-center justify-center rounded-control bg-exercise px-4 text-body font-semibold text-surface transition-colors hover:opacity-90 motion-reduce:transition-none ${pickerFocusRing}`}
-          >
-            검색하기
-          </button>
-        </form>
+        <PickerSearchForm
+          criteria={draft}
+          partGroups={partGroups}
+          // 조건이 처음 상태가 아니거나 검색을 실행한 상태일 때만 초기화를 보인다.
+          canReset={!isDefaultPickerCriteria(draft) || applied !== null}
+          onQuery={(query) => setDraft((prev) => ({ ...prev, query }))}
+          onDifficulty={(difficulty) =>
+            setDraft((prev) => ({ ...prev, difficulty }))
+          }
+          onParts={(parts) => setDraft((prev) => ({ ...prev, parts }))}
+          onSubmit={handleSearch}
+          onReset={handleReset}
+        />
       ) : null}
 
       <div className="mt-4 flex-1">
         {/* 별 등록·해제 결과를 읽어 주는 보이지 않는 안내 */}
         <p role="status" className="sr-only">
           {announce}
+        </p>
+        {/* 검색 결과 개수를 읽어 주는 보이지 않는 안내(결과가 있을 때만 내용이 있다) */}
+        <p role="status" className="sr-only">
+          {tab === 'search' && searchItems
+            ? `조건에 맞는 운동 ${searchItems.length}개`
+            : ''}
         </p>
         <section
           ref={frameRef}
@@ -483,6 +533,7 @@ export default function ExercisePicker({
         cancelTo={backTo}
         onRemove={selection.remove}
         onComplete={handleComplete}
+        completeLabel={copy?.completeLabel}
       />
     </div>
   )

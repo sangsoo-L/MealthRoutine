@@ -14,9 +14,15 @@ const mockModule = import.meta.env.DEV
   ? await import('./mock/mockAssessmentRepository.ts')
   : null
 
+const mockStorage = import.meta.env.DEV
+  ? await import('../dev-mock/devMockStorage.ts')
+  : null
+
 export function createAssessmentRepository(
   userId: string,
 ): AssessmentRepository | null {
+  // 개발·검수용: 이해도 조회 수단이 연결되지 않은 상태(이해도 미확인)를 재현한다.
+  if (mockStorage?.mockFlag('unavailable', 'assessment')) return null
   return mockModule
     ? mockModule.createMockAssessmentRepository({ userId })
     : null

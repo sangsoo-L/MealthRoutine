@@ -11,7 +11,7 @@ import { SETTINGS_MENU_GROUPS } from '../settings/settingsMenu.ts'
  * 로그인 안내를 보여 주므로 이 화면에 오지 않는다. 화면 제목(h1 "상세 설정")은 이 화면이 보여 주고(라우트 handle.ownH1),
  * 뒤로가기("이전", →P01 /mypage)는 AppShell이 본문 맨 위에 그린다.
  *
- * 동작하는 항목은 공지사항(기존 /support), 로그아웃뿐이다. 나머지 이동 메뉴는 화면이 아직 없어 "준비 중"이며
+ * 동작하는 항목은 알림 목록·즐겨찾기·공지사항·FAQ와 로그아웃이다. 나머지 이동 메뉴는 화면이 아직 없어 "준비 중"이며
  * 값을 저장하는 스위치는 없다(알림 설정 등은 명세에 없고 API도 없다). 앱 버전은 package.json의 값이다.
  */
 export default function SettingsPage() {

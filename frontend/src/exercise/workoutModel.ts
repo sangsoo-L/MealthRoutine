@@ -11,6 +11,7 @@ import type {
   WorkoutDraft,
 } from './workoutDraftTypes.ts'
 import { RECORD_TYPES } from './workoutDraftTypes.ts'
+import { RECORD_COMPONENTS } from './recordMode.ts'
 import {
   WORKOUT_SCHEMA_VERSION,
   WORKOUT_SESSION_STATUSES,
@@ -129,11 +130,17 @@ export function buildWorkoutList(params: {
   requestId: string
   draft: WorkoutDraft
   knownExerciseIds: ReadonlySet<string>
+  /** 운동 id별 허용 기록 방식. 주면 허용하지 않는 방식이 담긴 초안은 목록으로 만들지 않는다(null). */
+  allowedRecordTypes?: ReadonlyMap<string, readonly RecordType[]>
   catalogVersion: string
   now: Date
 }): WorkoutList | null {
   if (params.draft.day !== 'today') return null
-  const normalized = normalizeDraft(params.draft, params.knownExerciseIds)
+  const normalized = normalizeDraft(
+    params.draft,
+    params.knownExerciseIds,
+    params.allowedRecordTypes,
+  )
   if (!normalized) return null
   const at = params.now.toISOString()
   return {
@@ -249,28 +256,31 @@ function validTimer(timer: unknown): timer is SessionTimer {
 }
 
 /**
- * 실제 수행 값 하나를 기록 방식에 맞게 검사한다.
+ * 실제 수행 값 하나를 기록 방식에 맞게 검사한다. 허용 필드는 방식의 구성값(RECORD_COMPONENTS)을 따른다.
  * - 시간형: measuredMs만 쓸 수 있다(횟수·중량 없음). 완료해도 측정값은 없을 수 있다(타이머 미사용 = 미측정).
- * - 횟수형: actualReps만. 중량형: actualReps와 actualWeightKg. 완료한 세트는 actualReps가 있어야 한다.
+ * - 횟수형: actualReps만. 중량+횟수형: actualReps와 actualWeightKg. 완료한 세트는 actualReps가 있어야 한다.
+ * - 시간+횟수형: actualReps·measuredMs(완료하면 actualReps 필요). 중량+시간형: actualWeightKg·measuredMs.
+ *   복합 방식은 W14가 아직 만들지 않는다(S4). 여기서는 저장된 값을 읽는 규칙만 정의하며, 신규 완료의 필수값 정책은 completedSetValidation이 따로 다룬다.
  * 숫자 규칙은 W02 검증과 같다(횟수 1 이상 정수, 중량 0 이상).
  */
 function validPerformedSet(raw: unknown, recordType: RecordType): boolean {
   if (!isRecordObject(raw)) return false
   const { completed, actualReps, actualWeightKg, measuredMs } = raw
   if (typeof completed !== 'boolean') return false
-  const allowed =
-    recordType === 'time'
-      ? ['completed', 'measuredMs']
-      : recordType === 'weight'
-        ? ['completed', 'actualReps', 'actualWeightKg']
-        : ['completed', 'actualReps']
+  const parts = RECORD_COMPONENTS[recordType]
+  const allowed = [
+    'completed',
+    ...(parts.reps ? ['actualReps'] : []),
+    ...(parts.weight ? ['actualWeightKg'] : []),
+    ...(parts.time ? ['measuredMs'] : []),
+  ]
   if (Object.keys(raw).some((key) => !allowed.includes(key))) return false
   if (actualReps !== undefined && !isPositiveInt(actualReps)) return false
   if (actualWeightKg !== undefined && !isNonNegativeNumber(actualWeightKg)) {
     return false
   }
   if (measuredMs !== undefined && !isMeasuredMs(measuredMs)) return false
-  if (completed && recordType !== 'time' && actualReps === undefined) {
+  if (completed && parts.reps && actualReps === undefined) {
     return false
   }
   return true
@@ -420,18 +430,19 @@ export function buildWorkoutRecord(params: {
       completedSets: item.sets.flatMap((target, j): WorkoutRecordSet[] => {
         const done = session.performed[i]?.[j]
         if (!done?.completed) return []
+        const parts = RECORD_COMPONENTS[item.recordType]
         const set: WorkoutRecordSet = {
           setNumber: j + 1,
           target: { ...target },
           measuredMs:
-            item.recordType === 'time' && done.measuredMs !== undefined
+            parts.time && done.measuredMs !== undefined
               ? done.measuredMs
               : null,
         }
-        if (item.recordType !== 'time' && done.actualReps !== undefined) {
+        if (parts.reps && done.actualReps !== undefined) {
           set.actualReps = done.actualReps
         }
-        if (item.recordType === 'weight' && done.actualWeightKg !== undefined) {
+        if (parts.weight && done.actualWeightKg !== undefined) {
           set.actualWeightKg = done.actualWeightKg
         }
         return [set]
@@ -458,28 +469,40 @@ export function buildWorkoutRecord(params: {
 
 // ─── 저장값 검증(읽은 값은 외부 입력으로 본다) ──────────────
 
+/**
+ * 저장된 세트 목표 하나. 허용 필드와 필수 값은 방식의 구성값을 따른다: 시간 targetSeconds(필수, 1~3600의 정수), 횟수 reps(필수, 1 이상 정수),
+ * 중량 weightKg(선택, 있으면 0 이상). 구성값이 아닌 필드가 있으면 손상이다.
+ */
 function validTarget(raw: unknown, recordType: RecordType): boolean {
   if (!isRecordObject(raw)) return false
-  const keys = Object.keys(raw)
-  if (recordType === 'time') {
+  const parts = RECORD_COMPONENTS[recordType]
+  const allowed = [
+    ...(parts.time ? ['targetSeconds'] : []),
+    ...(parts.reps ? ['reps'] : []),
+    ...(parts.weight ? ['weightKg'] : []),
+  ]
+  if (Object.keys(raw).some((key) => !allowed.includes(key))) return false
+  if (parts.time) {
     const t = raw.targetSeconds
-    return (
-      keys.length === 1 &&
-      typeof t === 'number' &&
-      Number.isInteger(t) &&
-      t >= MIN_TARGET_SECONDS &&
-      t <= MAX_TARGET_SECONDS
-    )
+    if (
+      typeof t !== 'number' ||
+      !Number.isInteger(t) ||
+      t < MIN_TARGET_SECONDS ||
+      t > MAX_TARGET_SECONDS
+    ) {
+      return false
+    }
   }
-  if (!isPositiveInt(raw.reps)) return false
-  if (recordType === 'reps') return keys.length === 1
+  if (parts.reps && !isPositiveInt(raw.reps)) return false
   return (
-    keys.every((key) => key === 'reps' || key === 'weightKg') &&
-    (raw.weightKg === undefined || isNonNegativeNumber(raw.weightKg))
+    !parts.weight ||
+    raw.weightKg === undefined ||
+    isNonNegativeNumber(raw.weightKg)
   )
 }
 
-function validListItems(raw: unknown): raw is WorkoutListItem[] {
+/** 저장된 운동 줄(운동 목록·루틴 공통)의 검증. */
+export function validListItems(raw: unknown): raw is WorkoutListItem[] {
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_ITEMS) {
     return false
   }
@@ -566,11 +589,16 @@ export function parseWorkoutSession(raw: unknown): WorkoutSession | null {
   return consistent ? (raw as unknown as WorkoutSession) : null
 }
 
-/** 완료 기록 세트의 기록 방식별 허용 필드(buildWorkoutRecord가 만드는 모양). */
-const RECORD_SET_KEYS: Record<RecordType, readonly string[]> = {
-  time: ['setNumber', 'target', 'measuredMs'],
-  reps: ['setNumber', 'target', 'actualReps', 'measuredMs'],
-  weight: ['setNumber', 'target', 'actualReps', 'actualWeightKg', 'measuredMs'],
+/** 완료 기록 세트의 기록 방식별 허용 필드(buildWorkoutRecord가 만드는 모양). 구성값 표(RECORD_COMPONENTS)에서 만든다. */
+function recordSetKeys(recordType: RecordType): readonly string[] {
+  const parts = RECORD_COMPONENTS[recordType]
+  return [
+    'setNumber',
+    'target',
+    'measuredMs',
+    ...(parts.reps ? ['actualReps'] : []),
+    ...(parts.weight ? ['actualWeightKg'] : []),
+  ]
 }
 
 const RECORD_EXERCISE_KEYS: readonly string[] = [
@@ -594,7 +622,7 @@ function validRecordSet(
   previousSetNumber: number,
 ): set is WorkoutRecordSet {
   if (!isRecordObject(set)) return false
-  const allowed = RECORD_SET_KEYS[recordType]
+  const allowed = recordSetKeys(recordType)
   if (Object.keys(set).some((key) => !allowed.includes(key))) return false
   if (!('measuredMs' in set)) return false
   const { setNumber, measuredMs, actualReps, actualWeightKg } = set
@@ -606,13 +634,20 @@ function validRecordSet(
   ) {
     return false
   }
-  if (recordType === 'time') {
-    return measuredMs === null || isMeasuredMs(measuredMs)
+  const parts = RECORD_COMPONENTS[recordType]
+  // 시간을 구성값으로 갖는 방식만 측정값(또는 미측정 null)을 가질 수 있다. 나머지는 null이다.
+  if (
+    parts.time
+      ? !(measuredMs === null || isMeasuredMs(measuredMs))
+      : measuredMs !== null
+  ) {
+    return false
   }
+  if (parts.reps && !isPositiveInt(actualReps)) return false
   return (
-    measuredMs === null &&
-    isPositiveInt(actualReps) &&
-    (actualWeightKg === undefined || isNonNegativeNumber(actualWeightKg))
+    !parts.weight ||
+    actualWeightKg === undefined ||
+    isNonNegativeNumber(actualWeightKg)
   )
 }
 

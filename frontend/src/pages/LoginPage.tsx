@@ -1,7 +1,8 @@
 import { useId, useRef, useState, type Ref, type SubmitEvent } from 'react'
-import { Navigate, useMatches } from 'react-router'
+import { Navigate, useLocation, useMatches } from 'react-router'
 import { getRouteHandle } from '../app/routeHandle.ts'
 import { useAuth } from '../auth/authContext.ts'
+import { safeReturnTo } from '../auth/returnTo.ts'
 import {
   AuthBody,
   AuthFrame,
@@ -246,11 +247,15 @@ function LoginForm() {
  *
  * 로그인은 UI 개발용이며 실제 인증(POST /api/v1/auth/login)이 아니다. 처리는 useAuth().login에 맡긴다.
  * 이미 로그인한 사용자는 /home으로 보낸다. 로그인에 성공해도 같은 경로로 이동한다.
+ * 단, 로그인 안내(LoginRequiredNotice)에서 들어와 history state에 안전한 앱 내부 경로(returnTo, safeReturnTo로 검증)가 있으면 그 화면으로 돌아간다.
  */
 export default function LoginPage() {
   const { status } = useAuth()
   const matches = useMatches()
-  if (status === 'authenticated') return <Navigate to="/home" replace />
+  const location = useLocation()
+  if (status === 'authenticated') {
+    return <Navigate to={safeReturnTo(location.state) ?? '/home'} replace />
+  }
   // 상단 바가 없어서 뒤로가기(→홈)는 이 틀 안에서 직접 그린다(라우트 handle.bodyBack). 목적지는 handle.parent다.
   const parent = getRouteHandle(matches.at(-1)?.handle).parent ?? null
 

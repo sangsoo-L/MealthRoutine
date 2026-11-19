@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type SubmitEvent } from 'react'
-import { Link, useMatches, useNavigate, useSearchParams } from 'react-router'
+import {
+  Link,
+  useLocation,
+  useMatches,
+  useNavigate,
+  useSearchParams,
+} from 'react-router'
 import { getRouteHandle } from '../app/routeHandle.ts'
+import FoodFavoriteButton from '../components/food/FoodFavoriteButton.tsx'
 import BottomSheet from '../components/layout/BottomSheet.tsx'
 import { useBackTarget } from '../components/layout/useBackTarget.ts'
 import {
@@ -207,33 +214,57 @@ function NutritionForm({
   )
 }
 
-/** 결과 한 건. 음식 영양정보(F02) 화면이 아직 없어서 이동하지 않는 비대화형 카드다. 있는 정보만 보여 주고 없는 값은 0으로 바꾸지 않는다. */
+/**
+ * 결과 한 건. 카드 본문은 음식 영양정보(F02)로 가는 링크이고(이 검색 화면을 진입 경로로 넘긴다), 즐겨찾기 별은 회원에게만 따로 둔 버튼이다(링크 안에 버튼을 두지 않는다).
+ * 있는 정보만 보여 주고 없는 값은 0으로 바꾸지 않는다. 개발용 예시 데이터이면 출처 표시를 그대로 보여 실제 운영 데이터와 구분한다.
+ */
 function FoodCard({ item }: { item: FoodResult }) {
-  const label = [item.type, item.kind].filter((v): v is string => !!v)
+  const location = useLocation()
+  const label = [item.type, item.kind, item.category].filter(
+    (v): v is string => !!v,
+  )
   const numeric = item.kcal !== undefined || item.protein !== undefined
   return (
-    <li className="rounded-card border border-line bg-surface p-4">
-      {label.length > 0 ? (
-        <p className={`text-support leading-snug font-normal ${t.text}`}>
-          {label.join(' · ')}
-        </p>
-      ) : null}
-      <p
-        className={`text-section-title leading-snug font-semibold text-content ${label.length > 0 ? 'mt-1' : ''}`}
+    <li
+      data-food-item
+      className="flex items-start gap-2 rounded-card border border-line bg-surface p-4"
+    >
+      <Link
+        to={`/foods/${encodeURIComponent(item.id)}`}
+        state={{ from: `${location.pathname}${location.search}` }}
+        className={`min-w-0 flex-1 rounded-control ${focusRing}`}
       >
-        {item.name}
-      </p>
-      {numeric ? (
-        <p className="mt-2 text-support leading-snug font-normal text-muted">
-          {item.per100g ? '100g 기준' : '영양 기준 미확인'} ·{' '}
-          {item.kcal != null ? `${item.kcal}kcal` : '열량 정보 없음'} · 단백질{' '}
-          {item.protein != null ? `${item.protein}g` : '정보 없음'}
-        </p>
-      ) : item.nutrition ? (
-        <p className="mt-2 text-support leading-snug font-normal text-muted">
-          {item.nutrition}
-        </p>
-      ) : null}
+        {label.length > 0 ? (
+          <span
+            className={`block text-support leading-snug font-normal ${t.text}`}
+          >
+            {label.join(' · ')}
+          </span>
+        ) : null}
+        <span
+          className={`block text-section-title leading-snug font-semibold text-content ${label.length > 0 ? 'mt-1' : ''}`}
+        >
+          {item.name}
+          <span className="sr-only"> 영양정보 보기</span>
+        </span>
+        {numeric ? (
+          <span className="mt-2 block text-support leading-snug font-normal text-muted">
+            {item.per100g ? '100g 기준' : '영양 기준 미확인'} ·{' '}
+            {item.kcal != null ? `${item.kcal}kcal` : '열량 정보 없음'} · 단백질{' '}
+            {item.protein != null ? `${item.protein}g` : '정보 없음'}
+          </span>
+        ) : item.nutrition ? (
+          <span className="mt-2 block text-support leading-snug font-normal text-muted">
+            {item.nutrition}
+          </span>
+        ) : null}
+        {item.sourceLabel ? (
+          <span className="mt-2 inline-flex rounded-full border border-line px-2 py-0.5 text-support leading-snug font-semibold text-muted">
+            {item.sourceLabel}
+          </span>
+        ) : null}
+      </Link>
+      <FoodFavoriteButton foodId={item.id} foodName={item.name} />
     </li>
   )
 }
@@ -336,8 +367,8 @@ function ResultView({ outcome, hasNutrition, onRetry }: ResultViewProps) {
  * 조건과 화면 상태는 주소(?q=&type=&kind=&minKcal=&maxKcal=&minProtein=&view=results)에 둔다. 시트를 여닫는 것은 주소를 바꾸지 않으며,
  * 시트가 열린 채 주소가 바뀌면(뒤로가기 등) 닫힌다.
  *
- * 음식 검색 API·데이터가 없어서(foodBackend) 검색하기를 누르면 "준비 중" 상태가 나온다. 가짜 음식은 만들지 않는다.
- * 결과의 "영양정보 보기"(F02)와 "없는 음식 등록 요청"(F03)은 화면과 경로가 없어 두지 않았다.
+ * 개발 서버에서는 개발용 예시 음식 4개(스토리보드 foodDB)로 검색한다. 운영 빌드에는 음식 데이터가 없어(foodBackend) 검색하기를 누르면 "준비 중" 상태가 나온다. 가짜 음식은 만들지 않는다.
+ * 결과 카드는 음식 영양정보(F02)로 이동하고 회원은 즐겨찾기 별로 음식을 즐겨찾기한다. "없는 음식 등록 요청"(F03)은 화면과 경로가 없어 두지 않았다.
  */
 export default function FoodsPage() {
   const [params] = useSearchParams()

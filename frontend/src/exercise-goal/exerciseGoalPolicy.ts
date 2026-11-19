@@ -1,3 +1,8 @@
+import {
+  HEIGHT_RANGE,
+  WEIGHT_RANGE,
+  isValidMeasurement,
+} from '../body-measurements/bodyValidation.ts'
 import { parseStoredGoal } from '../health-goal/goalPolicy.ts'
 import {
   beginnerLossPlan,
@@ -92,25 +97,57 @@ export function goalPurposes(
   )
 }
 
-export function validGoalProfile(value: unknown): value is ExerciseGoalProfile {
+/** 운동 목표를 계산할 수 있는 신체 정보의 범위. 저장이 허용되는 범위(신체 정보 입력, P06)와 별개의 정책이다. */
+export const GOAL_AGE_RANGE = { min: 18, max: 100 } as const
+export const GOAL_HEIGHT_RANGE = { min: 100, max: 230 } as const
+export const GOAL_WEIGHT_RANGE = { min: 25, max: 250 } as const
+
+/** 저장된 신체 정보가 목표 계산 범위를 벗어난 이유. 값이 아닌 항목 이름만 담는다. */
+export type GoalProfileIneligibility = 'age' | 'height' | 'weight'
+
+/**
+ * 저장된 목표용 신체 정보가 손상되지 않았는지(구조)만 확인한다. 계산 가능 범위는 보지 않는다.
+ * 키·몸무게는 신체 정보 저장이 허용하는 범위(P06)와 소수점 첫째 자리 기준이고, 나이는 정수, 성별은 male/female이어야 한다.
+ * 여기서 거르는 값은 "손상"이고, 구조는 정상이지만 계산 범위 밖인 값은 통과시킨다(goalProfileIneligibility가 따로 판정한다).
+ */
+export function isStoredGoalProfile(
+  value: unknown,
+): value is ExerciseGoalProfile {
   if (typeof value !== 'object' || value === null) return false
   const p = value as Record<string, unknown>
-  const tenth = (x: unknown, min: number, max: number): x is number =>
-    typeof x === 'number' &&
-    Number.isFinite(x) &&
-    x >= min &&
-    x <= max &&
-    Math.abs(x * 10 - Math.round(x * 10)) < 1e-8
   return (
     typeof p.age === 'number' &&
     Number.isInteger(p.age) &&
-    p.age >= 18 &&
-    p.age <= 100 &&
+    p.age >= 0 &&
+    p.age <= 150 &&
     (p.sex === 'male' || p.sex === 'female') &&
-    tenth(p.heightCm, 100, 230) &&
-    tenth(p.weightKg, 25, 250) &&
+    isValidMeasurement(p.heightCm, HEIGHT_RANGE) &&
+    isValidMeasurement(p.weightKg, WEIGHT_RANGE) &&
     typeof p.updatedAt === 'string' &&
     Number.isFinite(Date.parse(p.updatedAt))
+  )
+}
+
+const within = (
+  value: number,
+  range: { readonly min: number; readonly max: number },
+) => value >= range.min && value <= range.max
+
+/** 구조가 정상인 신체 정보가 목표 계산 범위 안인지. 비어 있으면 계산할 수 있다. 손상 여부와 무관하다. */
+export function goalProfileIneligibility(
+  profile: ExerciseGoalProfile,
+): readonly GoalProfileIneligibility[] {
+  const reasons: GoalProfileIneligibility[] = []
+  if (!within(profile.age, GOAL_AGE_RANGE)) reasons.push('age')
+  if (!within(profile.heightCm, GOAL_HEIGHT_RANGE)) reasons.push('height')
+  if (!within(profile.weightKg, GOAL_WEIGHT_RANGE)) reasons.push('weight')
+  return reasons
+}
+
+/** 목표를 계산·저장해도 되는 신체 정보인가(구조 정상 + 계산 범위 안). */
+export function validGoalProfile(value: unknown): value is ExerciseGoalProfile {
+  return (
+    isStoredGoalProfile(value) && goalProfileIneligibility(value).length === 0
   )
 }
 

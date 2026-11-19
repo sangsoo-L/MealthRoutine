@@ -10,7 +10,7 @@ const focusRing =
  * 비로그인 사용자에게 보여 주는 로그인 안내. 본문 영역을 채우며 BottomNav와 뒤로가기는 AppShell이 그대로 유지한다.
  * 문구는 사용자가 승인한 것이며 스토리보드의 비회원 안내(A02·R01·P01 등)와 다르다.
  *
- * 로그인 링크에는 원래 경로를 state.returnTo로만 전달한다. 로그인 성공 후 복귀 처리는 정해지지 않아 아직 구현하지 않았다.
+ * 로그인 링크에는 원래 경로를 state.returnTo로 전달하고, 로그인 화면(LoginPage)이 로그인 후 그 경로가 안전한 앱 내부 경로일 때만(safeReturnTo) 돌아간다.
  */
 export default function LoginRequiredNotice() {
   const location = useLocation()

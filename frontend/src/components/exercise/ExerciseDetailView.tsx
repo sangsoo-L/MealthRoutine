@@ -84,13 +84,13 @@ const emptyText = 'text-body leading-relaxed font-normal text-muted'
 
 /**
  * 운동 상세(E02)의 본문. 운동 저장소가 가진 값만 보여 준다.
- * - 설명(description)·출처(sourceUrl)는 현재 운동 데이터에 없으므로 만들어 채우지 않는다. 그래서 "운동 소개" 영역은 두지 않는다:
- *   소개에 둘 수 있는 값(분류·부위·도구)은 모두 상단 요약 칩이 이미 보여 주고, 같은 값을 한 번 더 늘어놓으면 방법·주의사항을 밀어낼 뿐이다.
- *   설명이 데이터에 생기면 그때 소개 영역을 추가한다.
- * - 이미지·영상도 없으므로 대표 미디어(ExerciseMedia)는 공통 플레이스홀더다.
+ * - 소개(summary)는 한 문장 요약이고, 운동 방법은 단계 목록(instructions)이 있으면 그것을, 없으면 자세한 수행 방법(description) 문단을 보여 준다.
+ *   값이 없는 영역은 만들어 채우지 않는다(소개는 영역 자체를 그리지 않는다).
+ * - 출처(sourceUrl)는 값이 있을 때만 링크로 보여 준다. 없으면 빈 링크나 버튼을 그리지 않는다.
+ * - 이미지·영상은 없으므로 대표 미디어(ExerciseMedia)는 공통 플레이스홀더다.
  * - 동작 순서·주의사항이 비어 있으면 빈 목록 대신 안내 문장을 둔다.
- * 구성: 대표 미디어 → 운동명(회원은 즐겨찾기 별) → 난이도·분류·부위·도구 칩 → (회원만) 오늘 기록·내일 계획 → 운동 방법 → 주의사항.
- * 비회원 화면은 칩 다음에 운동 방법이 바로 이어진다.
+ * 구성: 대표 미디어 → 운동명(회원은 즐겨찾기 별) → 난이도·분류·부위·도구 칩 → (회원만) 오늘 기록·내일 계획 → 소개 → 운동 방법 → 주의사항 → 출처.
+ * 비회원 화면은 칩 다음에 소개가 바로 이어진다.
  * 화면명세 v5.0 E02의 "운동명·난이도·부위·도구 → 오늘 기록·내일 계획 → 시각 안내 → 동작 순서와 주의사항" 구성 요소를 모두 담았다.
  */
 export default function ExerciseDetailView({
@@ -130,9 +130,23 @@ export default function ExerciseDetailView({
         {isMember ? <ExerciseRoutineActions exercise={exercise} /> : null}
       </header>
 
+      {exercise.summary ? (
+        <Section id="exercise-summary-title" title="운동 소개">
+          <p className="text-body leading-relaxed font-normal text-content">
+            {exercise.summary}
+          </p>
+        </Section>
+      ) : null}
+
       <Section id="exercise-steps-title" title="운동 방법">
         {exercise.instructions.length === 0 ? (
-          <p className={emptyText}>이 운동의 방법 안내가 아직 없어요.</p>
+          exercise.description ? (
+            <p className="text-body leading-relaxed font-normal text-content">
+              {exercise.description}
+            </p>
+          ) : (
+            <p className={emptyText}>이 운동의 방법 안내가 아직 없어요.</p>
+          )
         ) : (
           // role="list": 위와 같은 이유. 단계 번호는 선으로 이어진 순서다(실제 순서가 있는 내용이라 번호를 쓴다).
           <ol role="list" className="flex flex-col">
@@ -184,6 +198,20 @@ export default function ExerciseDetailView({
           </div>
         )}
       </Section>
+
+      {exercise.sourceUrl ? (
+        <p className="mt-8 text-support leading-relaxed font-normal text-muted">
+          출처:{' '}
+          <a
+            href={exercise.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand underline underline-offset-2"
+          >
+            {exercise.sourceUrl}
+          </a>
+        </p>
+      ) : null}
     </article>
   )
 }

@@ -1,6 +1,7 @@
 import { ACCOUNT_SCOPE_PREFIX } from '../auth/accountScope.ts'
 import { MAX_ITEMS, MAX_SETS_PER_ITEM } from './workoutDraftModel.ts'
 import type {
+  DraftDay,
   DraftItem,
   DraftSet,
   RecordType,
@@ -20,8 +21,18 @@ import { RECORD_TYPES } from './workoutDraftTypes.ts'
  * - 저장소를 쓸 수 없거나 쓰기에 실패해도 화면은 메모리 상태로 계속 동작한다(호출한 쪽이 저장 실패를 알린다).
  */
 
-/** 고정 키. 계정 정리 접두어로 시작한다. */
+/** 고정 키(오늘 운동 초안). 계정 정리 접두어로 시작한다. */
 export const WORKOUT_DRAFT_KEY = `${ACCOUNT_SCOPE_PREFIX}workout-draft`
+
+/**
+ * 날짜 구분별 키. 오늘은 기존 키 그대로이고(기존 저장값과 호환), 내일 운동 계획 초안은 별도 키라 오늘 초안을 덮어쓰지 않는다.
+ * 두 키 모두 계정 정리 접두어로 시작해 로그인·로그아웃이 함께 지운다.
+ */
+export function workoutDraftKey(day: DraftDay = 'today'): string {
+  return day === 'tomorrow'
+    ? `${WORKOUT_DRAFT_KEY}-tomorrow`
+    : WORKOUT_DRAFT_KEY
+}
 
 const STORAGE_VERSION = 1
 
@@ -148,7 +159,11 @@ export type ParseResult =
  * - version: 저장 스키마 버전이 다르다(이 기능은 아직 이전 버전이 없어 마이그레이션 없이 버린다).
  * - owner: 소유자 지문이 지금 사용자와 다르다.
  */
-export function parseStoredDraft(raw: string, userId: string): ParseResult {
+export function parseStoredDraft(
+  raw: string,
+  userId: string,
+  day: DraftDay = 'today',
+): ParseResult {
   // 정상 초안은 수십 KB를 넘지 않는다. 지나치게 큰 값은 파싱하지 않고 손상으로 본다.
   if (raw.length > MAX_RAW_LENGTH) return { ok: false, reason: 'corrupt' }
   let value: unknown
@@ -166,7 +181,7 @@ export function parseStoredDraft(raw: string, userId: string): ParseResult {
   const draft = value.draft
   if (!isRecord(draft)) return { ok: false, reason: 'corrupt' }
   if (draft.v !== STORAGE_VERSION) return { ok: false, reason: 'version' }
-  if (draft.day !== 'today') return { ok: false, reason: 'corrupt' }
+  if (draft.day !== day) return { ok: false, reason: 'corrupt' }
   if (
     typeof draft.updatedAt !== 'string' ||
     draft.updatedAt.length === 0 ||
@@ -178,6 +193,20 @@ export function parseStoredDraft(raw: string, userId: string): ParseResult {
   if (
     draft.editingListId !== undefined &&
     !nonEmptyString(draft.editingListId, 64)
+  ) {
+    return { ok: false, reason: 'corrupt' }
+  }
+  // 고치는 중인 내일 계획의 id·revision은 내일 초안에만 있고, 함께 있거나 함께 없어야 한다.
+  const hasPlanId = draft.editingPlanId !== undefined
+  const hasPlanRevision = draft.editingPlanRevision !== undefined
+  if (
+    hasPlanId !== hasPlanRevision ||
+    (hasPlanId &&
+      (day !== 'tomorrow' ||
+        !nonEmptyString(draft.editingPlanId, 64) ||
+        typeof draft.editingPlanRevision !== 'number' ||
+        !Number.isInteger(draft.editingPlanRevision) ||
+        draft.editingPlanRevision < 1))
   ) {
     return { ok: false, reason: 'corrupt' }
   }
@@ -203,9 +232,16 @@ export function parseStoredDraft(raw: string, userId: string): ParseResult {
   }
   const parsed: WorkoutDraft = {
     v: 1,
-    day: 'today',
+    day,
     items,
     updatedAt: draft.updatedAt,
+  }
+  if (
+    typeof draft.editingPlanId === 'string' &&
+    typeof draft.editingPlanRevision === 'number'
+  ) {
+    parsed.editingPlanId = draft.editingPlanId
+    parsed.editingPlanRevision = draft.editingPlanRevision
   }
   if (typeof draft.editingListId === 'string') {
     parsed.editingListId = draft.editingListId
@@ -235,6 +271,7 @@ export interface ReadDraft extends LoadedDraft {
 export function readWorkoutDraft(
   userId: string,
   storage: DraftStorage | null = defaultStorage(),
+  day: DraftDay = 'today',
 ): ReadDraft {
   const none = {
     draft: null,
@@ -245,12 +282,12 @@ export function readWorkoutDraft(
   if (!storage) return { ...none, storageUnavailable: true }
   let raw: string | null
   try {
-    raw = storage.getItem(WORKOUT_DRAFT_KEY)
+    raw = storage.getItem(workoutDraftKey(day))
   } catch {
     return { ...none, storageUnavailable: true }
   }
   if (raw === null) return none
-  const result = parseStoredDraft(raw, userId)
+  const result = parseStoredDraft(raw, userId, day)
   if (result.ok) return { ...none, draft: result.draft }
   return {
     ...none,
@@ -266,9 +303,10 @@ export function readWorkoutDraft(
 export function loadWorkoutDraft(
   userId: string,
   storage: DraftStorage | null = defaultStorage(),
+  day: DraftDay = 'today',
 ): LoadedDraft {
-  const read = readWorkoutDraft(userId, storage)
-  if (read.needsRemoval) clearWorkoutDraft(storage)
+  const read = readWorkoutDraft(userId, storage, day)
+  if (read.needsRemoval) clearWorkoutDraft(storage, day)
   return {
     draft: read.draft,
     discarded: read.discarded,
@@ -287,12 +325,13 @@ export function saveWorkoutDraft(
 ): boolean {
   if (!storage) return false
   try {
+    const key = workoutDraftKey(draft.day)
     if (draft.items.length === 0) {
-      storage.removeItem(WORKOUT_DRAFT_KEY)
+      storage.removeItem(key)
       return true
     }
     storage.setItem(
-      WORKOUT_DRAFT_KEY,
+      key,
       JSON.stringify({
         wv: STORAGE_VERSION,
         owner: ownerFingerprint(userId),
@@ -307,9 +346,10 @@ export function saveWorkoutDraft(
 
 export function clearWorkoutDraft(
   storage: DraftStorage | null = defaultStorage(),
+  day: DraftDay = 'today',
 ): void {
   try {
-    storage?.removeItem(WORKOUT_DRAFT_KEY)
+    storage?.removeItem(workoutDraftKey(day))
   } catch {
     // 지울 수 없으면 지울 것도 없는 것으로 본다.
   }

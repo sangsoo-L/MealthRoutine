@@ -1,3 +1,4 @@
+import type { GoalProfileIneligibility } from './exerciseGoalPolicy.ts'
 import { ExerciseGoalError } from './exerciseGoalTypes.ts'
 
 export function exerciseGoalMessage(error: unknown): string {
@@ -31,4 +32,21 @@ export function exerciseGoalMessage(error: unknown): string {
     default:
       return '정보를 불러오지 못했어요. 다시 시도해 주세요.'
   }
+}
+
+const INELIGIBLE_LABEL: Record<GoalProfileIneligibility, string> = {
+  age: '나이는 18~100세',
+  height: '키는 100~230cm',
+  weight: '몸무게는 25~250kg',
+}
+
+/**
+ * 저장된 신체 정보가 목표 계산 범위를 벗어났을 때의 안내. 손상이 아니므로 다른 정보로 덮어쓰지 않는다는 말은 하지 않는다.
+ * 사용자의 수치는 담지 않고 해당 항목의 계산 범위만 알린다.
+ */
+export function ineligibleGoalMessage(
+  reasons: readonly GoalProfileIneligibility[],
+): string {
+  const ranges = reasons.map((reason) => INELIGIBLE_LABEL[reason]).join(', ')
+  return `저장된 신체 정보로는 운동 목표를 계산할 수 없어요. ${ranges} 범위에서 계산해요. 입력한 값을 확인하고 수정해 주세요.`
 }

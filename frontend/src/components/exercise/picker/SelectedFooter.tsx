@@ -24,6 +24,7 @@ export default function SelectedFooter({
   cancelTo,
   onRemove,
   onComplete,
+  completeLabel,
 }: {
   items: readonly SelectedExercise[]
   /** 등록을 눌렀을 때 알릴 안내. 선택이 바뀌면 호출한 쪽이 비운다. */
@@ -33,6 +34,8 @@ export default function SelectedFooter({
   cancelTo: string | null
   onRemove: (id: string) => void
   onComplete: () => void
+  /** 완료 버튼 문구를 바꿔 쓸 때만 준다(기본: "선택한 N개 운동 등록"). */
+  completeLabel?: (count: number) => string
 }) {
   const [expanded, setExpanded] = useState(true)
   const listRef = useRef<HTMLOListElement>(null)
@@ -134,7 +137,7 @@ export default function SelectedFooter({
           onClick={onComplete}
           className={`flex min-h-12 cursor-pointer items-center justify-center rounded-control bg-exercise px-4 text-body font-semibold text-surface transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:bg-line disabled:text-muted disabled:hover:opacity-100 motion-reduce:transition-none ${pickerFocusRing}`}
         >
-          선택한 {count}개 운동 등록
+          {completeLabel ? completeLabel(count) : `선택한 ${count}개 운동 등록`}
         </button>
         {cancelTo ? (
           <Link to={cancelTo} className={pickerSecondaryButton}>

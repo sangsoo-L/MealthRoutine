@@ -3,15 +3,29 @@
  * 운동 기록·루틴의 영구 저장 계약은 확정되지 않았다(exercise-domain-design.md §10). 이 모델은 임시 저장(계정별 sessionStorage)과 화면 편집에만 쓴다.
  */
 
-/** 기록 방식. reps 횟수형, weight 중량형(횟수 + 중량), time 시간형(목표 시간). */
-export type RecordType = 'reps' | 'weight' | 'time'
+/**
+ * 기록 방식(저장 코드) 5종. reps 횟수형, weight 중량+횟수형, time 시간형, time_reps 시간+횟수형, weight_time 중량+시간형.
+ * 카탈로그 코드(`weight_reps`)와 다르다: 중량+횟수형의 저장 코드는 기존 값 `weight`다(recordMode.ts의 toStoredRecordType).
+ * W14·W15가 진행·결과로 처리하는 것은 time·reps·weight뿐이다(recordMode.isRunnableRecordType). 복합 방식(time_reps·weight_time)은
+ * 목록으로 저장할 수 있지만 운동을 시작할 수 없다(S4·S5가 끝날 때까지).
+ */
+export type RecordType =
+  'reps' | 'weight' | 'time' | 'time_reps' | 'weight_time'
 
-export const RECORD_TYPES: readonly RecordType[] = ['time', 'weight', 'reps']
+export const RECORD_TYPES: readonly RecordType[] = [
+  'time',
+  'weight',
+  'reps',
+  'time_reps',
+  'weight_time',
+]
 
 export const RECORD_TYPE_LABEL: Record<RecordType, string> = {
   time: '시간형',
-  weight: '중량형',
+  weight: '중량+횟수형',
   reps: '횟수형',
+  time_reps: '시간+횟수형',
+  weight_time: '중량+시간형',
 }
 
 /**
@@ -37,16 +51,28 @@ export interface DraftItem {
   sets: DraftSet[]
 }
 
+/**
+ * 초안이 어느 날의 운동 구성인가. today는 오늘의 운동 목록(W11이 workoutLists로 저장), tomorrow는 내일 운동 계획(W11이 workoutPlans로 저장)이다.
+ * 두 초안은 서로 다른 임시 저장 키와 다른 공유 상태(WorkoutDraftProvider)를 가져 서로 덮어쓰지 않는다. 날짜(YYYY-MM-DD)는 초안에 저장하지 않는다
+ * (내일 계획의 날짜는 화면을 연 시점의 다음 날로 W11이 정한다).
+ */
+export type DraftDay = 'today' | 'tomorrow'
+
 export interface WorkoutDraft {
   /** 저장 스키마 버전 */
   v: 1
-  /** 이번 MVP는 오늘 운동만 지원한다. 날짜(YYYY-MM-DD)는 저장하지 않는다(날짜 기준·시간대는 미확정). */
-  day: 'today'
+  day: DraftDay
   items: DraftItem[]
   /** ISO 8601. 편집할 때마다 갱신된다. */
   updatedAt: string
   /** 이미 만든 목록을 고치는 중일 때의 목록 id(W11 연동 이후에 쓴다). 지금은 쓰지 않는다. */
   editingListId?: string
+  /**
+   * 저장된 내일 운동 계획을 고치는 중일 때의 계획 id와 그 계획의 revision(day가 tomorrow일 때만). 저장하면 이 revision으로 충돌을 확인한다.
+   * 둘은 함께 있거나 함께 없다.
+   */
+  editingPlanId?: string
+  editingPlanRevision?: number
 }
 
 /** 검증 오류가 가리키는 입력. */
@@ -76,6 +102,10 @@ export type NormalizedSet =
   | { reps: number }
   | { reps: number; weightKg?: number }
   | { targetSeconds: number }
+  /** 시간+횟수형: 목표 시간과 목표 횟수가 모두 있다. */
+  | { reps: number; targetSeconds: number }
+  /** 중량+시간형: 목표 시간은 있고 목표 중량은 선택이다. */
+  | { targetSeconds: number; weightKg?: number }
 
 export interface NormalizedItem {
   exerciseId: string

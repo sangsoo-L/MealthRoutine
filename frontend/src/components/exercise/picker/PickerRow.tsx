@@ -27,13 +27,85 @@ export default function PickerRow({
   selected,
   onToggleSelect,
   star,
+  variant = 'list',
 }: {
   exercise: Exercise
   selected: boolean
   onToggleSelect: () => void
   star: PickerStar
+  /**
+   * 'search'는 직접 검색 결과 카드다: 선택 상자(✓)를 앞에 두고 운동명 아래에 난이도 칩·부위·도구를 보여 주며, 별 버튼은 구분선 너머에 따로 둔다.
+   * 기본('list')은 즐겨찾기 탭의 행이다. 선택·별 동작과 접근 이름은 두 모양이 같다.
+   */
+  variant?: 'list' | 'search'
 }) {
   const meta = pickerExerciseMeta(exercise)
+
+  if (variant === 'search') {
+    return (
+      <li>
+        <div
+          className={`flex items-stretch rounded-card border transition-colors motion-reduce:transition-none ${
+            selected
+              ? 'border-exercise bg-exercise-soft'
+              : 'border-line bg-surface'
+          }`}
+        >
+          <button
+            type="button"
+            aria-pressed={selected}
+            onClick={onToggleSelect}
+            className={`flex min-h-16 min-w-0 flex-1 scroll-mb-(--picker-footer-h) cursor-pointer items-center gap-3 rounded-l-card p-4 text-left ${pickerFocusRing}`}
+          >
+            <span
+              aria-hidden="true"
+              className={`flex size-6 shrink-0 items-center justify-center rounded-md border text-support leading-none font-semibold ${
+                selected
+                  ? 'border-exercise bg-exercise text-surface'
+                  : 'border-muted/75 bg-surface text-transparent'
+              }`}
+            >
+              ✓
+            </span>
+            <span className="min-w-0">
+              <span className="block text-section-title leading-snug font-semibold break-keep wrap-anywhere text-content">
+                {exercise.name}
+              </span>
+              <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-support leading-snug font-normal break-keep wrap-anywhere text-muted">
+                <span className="rounded-full border border-exercise/30 bg-surface px-2.5 py-0.5 text-exercise">
+                  {exercise.difficulty}
+                </span>
+                <span className="text-content">
+                  {exercise.targetMuscles.join('·')}
+                </span>
+                {exercise.equipment.length > 0 ? (
+                  <span>{exercise.equipment.join('·')}</span>
+                ) : null}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={star.label}
+            aria-disabled={star.waiting || undefined}
+            onClick={star.onClick}
+            className={`flex w-12 shrink-0 scroll-mb-(--picker-footer-h) items-center justify-center rounded-r-card border-l transition-colors motion-reduce:transition-none ${pickerFocusRing} ${
+              selected ? 'border-exercise/30' : 'border-line'
+            } ${
+              star.favorite ? 'text-exercise' : 'text-muted hover:text-exercise'
+            } ${star.waiting ? 'cursor-wait opacity-60' : 'cursor-pointer'}`}
+          >
+            <Icon name="star" size={21} filled={star.favorite} />
+          </button>
+        </div>
+        {star.failed ? (
+          <p className="mt-2 text-support leading-snug font-normal text-danger">
+            {FAVORITE_MESSAGES.saveFailed}
+          </p>
+        ) : null}
+      </li>
+    )
+  }
 
   return (
     <li>

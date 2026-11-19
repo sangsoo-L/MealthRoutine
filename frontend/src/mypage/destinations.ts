@@ -14,7 +14,7 @@ export interface MyDestination {
 export const MY_DESTINATIONS = {
   settings: { screenId: 'P09', to: '/settings' },
   experienceHistory: { screenId: 'P14', to: null },
-  levelGuide: { screenId: 'P15', to: null },
+  levelGuide: { screenId: 'P15', to: '/mypage/level' },
   pointHistory: { screenId: 'P16', to: null },
   membership: { screenId: 'P03', to: null },
   weeklyExercise: { screenId: 'W10', to: null },

@@ -54,6 +54,13 @@ export type TodayExerciseView =
       exerciseCount: number
       setCount: number
       items: readonly TodayExerciseItem[]
+      /** 저장값이 손상되어 읽지 못한 목록 수. 있을 때만 값이 있고 화면이 한 줄로 알린다. */
+      skippedCount?: number
+      /** 저장된 목록의 식별자와 계획 날짜(운동 시작·이어하기 판단에 쓴다). 개발용 예시에는 없다. */
+      listId?: string
+      plannedDate?: string
+      /** 목록에 진행(W14)·결과(W15)가 아직 처리하지 못하는 기록 방식(복합 방식)이 있어 운동을 시작할 수 없다. 있을 때만 true다. */
+      startBlocked?: boolean
     }
   | {
       phase: 'completed'
@@ -92,6 +99,11 @@ export interface WeeklyExerciseView extends DashboardWeek {
 
 export interface RecentWorkoutView {
   id: string
+  /**
+   * 완료 기록의 세션 id. 있으면 W15 읽기 전용 화면(`/records/exercise/result?session=`)으로 이어지는 링크를 보인다.
+   * 저장된 실제 기록에서 온 항목에만 있고, 개발용 예시(`?sample=`)에는 없다(예시는 상세로 연결하지 않는다).
+   */
+  sessionId?: string
   performedDate: string
   title: string
   exerciseCount: number
@@ -106,7 +118,7 @@ export interface RecentRecordsView {
 
 /**
  * 대시보드 전체의 영역별 상태.
- * weekly·recent는 완료 기록의 표시 영역이다. 실제 조회는 후속이며 개발용 예시에서만 값을 가진다.
+ * weekly·recent는 완료 기록의 표시 영역이다. 개발 서버에서는 저장된 완료 기록(IndexedDB)을 조회해 채운다(useDashboardRecords). 운영 빌드는 저장소가 없어 준비 중이다.
  * statistics·next는 상세 통계·날짜별 계획·주간 리포트의 준비 상태다. PendingOnlySlot이라 ready·empty가 불가능하다.
  */
 export interface ExerciseDashboardSlots {

@@ -1,4 +1,5 @@
 import { accountScopedKey } from '../../auth/accountScope.ts'
+import { mockFlag } from '../../dev-mock/devMockStorage.ts'
 import {
   AssessmentSubmitError,
   type AssessmentRepository,
@@ -66,6 +67,9 @@ export interface MockAssessmentOptions {
   /** 문항 은행 버전. 기본은 QUESTION_BANK_VERSION이며 테스트에서 버전 불일치를 만들 때 쓴다. */
   bankVersion?: number
 }
+
+/** `slowLoad` 스위치를 켰을 때 결과 조회가 더 걸리는 시간(ms). */
+export const SLOW_LOAD_MS = 5000
 
 function defaultStorage(): MockStorage | null {
   try {
@@ -258,6 +262,13 @@ export function createMockAssessmentRepository(
 
     async getResult(): Promise<AssessmentResult | null> {
       await delay()
+      // 개발·검수용 스위치(devMockStorage): 조회 지연과 조회 실패를 재현한다. 운영 빌드에는 이 모듈이 없다.
+      if (mockFlag('slowLoad', 'assessment')) {
+        await new Promise<void>((resolve) => setTimeout(resolve, SLOW_LOAD_MS))
+      }
+      if (mockFlag('failLoad', 'assessment')) {
+        throw new Error('mock load failure')
+      }
       // 읽기만 한다. 출제를 만들거나 저장하지 않는다.
       return readResult()
     },

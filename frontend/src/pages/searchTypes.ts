@@ -26,6 +26,10 @@ export interface FoodResult {
   kcal?: number | null
   /** 100g당 단백질(g). null·없음은 "정보 없음"이며 0과 다르다. */
   protein?: number | null
+  /** 원본 데이터의 분류(예: 한식). 서비스 식품 구분·음식 종류와 다르며 없으면 표시하지 않는다. */
+  category?: string
+  /** 영양정보의 출처 이름. 개발용 예시 데이터이면 화면이 그대로 보여 실제 운영 데이터와 구분한다. */
+  sourceLabel?: string
 }
 
 /**
