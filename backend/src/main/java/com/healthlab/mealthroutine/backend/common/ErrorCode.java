@@ -21,7 +21,6 @@ public enum ErrorCode {
     DIET_GOAL_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 목표를 찾을 수 없습니다."),
     QUIZ_NOT_FOUND(HttpStatus.NOT_FOUND, "오늘의 퀴즈가 없습니다."),
     QUIZ_ALREADY_ATTEMPTED(HttpStatus.CONFLICT, "오늘의 퀴즈는 이미 풀었습니다."),
-    DIET_GOAL_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 목표를 찾을 수 없습니다."),
     // Signup: the wording avoids saying the email is already registered (decision EMAIL-2).
     EMAIL_UNAVAILABLE(HttpStatus.CONFLICT, "사용할 수 없는 이메일입니다. 다른 이메일을 입력해 주세요."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요."),
