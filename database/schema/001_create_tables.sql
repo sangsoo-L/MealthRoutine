@@ -1,5 +1,5 @@
 -- erdclould 기준. 운동 테이블 8개만 변경: PK AUTO_INCREMENT, 복합 UNIQUE, updated_at 자동 갱신,
--- 식단 테이블 5개 변경(정민재): PK AUTO_INCREMENT, salt→sodium_mg, foods.category·reference_serving_size, meal_records.record_type, preference_meal 복합 UNIQUE, quantity_unit 삭제.
+-- 식단 테이블 변경(정민재): diet_goals PK AUTO_INCREMENT·updated_at 추가, PK AUTO_INCREMENT, salt→sodium_mg, foods.category·reference_serving_size, meal_records.record_type, preference_meal 복합 UNIQUE, quantity_unit 삭제.
 -- workout_session_exercises.exercise_id 추가, 루틴 삭제 시 운동 기록의 연결만 해제(ON DELETE SET NULL).
 -- 회원 테이블 변경(회원 파트): users.user_id AUTO_INCREMENT(인라인 PK, PK_USERS ALTER 제거). ERDCloud는 AUTO_INCREMENT를 표현하지 못해 이 파일에서 관리.
 -- 회원 테이블 변경(회원 파트): users에 최신 ERD의 토큰·PIN 컬럼 6개 반영(refresh_token_hash·refresh_token_expires_at·reset_token_hash·reset_token_expires_at·pin_failed_count·pin_locked_until). 기존 DB는 database/migration/20261118_users_token_pin_columns.sql 참고.
@@ -21,7 +21,7 @@ CREATE TABLE `meal_record_items` (
 );
 
 CREATE TABLE `diet_goals` (
-	`diet_goal_id`	BIGINT	NOT NULL,
+	`diet_goal_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`target_calories_kcal`	DECIMAL(8,2)	NULL	COMMENT '목표칼로리',
 	`target_weight_kg`	DECIMAL(5,2)	NULL	COMMENT '목표 몸무게',
@@ -33,7 +33,8 @@ CREATE TABLE `diet_goals` (
 	`start_date`	DATE	NOT NULL	COMMENT '시작일',
 	`end_date`	DATE	NULL	COMMENT '종료일',
 	`status`	ENUM('active','completed','paused','cancelled')	NOT NULL	DEFAULT 'active'	COMMENT '목표 상태',
-	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자'
+	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
+	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정일자'
 );
 
 CREATE TABLE `exercise_routine_items` (
@@ -501,10 +502,6 @@ CREATE TABLE `health_goals` (
 	`status`	ENUM('active','completed','paused','cancelled')	NOT NULL	DEFAULT 'active'	COMMENT '상태',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일시',
 	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '수정일시'
-);
-
-ALTER TABLE `diet_goals` ADD CONSTRAINT `PK_DIET_GOALS` PRIMARY KEY (
-	`diet_goal_id`
 );
 
 ALTER TABLE `user_auth_identities` ADD CONSTRAINT `PK_USER_AUTH_IDENTITIES` PRIMARY KEY (
