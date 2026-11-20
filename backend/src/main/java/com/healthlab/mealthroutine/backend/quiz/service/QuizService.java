@@ -31,7 +31,9 @@ public class QuizService {
         QuizQuestion q = todayQuestion(today);
         QuizResultResponse result = attemptRepository.findByUserIdAndAttemptDate(userId,today)
                 .map(a -> toResult(a.isCorrect(),q)).orElse(null); // 푼 사람만 정답 보여줌
-        return new TodayQuizResponse(q.getQuizQuestionId(),q.getQuestionText(),q.getTopic(), result != null , result);
+        return new TodayQuizResponse(q.getQuizQuestionId(),q.getQuestionText(),q.getTopic(),
+                q.getQuestionType(),q.getOptions(),
+                result != null , result);
     }
 
     @Transactional

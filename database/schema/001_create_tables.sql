@@ -75,7 +75,9 @@ CREATE TABLE `exercise_routines` (
 
 CREATE TABLE `quiz_questions` (
 	`quiz_question_id`	BIGINT	NOT NULL AUTO_INCREMENT	PRIMARY KEY,
+    `question_type` ENUM('multiple_choice','true_false') NOT NULL DEFAULT 'true_false' COMMENT '문제 유형',
 	`question_text`	TEXT	NOT NULL	COMMENT '퀴즈 질문',
+    `options` JSON NULL COMMENT '보기 4개 (OX면 NULL)',
 	`explanation`	TEXT	NULL	COMMENT '퀴즈 설명',
 	`topic`	VARCHAR(100)	NULL	COMMENT '주제',
 	`difficulty`	ENUM('easy','medium','hard')	NOT NULL	DEFAULT 'easy'	COMMENT '난이도',
