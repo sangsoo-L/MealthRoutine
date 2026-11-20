@@ -23,6 +23,9 @@ public class Food extends BaseTimeEntity { // created_at, updated_at
     @Column(nullable = false,length = 200)
     private String name;
 
+    @Column(length = 100)
+    private String category;    // 추가: 식품 대분류 (예: 빵 및 과자류)
+
     @Column(length = 160)
     private String brand;
 
