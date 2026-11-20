@@ -1,5 +1,7 @@
 package com.healthlab.mealthroutine.backend.diet.service;
 
+import com.healthlab.mealthroutine.backend.common.BusinessException;
+import com.healthlab.mealthroutine.backend.common.ErrorCode;
 import com.healthlab.mealthroutine.backend.diet.domain.*;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordCreateRequest;
 import com.healthlab.mealthroutine.backend.diet.dto.MealRecordResponse;
@@ -73,9 +75,9 @@ public class MealRecordService {
     private MealRecord findOwned(Long userId,Long mealRecordId){
         MealRecord record = mealRecordRepository.findById(mealRecordId)
                 .filter(r -> r.getRecordStatus() != RecordStatus.DELETED) // 삭제된건 없는지
-                .orElseThrow(() -> new IllegalArgumentException("식단 기록을 찾을 수 없습니다 . id=" + mealRecordId ));
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEAL_RECORD_NOT_FOUND));
         if (!record.getUserId().equals(userId)){
-            throw new IllegalArgumentException("본인의 식단 기록만 조회할 수 있습니다.");
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         return record;
     }
@@ -83,7 +85,7 @@ public class MealRecordService {
     private void addItems(MealRecord record, List<MealRecordCreateRequest.Item> items){
         for(MealRecordCreateRequest.Item item : items){
             Food food = foodRepository.findById(item.foodId())
-                    .orElseThrow(() -> new IllegalArgumentException("음식을 찾을 수 없습니다. id="+ item.foodId()));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.FOOD_NOT_FOUND));
             record.addItem(MealRecordItem.of(food,item.quantity()));
         }
     }

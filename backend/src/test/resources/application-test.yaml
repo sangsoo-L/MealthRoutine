@@ -1,3 +1,8 @@
 spring:
   datasource:
     url: jdbc:mysql://localhost:3306/mealthroutine_test
+
+# Tests use a separate key from .env (decision TEST-KEY-1). No key value is stored in the repository.
+app:
+  jwt:
+    secret: ${JWT_SECRET_TEST}

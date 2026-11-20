@@ -1,25 +1,27 @@
 -- erdclould 기준. 운동 테이블 8개만 변경: PK AUTO_INCREMENT, 복합 UNIQUE, updated_at 자동 갱신,
+-- 식단 테이블 변경(정민재): diet_goals PK AUTO_INCREMENT·updated_at 추가, PK AUTO_INCREMENT, salt→sodium_mg, foods.category·reference_serving_size, meal_records.record_type, preference_meal 복합 UNIQUE, quantity_unit 삭제.
 -- workout_session_exercises.exercise_id 추가, 루틴 삭제 시 운동 기록의 연결만 해제(ON DELETE SET NULL).
+-- 회원 테이블 변경(회원 파트): users.user_id AUTO_INCREMENT(인라인 PK, PK_USERS ALTER 제거). ERDCloud는 AUTO_INCREMENT를 표현하지 못해 이 파일에서 관리.
+-- 회원 테이블 변경(회원 파트): users에 최신 ERD의 토큰·PIN 컬럼 6개 반영(refresh_token_hash·refresh_token_expires_at·reset_token_hash·reset_token_expires_at·pin_failed_count·pin_locked_until). 기존 DB는 database/migration/20261118_users_token_pin_columns.sql 참고.
 SET NAMES utf8mb4;
 
 CREATE TABLE `meal_record_items` (
-	`meal_item_id`	BIGINT	NOT NULL,
+	`meal_item_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`meal_record_id`	BIGINT	NOT NULL,
 	`food_id`	BIGINT	NULL,
 	`food_name_snapshot`	VARCHAR(200)	NOT NULL	COMMENT '음식이름',
-	`quantity`	DECIMAL(8,2)	NOT NULL	DEFAULT 1	COMMENT '중량',
-	`quantity_unit`	VARCHAR(30)	NULL	COMMENT '식사 단위',
+	`quantity`	DECIMAL(8,2)	NOT NULL	DEFAULT 1	COMMENT '섭취량(인분 수)',
 	`calories_kcal`	DECIMAL(9,2)	NULL	COMMENT '칼로리',
 	`carbohydrate_g`	DECIMAL(8,2)	NULL	COMMENT '탄수화물',
 	`protein_g`	DECIMAL(8,2)	NULL	COMMENT '단백질',
 	`fat_g`	DECIMAL(8,2)	NULL	COMMENT '지방',
 	`sugar_g`	DECIMAL(8,2)	NULL	COMMENT '당류',
-	`salt_g`	DECIMAL(8,2)	NULL	COMMENT '염화나트륨',
+	`sodium_mg`	DECIMAL(8,2)	NULL	COMMENT '나트륨(mg)',
 	`nutrients_snapshot`	JSON	NULL	COMMENT '영양정보'
 );
 
 CREATE TABLE `diet_goals` (
-	`diet_goal_id`	BIGINT	NOT NULL,
+	`diet_goal_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`target_calories_kcal`	DECIMAL(8,2)	NULL	COMMENT '목표칼로리',
 	`target_weight_kg`	DECIMAL(5,2)	NULL	COMMENT '목표 몸무게',
@@ -27,11 +29,12 @@ CREATE TABLE `diet_goals` (
 	`target_carbohydrate_g`	DECIMAL(8,2)	NULL	COMMENT '목표 탄수화물',
 	`target_fat_g`	DECIMAL(8,2)	NULL	COMMENT '목표 지방',
 	`target_sugar_g`	DECIMAL(8,2)	NULL	COMMENT '목표 당분',
-	`target_salt_g`	DECIMAL(8,2)	NULL	COMMENT '목표 나트륨 섭취',
+	`target_sodium_mg`	DECIMAL(8,2)	NULL	COMMENT '목표 나트륨 섭취(mg)',
 	`start_date`	DATE	NOT NULL	COMMENT '시작일',
 	`end_date`	DATE	NULL	COMMENT '종료일',
 	`status`	ENUM('active','completed','paused','cancelled')	NOT NULL	DEFAULT 'active'	COMMENT '목표 상태',
-	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자'
+	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
+	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정일자'
 );
 
 CREATE TABLE `exercise_routine_items` (
@@ -91,9 +94,10 @@ CREATE TABLE `workout_session_sets` (
 );
 
 CREATE TABLE `foods` (
-	`food_id`	BIGINT	NOT NULL,
+	`food_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`source_id`	BIGINT	NULL,
 	`name`	VARCHAR(200)	NOT NULL	COMMENT '음식 이름',
+	`category`	VARCHAR(100)	NULL	COMMENT '식품 대분류 (식약처 식품대분류명)',
 	`brand`	VARCHAR(160)	NULL	COMMENT '음식 브랜드',
 	`serving_size`	DECIMAL(8,2)	NULL	COMMENT '음식데이터 기준량',
 	`serving_unit`	VARCHAR(30)	NULL	COMMENT '기준 단위',
@@ -102,14 +106,15 @@ CREATE TABLE `foods` (
 	`protein_g`	DECIMAL(8,2)	NULL	COMMENT '단백질 양',
 	`fat_g`	DECIMAL(8,2)	NULL	COMMENT '지방 양',
 	`sugar_g`	DECIMAL(8,2)	NULL	COMMENT '당분 양',
-	`salt_mg`	DECIMAL(8,2)	NULL	COMMENT '소금 양',
+	`sodium_mg`	DECIMAL(8,2)	NULL	COMMENT '나트륨 양(mg)',
+	`reference_serving_size`	DECIMAL(8,2)	NULL	COMMENT '1인분 참고량',
 	`external_food_id`	VARCHAR(255)	NULL	COMMENT '다른음식/source_id와 UNIQUE 처리',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
-	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '수정일자'
+	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정일자'
 );
 
 CREATE TABLE `users` (
-	`user_id`	BIGINT	NOT NULL,
+	`user_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`email`	VARCHAR(255) UNIQUE	NULL	COMMENT '이메일',
 	`username`	VARCHAR(50)	NOT NULL	COMMENT '사용자 실명',
 	`password_hash`	VARCHAR(255)	NULL	COMMENT '비밀번호 원문 저장 금지',
@@ -117,6 +122,12 @@ CREATE TABLE `users` (
 	`account_status`	ENUM('active', 'suspended', 'pending_deletion', 'deleted')	NOT NULL	DEFAULT 'active'	COMMENT '계정 상태',
 	`user_role`	ENUM('user', 'subscribe_user','content_admin', 'privacy_admin', 'super_admin')	NOT NULL	DEFAULT 'user'	COMMENT '계정 권한',
 	`is_agreed_term`	BOOLEAN	NOT NULL	COMMENT '약관동의여부',
+	`refresh_token_hash`	VARCHAR(255)	NULL	COMMENT '리프레시 토큰 해시(원문 저장 금지)',
+	`refresh_token_expires_at`	DATETIME	NULL	COMMENT '리프레시 토큰 만료일시',
+	`reset_token_hash`	VARCHAR(255)	NULL	COMMENT '비밀번호 재설정 토큰 해시(원문 저장 금지)',
+	`reset_token_expires_at`	DATETIME	NULL	COMMENT '비밀번호 재설정 토큰 만료일시',
+	`pin_failed_count`	TINYINT UNSIGNED	NOT NULL	DEFAULT 0	COMMENT '2차비밀번호 연속 실패 횟수',
+	`pin_locked_until`	DATETIME	NULL	COMMENT '2차비밀번호 잠금 해제일시',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
 	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '수정일자',
 	`deleted_at`	DATETIME	NULL	COMMENT '삭제일자'
@@ -193,10 +204,11 @@ CREATE TABLE `community_comments` (
 );
 
 CREATE TABLE `preference_meal` (
-	`preference_meal_id`	BIGINT	NOT NULL,
+	`preference_meal_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`food_id`	BIGINT	NOT NULL	COMMENT 'user_id랑 묶어서 UNIQUE처리',
-	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP
+	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE KEY `UK_PREFERENCE_MEAL_USER_FOOD` (`user_id`, `food_id`)
 );
 
 CREATE TABLE `reward_rules` (
@@ -263,7 +275,7 @@ CREATE TABLE `community_posts_likes` (
 );
 
 CREATE TABLE `food_data_sources` (
-	`source_id`	BIGINT	NOT NULL,
+	`source_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`source_name`	VARCHAR(160)	NOT NULL	COMMENT '음식 이름',
 	`source_url`	VARCHAR(1000)	NULL	COMMENT '저장 url',
 	`terms_note`	VARCHAR(1000)	NULL	COMMENT '음식 세부정보',
@@ -404,20 +416,21 @@ CREATE TABLE `audit_logs` (
 );
 
 CREATE TABLE `meal_records` (
-	`meal_record_id`	BIGINT	NOT NULL,
+	`meal_record_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`meal_at`	DATETIME	NOT NULL	COMMENT '식사시각',
 	`meal_type`	ENUM('breakfast','lunch','dinner','snack','other')	NOT NULL	DEFAULT 'other'	COMMENT '식사유형',
+	`record_type`	ENUM('plan','actual')	NOT NULL	DEFAULT 'actual'	COMMENT '기록 구분 (plan: 계획, actual: 실제 섭취)',
 	`total_calories_kcal`	DECIMAL(9,2)	NULL	COMMENT '총 칼로리',
 	`total_carbohydrate_g`	DECIMAL(8,2)	NULL	COMMENT '총 탄수화물',
 	`total_protein_g`	DECIMAL(8,2)	NULL	COMMENT '총 단백질',
 	`total_fat_g`	DECIMAL(8,2)	NULL	COMMENT '총 지방',
 	`total_sugar_g`	DECIMAL(8,2)	NULL	COMMENT '총 당 섭취량',
-	`total_salt_g`	DECIMAL(8,2)	NULL	COMMENT '총 나트륨 섭취',
+	`total_sodium_mg`	DECIMAL(8,2)	NULL	COMMENT '총 나트륨 섭취(mg)',
 	`notes`	VARCHAR(1000)	NULL	COMMENT '오늘의 식사 메모',
 	`record_status`	ENUM('draft','confirmed','deleted')	NOT NULL	DEFAULT 'confirmed'	COMMENT '저장상태',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성시간',
-	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '수정시간'
+	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정시간'
 );
 
 CREATE TABLE `diet_recommendations` (
@@ -491,28 +504,12 @@ CREATE TABLE `health_goals` (
 	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '수정일시'
 );
 
-ALTER TABLE `meal_record_items` ADD CONSTRAINT `PK_MEAL_RECORD_ITEMS` PRIMARY KEY (
-	`meal_item_id`
-);
-
-ALTER TABLE `diet_goals` ADD CONSTRAINT `PK_DIET_GOALS` PRIMARY KEY (
-	`diet_goal_id`
-);
-
 ALTER TABLE `user_auth_identities` ADD CONSTRAINT `PK_USER_AUTH_IDENTITIES` PRIMARY KEY (
 	`auth_identity_id`
 );
 
 ALTER TABLE `quiz_questions` ADD CONSTRAINT `PK_QUIZ_QUESTIONS` PRIMARY KEY (
 	`quiz_question_id`
-);
-
-ALTER TABLE `foods` ADD CONSTRAINT `PK_FOODS` PRIMARY KEY (
-	`food_id`
-);
-
-ALTER TABLE `users` ADD CONSTRAINT `PK_USERS` PRIMARY KEY (
-	`user_id`
 );
 
 ALTER TABLE `diet_recommendation_items` ADD CONSTRAINT `PK_DIET_RECOMMENDATION_ITEMS` PRIMARY KEY (
@@ -540,10 +537,6 @@ ALTER TABLE `community_comments` ADD CONSTRAINT `PK_COMMUNITY_COMMENTS` PRIMARY 
 	`comment_id`
 );
 
-ALTER TABLE `preference_meal` ADD CONSTRAINT `PK_PREFERENCE_MEAL` PRIMARY KEY (
-	`preference_meal_id`
-);
-
 ALTER TABLE `reward_rules` ADD CONSTRAINT `PK_REWARD_RULES` PRIMARY KEY (
 	`reward_rule_id`
 );
@@ -566,10 +559,6 @@ ALTER TABLE `user_health_preferences` ADD CONSTRAINT `PK_USER_HEALTH_PREFERENCES
 
 ALTER TABLE `community_posts_likes` ADD CONSTRAINT `PK_COMMUNITY_POSTS_LIKES` PRIMARY KEY (
 	`community_posts_like_id`
-);
-
-ALTER TABLE `food_data_sources` ADD CONSTRAINT `PK_FOOD_DATA_SOURCES` PRIMARY KEY (
-	`source_id`
 );
 
 ALTER TABLE `user_type_results` ADD CONSTRAINT `PK_USER_TYPE_RESULTS` PRIMARY KEY (
@@ -606,10 +595,6 @@ ALTER TABLE `exercise_recommendations` ADD CONSTRAINT `PK_EXERCISE_RECOMMENDATIO
 
 ALTER TABLE `audit_logs` ADD CONSTRAINT `PK_AUDIT_LOGS` PRIMARY KEY (
 	`audit_log_id`
-);
-
-ALTER TABLE `meal_records` ADD CONSTRAINT `PK_MEAL_RECORDS` PRIMARY KEY (
-	`meal_record_id`
 );
 
 ALTER TABLE `diet_recommendations` ADD CONSTRAINT `PK_DIET_RECOMMENDATIONS` PRIMARY KEY (
