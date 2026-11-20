@@ -19,6 +19,7 @@ Spring Boot 담당자와 협의한 후 확정해야 한다.
 """
 
 from fastapi import FastAPI
+from routers.diet_catalog import router as diet_catalog_router
 
 from routers.exercise import router as exercise_router
 from routers.diet import router as diet_router
@@ -38,6 +39,7 @@ app.include_router(diet_router)
 app.include_router(food_router)
 app.include_router(llm_preview_router)
 app.include_router(food_preview_router)
+app.include_router(diet_catalog_router)
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
