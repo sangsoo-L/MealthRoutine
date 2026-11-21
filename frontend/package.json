@@ -11,6 +11,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "verify:dist": "node scripts/verify-dist.mjs",
+    "test:node": "node --test \"tests/*.test.mjs\"",
+    "test:dashboard": "node --test tests/dashboardSelectors.test.mjs tests/dashboardRendering.test.mjs",
+    "test:chrome": "node tests/chrome/run.mjs",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
