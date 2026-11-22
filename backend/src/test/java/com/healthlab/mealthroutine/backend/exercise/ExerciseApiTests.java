@@ -9,14 +9,18 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.healthlab.mealthroutine.backend.user.domain.UserRole;
+import com.healthlab.mealthroutine.backend.user.jwt.JwtTokenProvider;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -55,6 +59,9 @@ class ExerciseApiTests {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
 
     @BeforeEach
     void setUp() {
@@ -96,7 +103,8 @@ class ExerciseApiTests {
                     .andExpect(jsonPath(ERROR_CODE).value("LOGIN_REQUIRED"));
         }
         send(post(ROUTINES), null, routineJson(PRIVATE)).andExpect(status().isUnauthorized());
-        perform(get(FAVORITES), "not-a-number").andExpect(status().isUnauthorized());
+        perform(get(FAVORITES).header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt"), null)
+                .andExpect(status().isUnauthorized());
         perform(get(FAVORITES), "999999").andExpect(status().isUnauthorized());
     }
 
@@ -269,10 +277,14 @@ class ExerciseApiTests {
         return perform(request.contentType(MediaType.APPLICATION_JSON).content(json), userId);
     }
 
-    /** Clears the persistence context afterwards so each call reads what is really in the DB. */
+    /**
+     * Sends the request as that user with a real access token (null = guest).
+     * Clears the persistence context afterwards so each call reads what is really in the DB.
+     */
     private ResultActions perform(MockHttpServletRequestBuilder request, String userId) throws Exception {
         if (userId != null) {
-            request.header("X-User-Id", userId);
+            String token = jwtTokenProvider.createAccessToken(Long.valueOf(userId), UserRole.USER, Instant.now());
+            request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
         }
         ResultActions result = mockMvc.perform(request);
         entityManager.flush();
