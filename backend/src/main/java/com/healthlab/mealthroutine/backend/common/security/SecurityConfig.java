@@ -21,9 +21,15 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 public class SecurityConfig {
 
+    /** Refresh and logout use only the refresh cookie, never the Authorization header (AUTH2-5 exception D-2). */
+    static final String REFRESH_PATH = "/api/v1/auth/token/refresh";
+    static final String LOGOUT_PATH = "/api/v1/auth/logout";
+
     private static final String[] PUBLIC_POST = {
         "/api/v1/auth/signup",
         "/api/v1/auth/login",
+        REFRESH_PATH,
+        LOGOUT_PATH,
     };
 
     // "*" is one path segment: /exercises/3 is public, /exercises/3/anything is not.
@@ -41,8 +47,9 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtTokenProvider tokenProvider,
             AuthUserLookup authUserLookup, SecurityErrorResponder errorResponder) throws Exception {
         http
-                // Login uses the Authorization header, which browsers never attach on their own, so CSRF does not
-                // apply here. The refresh cookie endpoint gets its own check in login unit 3.
+                // APIs use the Authorization header, which browsers never attach on their own, so Spring's CSRF
+                // token is not used. The two cookie endpoints (refresh, logout) instead require the
+                // X-Requested-With header, checked in AuthController (AUTH3-5).
                 .csrf(AbstractHttpConfigurer::disable)
                 // No server session, login page, Basic auth or logout page: JWT only.
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

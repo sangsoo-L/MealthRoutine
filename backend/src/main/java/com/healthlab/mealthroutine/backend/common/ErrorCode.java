@@ -30,6 +30,10 @@ public enum ErrorCode {
     // Access token: expired is separate so the client refreshes only then (decision AUTH2-3).
     TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "로그인이 만료되었습니다. 다시 로그인해 주세요."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "인증 정보가 올바르지 않습니다. 다시 로그인해 주세요."),
+    // Refresh cookie missing, unknown, expired, already rotated, or the account can no longer log in (AUTH3-2).
+    REFRESH_INVALID(HttpStatus.UNAUTHORIZED, "로그인이 만료되었습니다. 다시 로그인해 주세요."),
+    // Refresh and logout without the X-Requested-With header (AUTH3-5).
+    CSRF_REJECTED(HttpStatus.FORBIDDEN, "허용되지 않은 요청입니다."),
     DATA_CONFLICT(HttpStatus.CONFLICT, "다른 데이터와 충돌하여 처리할 수 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 
