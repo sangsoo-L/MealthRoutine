@@ -37,7 +37,8 @@ public record SignupRequest(
 
     static final String PASSWORD_RULE = "^(?=.*[A-Za-z])(?=.*[0-9])(?=.*[!-/:-@\\[-`{-~])[!-~]{8,64}$";
     static final String USERNAME_RULE = "^(?:[가-힣]{2,10}|(?=.{2,30}$)[A-Za-z]+(?: [A-Za-z]+)*)$";
-    static final String NICKNAME_RULE = "^(?:(?=.*[가-힣])[가-힣A-Za-z0-9]{2,8}|[A-Za-z0-9]{2,16})$";
+    /** Also used by profile PATCH (PROFILE4-5), so the two can never drift apart. */
+    public static final String NICKNAME_RULE = "^(?:(?=.*[가-힣])[가-힣A-Za-z0-9]{2,8}|[A-Za-z0-9]{2,16})$";
 
     public SignupRequest {
         email = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
