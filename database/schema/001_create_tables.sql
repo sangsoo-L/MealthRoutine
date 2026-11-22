@@ -1,8 +1,10 @@
 -- erdclould 기준. 운동 테이블 8개만 변경: PK AUTO_INCREMENT, 복합 UNIQUE, updated_at 자동 갱신,
 -- 식단 테이블 변경(정민재): diet_goals PK AUTO_INCREMENT·updated_at 추가, PK AUTO_INCREMENT, salt→sodium_mg, foods.category·reference_serving_size, meal_records.record_type, preference_meal 복합 UNIQUE, quantity_unit 삭제.
+-- 보상 테이블 6개 변경(정민재): PK AUTO_INCREMENT, user_progress·point_accounts 기본값과 updated_at 자동 갱신.
 -- workout_session_exercises.exercise_id 추가, 루틴 삭제 시 운동 기록의 연결만 해제(ON DELETE SET NULL).
 -- 회원 테이블 변경(회원 파트): users.user_id AUTO_INCREMENT(인라인 PK, PK_USERS ALTER 제거). ERDCloud는 AUTO_INCREMENT를 표현하지 못해 이 파일에서 관리.
 -- 회원 테이블 변경(회원 파트): users에 최신 ERD의 토큰·PIN 컬럼 6개 반영(refresh_token_hash·refresh_token_expires_at·reset_token_hash·reset_token_expires_at·pin_failed_count·pin_locked_until). 기존 DB는 database/migration/20261118_users_token_pin_columns.sql 참고.
+-- 출석 테이블 추가(정민재): attendances, (user_id, attend_date) UNIQUE로 하루 1회.
 SET NAMES utf8mb4;
 
 CREATE TABLE `meal_record_items` (
@@ -72,8 +74,10 @@ CREATE TABLE `exercise_routines` (
 );
 
 CREATE TABLE `quiz_questions` (
-	`quiz_question_id`	BIGINT	NOT NULL,
+	`quiz_question_id`	BIGINT	NOT NULL AUTO_INCREMENT	PRIMARY KEY,
+    `question_type` ENUM('multiple_choice','true_false') NOT NULL DEFAULT 'true_false' COMMENT '문제 유형',
 	`question_text`	TEXT	NOT NULL	COMMENT '퀴즈 질문',
+    `options` JSON NULL COMMENT '보기 4개 (OX면 NULL)',
 	`explanation`	TEXT	NULL	COMMENT '퀴즈 설명',
 	`topic`	VARCHAR(100)	NULL	COMMENT '주제',
 	`difficulty`	ENUM('easy','medium','hard')	NOT NULL	DEFAULT 'easy'	COMMENT '난이도',
@@ -164,7 +168,7 @@ CREATE TABLE `notification_preferences` (
 );
 
 CREATE TABLE `level_rules` (
-	`level_rule_id`	BIGINT	NOT NULL,
+    `level_rule_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`level_number`	INT UNIQUE	NOT NULL	COMMENT '현재 레벨',
 	`required_total_xp`	BIGINT	NOT NULL	COMMENT '필요한 경험치량',
 	`level_name`	VARCHAR(100)	NULL	COMMENT '레벨 이름',
@@ -172,13 +176,15 @@ CREATE TABLE `level_rules` (
 );
 
 CREATE TABLE `quiz_attempts` (
-	`quiz_attempt_id`	BIGINT	NOT NULL,
+	`quiz_attempt_id`	BIGINT	NOT NULL AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`quiz_question_id`	BIGINT	NOT NULL,
 	`user_guess_questions`	ENUM('O','X','A','B','C','D','E')	NULL	COMMENT '사용자 입력 정답',
 	`is_correct`	BOOLEAN	NOT NULL	COMMENT '정답 적중 여부',
 	`points_awarded`	INT	NOT NULL	DEFAULT 0	COMMENT '포인트 수령 값',
-	`attempted_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성 시각'
+    `attempt_date`	DATE	NOT NULL	COMMENT '푼 날짜 (하루 1회)',
+	`attempted_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성 시각',
+    UNIQUE KEY `UK_QUIZ_ATTEMPT_USER_DATE` (`user_id`, `attempt_date`)
 );
 
 CREATE TABLE `workout_sessions` (
@@ -212,7 +218,7 @@ CREATE TABLE `preference_meal` (
 );
 
 CREATE TABLE `reward_rules` (
-	`reward_rule_id`	BIGINT	NOT NULL,
+    `reward_rule_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`rule_code`	VARCHAR(100) UNIQUE	NOT NULL	COMMENT '룰 넘버링',
 	`rule_description`	VARCHAR(500)	NULL	COMMENT '룰 설명',
 	`points_amount`	INT	NOT NULL	DEFAULT 0	COMMENT '포인트 수량',
@@ -253,9 +259,11 @@ CREATE TABLE `user_profiles` (
 );
 
 CREATE TABLE `user_progress` (
-	`user_id`	BIGINT	NOT NULL,
-	`total_xp`	BIGINT	NOT NULL	COMMENT '토탈경험치 기본값 0주면됨',
-	`level`	INT	NOT NULL	COMMENT '레벨 기본값  1'
+	`user_id`	BIGINT	NOT NULL	PRIMARY KEY,
+	`total_xp`	BIGINT	NOT NULL	DEFAULT 0	COMMENT '누적 경험치',
+	`level`	INT	NOT NULL	DEFAULT 1	COMMENT '현재 레벨',
+    `updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정 시각'
+
 );
 
 CREATE TABLE `user_health_preferences` (
@@ -445,20 +453,27 @@ CREATE TABLE `diet_recommendations` (
 );
 
 CREATE TABLE `point_accounts` (
-	`user_id`	BIGINT	NOT NULL,
+	`user_id`	BIGINT	NOT NULL	PRIMARY KEY,
 	`balance`	BIGINT	NOT NULL	DEFAULT 0	COMMENT '포인트 총액',
-	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '수정 시각'
+	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정 시각'
 );
 
 CREATE TABLE `point_transactions` (
-	`point_transaction_id`	BIGINT	NOT NULL,
+	`point_transaction_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
-	`amount`	INT	NOT NULL	COMMENT '총량',
-	`transaction_type`	ENUM('earn','spend','expire','adjustment','refund')	NOT NULL	COMMENT '기록',
-	`source_type`	VARCHAR(60)	NULL	COMMENT '획득 유형',
+	`amount`	INT	NOT NULL	COMMENT '변동량 (사용은 음수)',
+	`transaction_type`	ENUM('earn','spend','expire','adjustment','refund')	NOT NULL	COMMENT '변동 유형',
+	`source_type`	VARCHAR(60)	NULL	COMMENT '지급 사유 (rule_code)',
 	`description`	VARCHAR(500)	NULL	COMMENT '설명',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
 	`point_idempotency_key`	VARCHAR(150) UNIQUE	NOT NULL	COMMENT '포인트 중복 지급 방지 키'
+);
+
+CREATE TABLE `attendances` (
+    `attendance_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
+    `user_id`	BIGINT	NOT NULL	COMMENT '회원 ID',
+    `attend_date`	DATE	NOT NULL	COMMENT '출석 날짜',
+     UNIQUE KEY `UK_ATTENDANCE_USER_DATE` (`user_id`, `attend_date`)
 );
 
 CREATE TABLE `community_posts` (
@@ -482,7 +497,7 @@ CREATE TABLE `report_actions` (
 );
 
 CREATE TABLE `experience_transactions` (
-	`experience_transaction_id`	BIGINT	NOT NULL,
+	`experience_transaction_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`xp_amount`	INT	NOT NULL	COMMENT '경험치 값',
 	`source_type`	VARCHAR(60)	NOT NULL	COMMENT '생성 유형',
@@ -508,9 +523,7 @@ ALTER TABLE `user_auth_identities` ADD CONSTRAINT `PK_USER_AUTH_IDENTITIES` PRIM
 	`auth_identity_id`
 );
 
-ALTER TABLE `quiz_questions` ADD CONSTRAINT `PK_QUIZ_QUESTIONS` PRIMARY KEY (
-	`quiz_question_id`
-);
+
 
 ALTER TABLE `diet_recommendation_items` ADD CONSTRAINT `PK_DIET_RECOMMENDATION_ITEMS` PRIMARY KEY (
 	`diet_recommendation_item_id`
@@ -525,21 +538,15 @@ ALTER TABLE `notification_preferences` ADD CONSTRAINT `PK_NOTIFICATION_PREFERENC
 	`user_id`
 );
 
-ALTER TABLE `level_rules` ADD CONSTRAINT `PK_LEVEL_RULES` PRIMARY KEY (
-	`level_rule_id`
-);
 
-ALTER TABLE `quiz_attempts` ADD CONSTRAINT `PK_QUIZ_ATTEMPTS` PRIMARY KEY (
-	`quiz_attempt_id`
-);
+
+
 
 ALTER TABLE `community_comments` ADD CONSTRAINT `PK_COMMUNITY_COMMENTS` PRIMARY KEY (
 	`comment_id`
 );
 
-ALTER TABLE `reward_rules` ADD CONSTRAINT `PK_REWARD_RULES` PRIMARY KEY (
-	`reward_rule_id`
-);
+
 
 ALTER TABLE `food_analysis_results` ADD CONSTRAINT `PK_FOOD_ANALYSIS_RESULTS` PRIMARY KEY (
 	`food_analysis_result_id`
@@ -549,9 +556,7 @@ ALTER TABLE `user_profiles` ADD CONSTRAINT `PK_USER_PROFILES` PRIMARY KEY (
 	`user_id`
 );
 
-ALTER TABLE `user_progress` ADD CONSTRAINT `PK_USER_PROGRESS` PRIMARY KEY (
-	`user_id`
-);
+
 
 ALTER TABLE `user_health_preferences` ADD CONSTRAINT `PK_USER_HEALTH_PREFERENCES` PRIMARY KEY (
 	`user_id`
@@ -601,14 +606,6 @@ ALTER TABLE `diet_recommendations` ADD CONSTRAINT `PK_DIET_RECOMMENDATIONS` PRIM
 	`diet_recommendation_id`
 );
 
-ALTER TABLE `point_accounts` ADD CONSTRAINT `PK_POINT_ACCOUNTS` PRIMARY KEY (
-	`user_id`
-);
-
-ALTER TABLE `point_transactions` ADD CONSTRAINT `PK_POINT_TRANSACTIONS` PRIMARY KEY (
-	`point_transaction_id`
-);
-
 ALTER TABLE `community_posts` ADD CONSTRAINT `PK_COMMUNITY_POSTS` PRIMARY KEY (
 	`post_id`
 );
@@ -617,9 +614,6 @@ ALTER TABLE `report_actions` ADD CONSTRAINT `PK_REPORT_ACTIONS` PRIMARY KEY (
 	`report_action_id`
 );
 
-ALTER TABLE `experience_transactions` ADD CONSTRAINT `PK_EXPERIENCE_TRANSACTIONS` PRIMARY KEY (
-	`experience_transaction_id`
-);
 
 ALTER TABLE `health_goals` ADD CONSTRAINT `PK_HEALTH_GOALS` PRIMARY KEY (
 	`health_goal_id`

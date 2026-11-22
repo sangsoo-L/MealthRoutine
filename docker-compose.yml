@@ -15,6 +15,9 @@ services:
       - ./database/schema/001_create_tables.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
       - ./database/seed/001_insert_exercises.sql:/docker-entrypoint-initdb.d/002_exercises.sql:ro
       - ./database/seed/002_insert_test_users.sql:/docker-entrypoint-initdb.d/003_users.sql:ro
+      - ./database/seed/003_insert_rewards.sql:/docker-entrypoint-initdb.d/0035_rewards.sql:ro
+      - ./database/seed/004_insert_quizzes.sql:/docker-entrypoint-initdb.d/0036_quizzes.sql:ro
+      - ./database/seed/005_insert_foods.sql:/docker-entrypoint-initdb.d/0037_foods.sql:ro
       - ./database/docker/create-test-db.sql:/docker-entrypoint-initdb.d/004_test_db.sql:ro
 
 volumes:
