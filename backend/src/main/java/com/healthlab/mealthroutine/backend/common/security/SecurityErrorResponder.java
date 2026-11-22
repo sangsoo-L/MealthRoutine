@@ -28,12 +28,14 @@ public class SecurityErrorResponder {
 
     /**
      * The WWW-Authenticate value for an error, shared with GlobalExceptionHandler so every 401 follows one rule.
-     * LOGIN_FAILED gets none on purpose (decision AUTH2-3): it is a wrong email or password in the login body,
-     * and sending a Bearer token would not fix it. This knowingly does not meet the RFC 9110 rule that a 401
-     * carries a challenge. The rule is by error code, not URL: a bad token sent to the login URL still gets one.
+     * LOGIN_FAILED and REFRESH_INVALID get none on purpose (decision AUTH2-3 and its exception D-7): a wrong
+     * email or password, or a bad refresh cookie, is not fixed by sending a Bearer token. This knowingly does not
+     * meet the RFC 9110 rule that a 401 carries a challenge. The rule is by error code, not URL: a bad token sent
+     * to the login URL still gets one.
      */
     public static Optional<String> wwwAuthenticateFor(ErrorCode errorCode) {
-        if (errorCode.getStatus().value() != HttpServletResponse.SC_UNAUTHORIZED || errorCode == ErrorCode.LOGIN_FAILED) {
+        if (errorCode.getStatus().value() != HttpServletResponse.SC_UNAUTHORIZED
+                || errorCode == ErrorCode.LOGIN_FAILED || errorCode == ErrorCode.REFRESH_INVALID) {
             return Optional.empty();
         }
         boolean tokenRejected = errorCode == ErrorCode.TOKEN_EXPIRED || errorCode == ErrorCode.INVALID_TOKEN;

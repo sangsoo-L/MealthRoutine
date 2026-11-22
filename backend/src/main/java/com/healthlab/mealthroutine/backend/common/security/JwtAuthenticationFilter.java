@@ -22,7 +22,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Reads "Authorization: Bearer <access token>" and tells Spring Security who the user is.
  * <ul>
  *   <li>No Authorization header: passes through as a guest. URL rules decide whether guests may continue.</li>
- *   <li>Header present but the token is bad or expired: 401, even on public URLs (decision AUTH2-5).</li>
+ *   <li>Header present but the token is bad or expired: 401, even on public URLs (decision AUTH2-5).
+ *       Exception (D-2): POST refresh and logout ignore the header, because the refresh cookie is their only
+ *       credential and the access token is usually expired by then. Exact path and method only.</li>
  *   <li>Valid token: the account status and role come from the DB on every request (decision AUTH2-2).</li>
  * </ul>
  * X-User-Id is never read. Not a @Component: Spring Boot would also register it as a plain servlet filter,
@@ -47,7 +49,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (header == null) {
+        if (header == null || usesRefreshCookieOnly(request)) {
             chain.doFilter(request, response);
             return;
         }
@@ -78,6 +80,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // Step 3: continue. Not wrapped either; controller errors are handled by GlobalExceptionHandler.
         chain.doFilter(request, response);
+    }
+
+    private static boolean usesRefreshCookieOnly(HttpServletRequest request) {
+        if (!"POST".equals(request.getMethod())) {
+            return false;
+        }
+        String path = request.getRequestURI();
+        return SecurityConfig.REFRESH_PATH.equals(path) || SecurityConfig.LOGOUT_PATH.equals(path);
     }
 
     private AccessTokenResult readToken(String header) {

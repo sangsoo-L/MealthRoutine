@@ -26,7 +26,9 @@ class WwwAuthenticateRuleTests {
             ErrorCode.LOGIN_REQUIRED, "Bearer",
             ErrorCode.TOKEN_EXPIRED, "Bearer error=\"invalid_token\"",
             ErrorCode.INVALID_TOKEN, "Bearer error=\"invalid_token\"",
-            ErrorCode.LOGIN_FAILED, NONE); // the only 401 without one: a wrong email/password, not a Bearer problem
+            // The only 401s without one (AUTH2-3, D-7): wrong email/password or a bad refresh cookie, not a Bearer problem.
+            ErrorCode.LOGIN_FAILED, NONE,
+            ErrorCode.REFRESH_INVALID, NONE);
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
     private final SecurityErrorResponder responder = new SecurityErrorResponder(JsonMapper.builder().build());
