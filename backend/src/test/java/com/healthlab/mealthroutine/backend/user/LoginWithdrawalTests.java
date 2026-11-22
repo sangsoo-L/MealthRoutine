@@ -3,6 +3,7 @@ package com.healthlab.mealthroutine.backend.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -86,7 +88,8 @@ class LoginWithdrawalTests {
     private void assertRefusedAndUnchanged(LocalDateTime deletedAt) throws Exception {
         long userId = insertPending(deletedAt);
 
-        login().andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorCode").value("LOGIN_FAILED"));
+        login().andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorCode").value("LOGIN_FAILED"))
+                .andExpect(header().doesNotExist(HttpHeaders.WWW_AUTHENTICATE)); // same as every LOGIN_FAILED
         Map<String, Object> row = row(userId);
         assertThat(row.get("account_status")).isEqualTo("pending_deletion");
         assertThat(row.get("refresh_token_hash")).isNull();
