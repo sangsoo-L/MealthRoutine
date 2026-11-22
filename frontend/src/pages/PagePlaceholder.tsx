@@ -33,7 +33,7 @@ export function NotFoundPlaceholder() {
         요청하신 페이지를 찾을 수 없습니다.
       </p>
       <Link
-        to="/"
+        to="/home"
         className="mt-3 inline-flex min-h-11 items-center text-body font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         홈으로 이동
