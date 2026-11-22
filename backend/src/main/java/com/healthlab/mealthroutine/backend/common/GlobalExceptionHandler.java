@@ -1,5 +1,6 @@
 package com.healthlab.mealthroutine.backend.common;
 
+import com.healthlab.mealthroutine.backend.common.security.SecurityErrorResponder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
@@ -45,7 +46,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return new ResponseEntity<>(ApiResponse.fail(errorCode), headers, status);
     }
 
+    // A 401 from a controller or service gets the same WWW-Authenticate as one from the security filter.
     private ResponseEntity<ApiResponse<Void>> respond(ErrorCode errorCode) {
-        return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.fail(errorCode));
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(errorCode.getStatus());
+        SecurityErrorResponder.wwwAuthenticateFor(errorCode)
+                .ifPresent(value -> builder.header(HttpHeaders.WWW_AUTHENTICATE, value));
+        return builder.body(ApiResponse.fail(errorCode));
     }
 }
