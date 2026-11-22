@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 public record FoodResponse(
         Long foodId,
         String name,
+        String category,
         String brand,
         BigDecimal servingSize,
         String servingUnit,
@@ -22,7 +23,7 @@ public record FoodResponse(
     // from -> 엔티티를 DTO로 바꿔주는 변환 메서드
     public static  FoodResponse from(Food f){
         return new FoodResponse(
-                f.getFoodId(), f.getName() , f.getBrand(),
+                f.getFoodId(), f.getName() ,f.getCategory(), f.getBrand(),
                 f.getServingSize(),f.getServingUnit(), f.getReferenceServingSize(),
                 f.getCaloriesKcal(),f.getCarbohydrateG(),f.getProteinG(),
                 f.getFatG(),f.getSugarG(),f.getSodiumMg());
