@@ -136,6 +136,17 @@ class ExerciseApiTests {
         perform(get(ROUTINES + "/" + privateId), OTHER).andExpect(status().isForbidden());
         perform(delete(ROUTINES + "/" + publicId), OTHER).andExpect(status().isForbidden());
         send(patch(ROUTINES + "/" + publicId), OTHER, "{\"routineName\":\"x\"}").andExpect(status().isForbidden());
+
+        // Same existing routine and same valid body as above, only without a token: login is the only reason.
+        perform(delete(ROUTINES + "/" + publicId), null)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath(ERROR_CODE).value("LOGIN_REQUIRED"));
+        send(patch(ROUTINES + "/" + publicId), null, "{\"routineName\":\"x\"}")
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath(ERROR_CODE).value("LOGIN_REQUIRED"));
+        perform(get(ROUTINES + "/" + publicId), ME)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.routineName").value("하체"));
     }
 
     @Test
