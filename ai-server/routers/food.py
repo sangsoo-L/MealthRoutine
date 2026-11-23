@@ -26,7 +26,7 @@ router.add_api_route(
     description=(
         "YOLO와 Gemini/OpenAI를 이용하여 음식 사진을 분석합니다. "
         "대표 음식명과 대체 후보를 반환하며, "
-        "match_db=true인 경우 Spring Boot 음식 검색 API와 연동합니다. "
+        "기본으로 Spring Boot 음식 검색 API와 연동해 예상 총칼로리를 산출합니다. "
         "분석 결과는 사용자 확인 후 저장해야 합니다."
     ),
     name="analyze_food",

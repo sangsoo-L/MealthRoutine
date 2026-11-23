@@ -1,9 +1,10 @@
 
-"""Spring 음식 DB 후보 기반 AI 식단 추천.
+"""목표 열량 기반 AI 식단 추천. Spring 음식 DB 후보 자동 조회 지원.
 
 POST /internal/ai/diet-recommendations/from-foods
 
-Spring Boot가 조회한 실제 음식 후보만 사용한다.
+Spring Boot 음식 검색 API로 실제 음식 후보를 자동 조회한다.
+기존처럼 Spring Boot가 조회한 후보를 요청에 함께 실어도 된다.
 FastAPI는 음식 ID 검증과 예상 영양정보 계산을 담당한다.
 실제 저장과 최종 계산은 Spring Boot가 수행한다.
 """
@@ -14,11 +15,13 @@ import os
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from openai import OpenAIError
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from services.diet_food_catalog import fetch_diet_candidates
+from services.spring_food_catalog import SpringFoodApiError
 from services.food_vision import (
     get_gemini_vision_client,
     normalize_food_name,
@@ -103,9 +106,11 @@ class CatalogDietRequest(BaseModel):
         max_length=4,
     )
 
-    available_foods: list[FoodOption] = Field(
+    available_foods: list[FoodOption] | None = Field(
+        default=None,
         min_length=1,
         max_length=50,
+        description="생략하면 Spring 음식 DB에서 후보를 자동 조회합니다. 기존 수동 후보 전달도 지원합니다.",
     )
 
     allergies: list[str] = Field(
@@ -227,7 +232,7 @@ def _filter_candidates(
 
     candidates = [
         food
-        for food in request.available_foods
+        for food in (request.available_foods or [])
         if food.foodId not in excluded
     ]
 
@@ -479,10 +484,6 @@ def _generate(
         "meals": meals,
         "summary": summary,
         "warnings": warnings,
-        "note": (
-            "추천 결과는 사용자가 수정·거부할 수 있습니다. "
-            "실제 계획 저장은 Spring Boot에서 수행합니다."
-        ),
     }
 
 
@@ -492,6 +493,7 @@ def _generate(
 )
 async def recommend_from_foods(
     request: CatalogDietRequest,
+    authorization: str | None = Header(default=None),
 ):
     if len(set(request.meal_types)) != len(
         request.meal_types
@@ -500,6 +502,24 @@ async def recommend_from_foods(
             422,
             "meal_types에 중복된 끼니가 있습니다.",
         )
+
+    if request.available_foods is None:
+        try:
+            retrieved = await run_in_threadpool(
+                fetch_diet_candidates, authorization
+            )
+            request = request.model_copy(update={
+                "available_foods": [FoodOption.model_validate(item) for item in retrieved],
+            })
+        except SpringFoodApiError as exc:
+            raise HTTPException(
+                exc.status_code if exc.status_code in (401, 403) else 502,
+                "식단 추천용 음식 DB 후보를 조회할 수 없습니다.",
+            ) from exc
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(
+                502, "Spring 음식 DB 응답 형식이 올바르지 않습니다."
+            ) from exc
 
     food_ids = [
         food.foodId

@@ -198,7 +198,7 @@ def test_photo_yolo_without_llm_returns_unknown_portion():
     with patch("routers.food_preview.get_food_detector", return_value=fake_detector), \
          patch("routers.food_preview.analyze_food_with_vision") as fn:
         response = client.post(
-            "/internal/ai/food-analyses",
+            "/internal/ai/food-analyses?include_alternatives=false&match_db=false&estimate_portions=false",
             files={"file": ("food.jpg", jpeg_bytes(), "image/jpeg")},
         )
     assert response.status_code == 200
@@ -282,7 +282,7 @@ def test_photo_estimate_portions_forces_vision_even_when_yolo_confident():
     with patch("routers.food_preview.get_food_detector", return_value=fake_detector), \
          patch("routers.food_preview.analyze_food_with_vision", return_value=("gemini", fake_menus)) as fn:
         response = client.post(
-            "/internal/ai/food-analyses?estimate_portions=true",
+            "/internal/ai/food-analyses?estimate_portions=true&match_db=false",
             files={"file": ("food.jpg", jpeg_bytes(), "image/jpeg")},
         )
     assert response.status_code == 200, response.text

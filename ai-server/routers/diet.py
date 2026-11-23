@@ -1,6 +1,7 @@
 """정식 AI 식단 추천 라우터.
 
-Spring은 음식 DB에서 추천 후보를 조회하여 이 API에 전달한다.
+음식 목록이 없으면 FastAPI가 Spring 음식 검색 API에서 후보를 자동 조회한다.
+Spring이 명시적 음식 후보를 전달하던 기존 방식도 유지한다.
 기존의 Mock 응답은 정식 경로에서 제거한다.
 """
 
@@ -14,9 +15,9 @@ router.add_api_route(
     path="/diet-recommendations",
     endpoint=recommend_from_foods,
     methods=["POST"],
-    summary="DB 음식 후보 기반 AI 식단 추천 (정식)",
+    summary="목표 칼로리 기반 AI 식단 추천 (정식)",
     description=(
-        "Spring Boot가 전달한 음식 DB 후보와 사용자 조건으로 Gemini 식단 추천을 생성합니다. "
+        "목표 칼로리만 전달하면 Spring 음식 DB 후보를 자동 조회해 Gemini 식단 추천을 생성합니다. 음식 목록 직접 전달도 지원합니다. "
         "추천을 실제 식단에 저장하는 기능은 Spring Boot가 담당합니다."
     ),
     name="recommend_diet",
