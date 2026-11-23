@@ -31,6 +31,11 @@ public class User {
     /** Real name. */
     private String username;
 
+    /**
+     * Never written by an entity flush (LOGIN6-2): a stale entity must not put an old hash back. Signup sets it on
+     * INSERT; a password change uses UserRepository.changePassword, a conditional UPDATE query.
+     */
+    @Column(updatable = false)
     private String passwordHash;
 
     // Left out of INSERT so the DB defaults ('active', 'user') apply.
@@ -76,16 +81,5 @@ public class User {
         return accountStatus == AccountStatus.PENDING_DELETION
                 && deletedAt != null
                 && now.isBefore(deletedAt.plus(WITHDRAWAL_GRACE));
-    }
-
-    public void restoreFromWithdrawal() {
-        this.accountStatus = AccountStatus.ACTIVE;
-        this.deletedAt = null;
-    }
-
-    /** A new login replaces the previous refresh token, which logs the other device out (one device, P-01). */
-    public void replaceRefreshToken(String tokenHash, LocalDateTime expiresAt) {
-        this.refreshTokenHash = tokenHash;
-        this.refreshTokenExpiresAt = expiresAt;
     }
 }

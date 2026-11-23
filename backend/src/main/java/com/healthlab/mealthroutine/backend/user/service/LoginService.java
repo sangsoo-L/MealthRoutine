@@ -67,7 +67,6 @@ public class LoginService {
                 if (!user.canRestoreFromWithdrawal(now)) {
                     throw loginFailed("withdrawal window over");
                 }
-                user.restoreFromWithdrawal();
                 restored = true;
             }
         }
@@ -75,8 +74,18 @@ public class LoginService {
         Instant issuedAt = clock.instant();
         String accessToken = jwtTokenProvider.createAccessToken(user.getUserId(), user.getUserRole(), issuedAt);
         String refreshToken = RefreshTokens.generate();
-        user.replaceRefreshToken(RefreshTokens.hash(refreshToken), now.plus(jwtProperties.refreshTtl()));
-        userRepository.flush();
+        // The user entity is not changed: the save is a conditional UPDATE on the hash verified above (LOGIN6-1).
+        String verifiedHash = user.getPasswordHash();
+        String refreshHash = RefreshTokens.hash(refreshToken);
+        LocalDateTime refreshExpiresAt = now.plus(jwtProperties.refreshTtl());
+        int saved = restored
+                ? userRepository.saveLoginRestoringAccount(user.getUserId(), verifiedHash, refreshHash,
+                        refreshExpiresAt, AccountStatus.ACTIVE, AccountStatus.PENDING_DELETION)
+                : userRepository.saveLogin(user.getUserId(), verifiedHash, refreshHash, refreshExpiresAt);
+        if (saved == 0) {
+            // The password changed (or the account was restored) after the check above.
+            throw loginFailed("account changed during login");
+        }
 
         LoginResponse body = new LoginResponse(accessToken, new LoginResponse.UserSummary(
                 user.getUserId(),

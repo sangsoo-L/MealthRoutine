@@ -30,6 +30,8 @@ public class SecurityConfig {
         "/api/v1/auth/login",
         REFRESH_PATH,
         LOGOUT_PATH,
+        // Account lookup: public, limited per IP (ACCT6-4).
+        "/api/v1/auth/account-lookup",
     };
 
     // "*" is one path segment: /exercises/3 is public, /exercises/3/anything is not.

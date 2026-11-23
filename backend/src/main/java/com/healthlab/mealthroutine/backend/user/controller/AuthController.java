@@ -3,23 +3,24 @@ package com.healthlab.mealthroutine.backend.user.controller;
 import com.healthlab.mealthroutine.backend.common.ApiResponse;
 import com.healthlab.mealthroutine.backend.common.BusinessException;
 import com.healthlab.mealthroutine.backend.common.ErrorCode;
+import com.healthlab.mealthroutine.backend.user.dto.AccountLookupRequest;
+import com.healthlab.mealthroutine.backend.user.dto.AccountLookupResponse;
 import com.healthlab.mealthroutine.backend.user.dto.LoginRequest;
 import com.healthlab.mealthroutine.backend.user.dto.LoginResponse;
 import com.healthlab.mealthroutine.backend.user.dto.RefreshResponse;
 import com.healthlab.mealthroutine.backend.user.dto.SignupRequest;
 import com.healthlab.mealthroutine.backend.user.dto.SignupResponse;
 import com.healthlab.mealthroutine.backend.user.jwt.JwtProperties;
+import com.healthlab.mealthroutine.backend.user.service.AccountLookupService;
 import com.healthlab.mealthroutine.backend.user.service.AuthService;
 import com.healthlab.mealthroutine.backend.user.service.LoginResult;
 import com.healthlab.mealthroutine.backend.user.service.LoginService;
 import com.healthlab.mealthroutine.backend.user.service.RefreshResult;
 import com.healthlab.mealthroutine.backend.user.service.TokenService;
 import jakarta.validation.Valid;
-import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,8 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
-    static final String REFRESH_COOKIE = "refresh_token";
-    private static final String REFRESH_COOKIE_PATH = "/api/v1/auth";
+    static final String REFRESH_COOKIE = RefreshCookies.NAME;
     /** CSRF check for the two cookie endpoints (AUTH3-5). Not a secret: other origins cannot add it without CORS. */
     static final String CSRF_HEADER = "X-Requested-With";
     static final String CSRF_HEADER_VALUE = "XMLHttpRequest";
@@ -43,6 +43,7 @@ public class AuthController {
     private final AuthService authService;
     private final LoginService loginService;
     private final TokenService tokenService;
+    private final AccountLookupService accountLookupService;
     private final JwtProperties jwtProperties;
 
     /** Local email signup. No login happens here; the client moves to the login screen (SIGNUP-RES-1). */
@@ -60,8 +61,17 @@ public class AuthController {
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         LoginResult result = loginService.login(request);
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(result.refreshToken(), jwtProperties.refreshTtl()))
+                .header(HttpHeaders.SET_COOKIE, RefreshCookies.create(result.refreshToken(), jwtProperties.refreshTtl()))
                 .body(ApiResponse.ok(result.body()));
+    }
+
+    /**
+     * Account lookup (FIND-1, ACCT6-1~4): public, limited to 5 per minute per IP by AttemptLimitInterceptor.
+     * The body is only {"matched": true/false}; every non-match is the same response.
+     */
+    @PostMapping("/account-lookup")
+    public ApiResponse<AccountLookupResponse> accountLookup(@Valid @RequestBody AccountLookupRequest request) {
+        return ApiResponse.ok(new AccountLookupResponse(accountLookupService.matches(request)));
     }
 
     /**
@@ -76,7 +86,7 @@ public class AuthController {
         requireCsrfHeader(requestedWith);
         RefreshResult result = tokenService.refresh(refreshToken);
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(result.refreshToken(), jwtProperties.refreshTtl()))
+                .header(HttpHeaders.SET_COOKIE, RefreshCookies.create(result.refreshToken(), jwtProperties.refreshTtl()))
                 .body(ApiResponse.ok(new RefreshResponse(result.accessToken())));
     }
 
@@ -91,7 +101,7 @@ public class AuthController {
         requireCsrfHeader(requestedWith);
         tokenService.logout(refreshToken);
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO))
+                .header(HttpHeaders.SET_COOKIE, RefreshCookies.delete())
                 .build();
     }
 
@@ -100,17 +110,5 @@ public class AuthController {
         if (!CSRF_HEADER_VALUE.equals(requestedWith)) {
             throw new BusinessException(ErrorCode.CSRF_REJECTED);
         }
-    }
-
-    /** Same attributes for setting and deleting (max-age 0), so the browser treats them as one cookie. */
-    private static String refreshCookie(String value, Duration maxAge) {
-        return ResponseCookie.from(REFRESH_COOKIE, value)
-                .httpOnly(true)
-                .secure(true)
-                .sameSite("Lax")
-                .path(REFRESH_COOKIE_PATH)
-                .maxAge(maxAge)
-                .build()
-                .toString();
     }
 }
