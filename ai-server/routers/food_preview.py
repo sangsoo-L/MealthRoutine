@@ -19,7 +19,7 @@ from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
 from routers.diet_catalog import FoodOption, _calculate_nutrients
-from services.food_detector import get_food_detector
+from services.food_detector import get_food_detector, unique_detections
 from services.food_vision import (
     FoodMenu,
     analyze_food_with_vision,
@@ -331,6 +331,8 @@ async def analyze_food_preview(
             detector.predict,
             image_bytes,
         )
+        # 다른 탐지기/모의 탐지기를 쓰더라도 동일 음식 인분은 한 번만 적용.
+        yolo_items = unique_detections(yolo_items)
 
     except Exception as exc:
         logger.exception("YOLO 음식 분석 실패")

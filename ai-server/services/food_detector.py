@@ -5,6 +5,7 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
+from unicodedata import normalize as unicode_normalize
 
 import cv2
 import numpy as np
@@ -24,6 +25,25 @@ IOU_THRESHOLD = 0.5
 
 # 학습 데이터에 포함된 음식 외 클래스
 EXCLUDED_CLASSES = {"00000000", "test1", "test3", "spoon"}
+
+
+def unique_detections(detections: list[dict]) -> list[dict]:
+    """같은 음식의 여러 YOLO 박스는 하나의 메뉴로 취급한다.
+
+    Gemini가 반환하는 인분과 칼로리는 메뉴 전체의 추정치이므로,
+    탐지 박스마다 이를 다시 적용하면 총열량이 중복 합산된다.
+    가장 신뢰도 높은 박스만 유지하고 서로 다른 음식은 보존한다.
+    """
+    best_by_name: dict[str, dict] = {}
+    for item in detections:
+        key = "".join(unicode_normalize("NFC", str(item["name"])).split()).casefold()
+        if not key:
+            continue
+        if key not in best_by_name or item["confidence"] > best_by_name[key]["confidence"]:
+            best_by_name[key] = item
+    return sorted(
+        best_by_name.values(), key=lambda item: item["confidence"], reverse=True
+    )[:3]
 
 
 class FoodDetector:
@@ -138,13 +158,8 @@ class FoodDetector:
                             "confidence": round(float(conf.item()), 4),
                         })
 
-        results.sort(
-            key=lambda item: item["confidence"],
-            reverse=True,
-        )
-
-        # 기존 밀스루틴 음식 후보 규격에 맞춰 최대 3개
-        return results[:3]
+        # 다중 탐지 박스는 메뉴 수가 아니다. 중복 제거 후 최대 3종 반환.
+        return unique_detections(results)
 
 
 @lru_cache(maxsize=1)
