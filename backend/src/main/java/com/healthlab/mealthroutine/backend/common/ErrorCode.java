@@ -34,6 +34,12 @@ public enum ErrorCode {
     REFRESH_INVALID(HttpStatus.UNAUTHORIZED, "로그인이 만료되었습니다. 다시 로그인해 주세요."),
     // Refresh and logout without the X-Requested-With header (AUTH3-5).
     CSRF_REJECTED(HttpStatus.FORBIDDEN, "허용되지 않은 요청입니다."),
+    // Account lookup and password change: 5 attempts per minute (ACCT6-4, PWCHG6-1). Sent with Retry-After.
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+    // Password change (PWCHG6-1). 400, not 401: the access token is fine, only the typed password is wrong.
+    PASSWORD_NOT_SET(HttpStatus.BAD_REQUEST, "소셜 로그인 계정은 비밀번호를 변경할 수 없습니다."),
+    CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
+    PASSWORD_SAME_AS_CURRENT(HttpStatus.BAD_REQUEST, "현재 비밀번호와 다른 비밀번호를 입력해 주세요."),
     DATA_CONFLICT(HttpStatus.CONFLICT, "다른 데이터와 충돌하여 처리할 수 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 

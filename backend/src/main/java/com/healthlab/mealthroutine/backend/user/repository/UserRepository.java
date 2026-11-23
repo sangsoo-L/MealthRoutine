@@ -1,5 +1,6 @@
 package com.healthlab.mealthroutine.backend.user.repository;
 
+import com.healthlab.mealthroutine.backend.user.domain.AccountStatus;
 import com.healthlab.mealthroutine.backend.user.domain.User;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -35,4 +36,37 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("update User u set u.refreshTokenHash = null, u.refreshTokenExpiresAt = null"
             + " where u.refreshTokenHash = :hash")
     int clearRefreshToken(@Param("hash") String hash);
+
+    /**
+     * Saves a login (LOGIN6-1) only if the password hash is still the one the login just verified. Without the
+     * condition, a password change that commits between the check and this save would be undone in effect: the old
+     * password's login would get a working refresh token again. 0 rows = the password changed meanwhile.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update User u set u.refreshTokenHash = :refreshHash, u.refreshTokenExpiresAt = :expiresAt"
+            + " where u.userId = :userId and u.passwordHash = :verifiedHash")
+    int saveLogin(@Param("userId") Long userId, @Param("verifiedHash") String verifiedHash,
+            @Param("refreshHash") String refreshHash, @Param("expiresAt") LocalDateTime expiresAt);
+
+    /**
+     * Same as {@link #saveLogin} for a pending-deletion account that this login restores (LOGIN-2a): the account
+     * also becomes active again. Requires the account to still be pending deletion.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update User u set u.refreshTokenHash = :refreshHash, u.refreshTokenExpiresAt = :expiresAt,"
+            + " u.accountStatus = :active, u.deletedAt = null"
+            + " where u.userId = :userId and u.passwordHash = :verifiedHash and u.accountStatus = :pending")
+    int saveLoginRestoringAccount(@Param("userId") Long userId, @Param("verifiedHash") String verifiedHash,
+            @Param("refreshHash") String refreshHash, @Param("expiresAt") LocalDateTime expiresAt,
+            @Param("active") AccountStatus active, @Param("pending") AccountStatus pending);
+
+    /**
+     * Password change (PWCHG6-2) as one conditional UPDATE: only if the hash is still the one that was verified, so
+     * two changes at once cannot both win. It also ends every refresh login (P-01).
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update User u set u.passwordHash = :newHash, u.refreshTokenHash = null, u.refreshTokenExpiresAt = null"
+            + " where u.userId = :userId and u.passwordHash = :oldHash")
+    int changePassword(@Param("userId") Long userId, @Param("oldHash") String oldHash,
+            @Param("newHash") String newHash);
 }
