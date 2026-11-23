@@ -17,20 +17,20 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
-        return respond(e.getErrorCode());
+    public ResponseEntity<ApiResponse<Object>> handleBusiness(BusinessException e) {
+        return respond(e.getErrorCode(), e.getData());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleConflict(DataIntegrityViolationException e) {
+    public ResponseEntity<ApiResponse<Object>> handleConflict(DataIntegrityViolationException e) {
         log.warn("Data integrity violation", e);
-        return respond(ErrorCode.DATA_CONFLICT);
+        return respond(ErrorCode.DATA_CONFLICT, null);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception e) {
+    public ResponseEntity<ApiResponse<Object>> handleUnexpected(Exception e) {
         log.error("Unexpected error", e);
-        return respond(ErrorCode.INTERNAL_ERROR);
+        return respond(ErrorCode.INTERNAL_ERROR, null);
     }
 
     // Spring's own errors (bad JSON, validation, unknown path, wrong method) use the team response format too.
@@ -47,10 +47,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // A 401 from a controller or service gets the same WWW-Authenticate as one from the security filter.
-    private ResponseEntity<ApiResponse<Void>> respond(ErrorCode errorCode) {
+    // data is null for every error except the PIN ones (PIN7-3); null data leaves the "data" key out.
+    private ResponseEntity<ApiResponse<Object>> respond(ErrorCode errorCode, Object data) {
         ResponseEntity.BodyBuilder builder = ResponseEntity.status(errorCode.getStatus());
         SecurityErrorResponder.wwwAuthenticateFor(errorCode)
                 .ifPresent(value -> builder.header(HttpHeaders.WWW_AUTHENTICATE, value));
-        return builder.body(ApiResponse.fail(errorCode));
+        return builder.body(ApiResponse.fail(errorCode, data));
     }
 }

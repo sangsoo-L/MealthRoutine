@@ -22,11 +22,12 @@ public class WebConfig implements WebMvcConfigurer {
         resolvers.add(loginUserArgumentResolver);
     }
 
-    // Only these two paths are limited (ACCT6-4, PWCHG6-1); other teams' APIs are not touched.
+    // Only these paths are limited (ACCT6-4, PWCHG6-1, PIN7-8); other teams' APIs are not touched.
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(attemptLimitInterceptor)
-                .addPathPatterns(AttemptLimitInterceptor.ACCOUNT_LOOKUP_PATH, AttemptLimitInterceptor.PASSWORD_PATH);
+                .addPathPatterns(AttemptLimitInterceptor.ACCOUNT_LOOKUP_PATH, AttemptLimitInterceptor.PASSWORD_PATH,
+                        AttemptLimitInterceptor.PIN_PATH);
     }
 
     // Lets query params use the same lowercase enum values as JSON and the DB (difficulty=beginner).

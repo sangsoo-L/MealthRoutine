@@ -2,9 +2,11 @@ package com.healthlab.mealthroutine.backend.user.repository;
 
 import com.healthlab.mealthroutine.backend.user.domain.AccountStatus;
 import com.healthlab.mealthroutine.backend.user.domain.User;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +16,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
     Optional<User> findByEmail(String email);
+
+    /**
+     * Reads the user with a row lock (SELECT ... FOR UPDATE) held until the transaction ends (PIN7-4). Other requests
+     * that lock or update this row wait, so PIN checks and changes for one user run one at a time and always see
+     * the latest committed values.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.userId = :userId")
+    Optional<User> findByIdForUpdate(@Param("userId") Long userId);
 
     /** No index on refresh_token_hash: fine for the MVP user count (AUTH3-1). */
     Optional<User> findByRefreshTokenHash(String refreshTokenHash);
@@ -69,4 +80,20 @@ public interface UserRepository extends JpaRepository<User, Long> {
             + " where u.userId = :userId and u.passwordHash = :oldHash")
     int changePassword(@Param("userId") Long userId, @Param("oldHash") String oldHash,
             @Param("newHash") String newHash);
+
+    /**
+     * Saves the PIN failure count and lock time (PIN7-4). Called only while {@link #findByIdForUpdate} holds the
+     * row lock, so no condition beyond the id is needed; 1 row is always expected.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update User u set u.pinFailedCount = :failedCount, u.pinLockedUntil = :lockedUntil"
+            + " where u.userId = :userId")
+    int savePinAttempts(@Param("userId") Long userId, @Param("failedCount") byte failedCount,
+            @Param("lockedUntil") LocalDateTime lockedUntil);
+
+    /** Sets a new PIN hash and clears failures and the lock. Same row-lock rule as {@link #savePinAttempts}. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update User u set u.pinHash = :pinHash, u.pinFailedCount = 0, u.pinLockedUntil = null"
+            + " where u.userId = :userId")
+    int savePin(@Param("userId") Long userId, @Param("pinHash") String pinHash);
 }

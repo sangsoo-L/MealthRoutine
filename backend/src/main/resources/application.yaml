@@ -27,3 +27,4 @@ app:
     secret: ${JWT_SECRET}
     access-ttl: 30m
     refresh-ttl: 14d
+    pin-ttl: 10m

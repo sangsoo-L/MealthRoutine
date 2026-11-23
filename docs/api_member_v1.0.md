@@ -1,7 +1,7 @@
 # 회원 API 상세 명세 v1.0
 
 - 작성일: 2026-11-23
-- 상태: 단위 4(내 정보·프로필), 단위 6(아이디 찾기·비밀번호 변경) 반영. 회원 단위가 추가될 때마다 같은 PR에서 갱신한다.
+- 상태: 단위 4(내 정보·프로필), 단위 6(아이디 찾기·비밀번호 변경), 단위 7(PIN) 반영. 회원 단위가 추가될 때마다 같은 PR에서 갱신한다.
 - 회원가입·로그인·토큰 재발급·로그아웃의 상세는 아직 이 문서에 없다(다음 갱신 때 추가). 단, 쿠키 요청 순서 규칙은 아래 "쿠키를 바꾸는 요청"에 적었다.
 
 ## 공통
@@ -12,6 +12,8 @@
 { "success": true, "message": "요청 성공", "data": {} }
 { "success": false, "message": "요청 값이 올바르지 않습니다.", "errorCode": "INVALID_REQUEST" }
 ```
+
+- 실패 응답에는 보통 `data`가 없다. **예외는 PIN 오류 두 가지**뿐이다: `PIN_INVALID`는 `data.remainingAttempts`, `PIN_LOCKED`는 `data.lockedUntil`(아래 "PIN").
 
 - 필드별 오류 목록은 아직 없다. 어떤 값이 틀렸는지는 응답으로 알려 주지 않으므로 프론트에서도 같은 규칙으로 먼저 검사하는 것을 권한다.
 
@@ -28,8 +30,11 @@
 | 400 | INVALID_REQUEST | 입력값 규칙 위반, JSON 형식 오류, 본문 없음 |
 | 401 | LOGIN_REQUIRED / TOKEN_EXPIRED / INVALID_TOKEN | 토큰 없음 / 만료(재발급 후 재시도) / 잘못된 토큰 |
 | 400 | PASSWORD_NOT_SET / CURRENT_PASSWORD_MISMATCH / PASSWORD_SAME_AS_CURRENT | 비밀번호 변경: 소셜 전용 계정 / 현재 비밀번호 틀림 / 새 비밀번호가 현재와 같음 |
+| 400 | PIN_INVALID | PIN 틀림. `data.remainingAttempts`(잠기기까지 남은 횟수). **명세 7.3의 401에서 400으로 변경**(PIN7-2) |
+| 403 | PIN_LOCKED / PIN_NOT_REGISTERED | PIN 5회 연속 실패로 잠김(`data.lockedUntil`) / PIN 미등록(PIN 등록 화면으로 안내) |
 | 409 | NICKNAME_ALREADY_EXISTS | 다른 회원이 쓰는 닉네임(대소문자 무시) |
-| 429 | TOO_MANY_REQUESTS | 아이디 찾기·비밀번호 변경 시도가 1분 5회를 넘음. `Retry-After` 헤더(초)만큼 기다린 뒤 다시 시도 |
+| 409 | PIN_ALREADY_SET | 이미 PIN이 있는데 최초 설정(`PUT`)을 호출함 |
+| 429 | TOO_MANY_REQUESTS | 아이디 찾기·비밀번호 변경·PIN 변경 시도가 1분 5회를 넘음. `Retry-After` 헤더(초)만큼 기다린 뒤 다시 시도 |
 | 500 | INTERNAL_ERROR | 서버 오류 |
 
 ## 내 정보
@@ -143,6 +148,65 @@
 ```json
 { "currentPassword": "Passw0rd!", "newPassword": "NewPassw0rd#" }
 ```
+
+## PIN (2차 비밀번호)
+
+| Method | URL | 요청 | 응답 |
+|---|---|---|---|
+| PUT | /api/v1/users/me/pin | `newPin` | 200, data `{pinToken, expiresIn}` |
+| GET | /api/v1/users/me/pin/status | | 200, data `{registered, locked, lockedUntil}` |
+| POST | /api/v1/users/me/pin/verify | `pin` | 200, data `{pinToken, expiresIn}` |
+| PATCH | /api/v1/users/me/pin | `newPin` + (`currentPin` 또는 `currentPassword`) | 204 (본문 없음) |
+
+**PIN 형식:** 숫자 6자리 **문자열**(`"012345"`). 숫자 타입(`12345`)으로 보내면 앞자리 0이 사라질 수 있어 400이다. 공백·전각 숫자도 400. 쉬운 PIN(`123456`)과 같은 PIN으로의 변경은 막지 않는다.
+
+**PIN 토큰:** 신체정보 조회·수정 등 PIN이 필요한 API(단위 8)에 `X-Pin-Token` 헤더로 보낸다. `expiresIn`은 초(600 = 10분). 로그인용 토큰이 아니므로 `Authorization`에 넣으면 401이다.
+
+**최초 설정 (`PUT`)**
+- PIN이 없을 때 한 번만. 이미 있으면 409 `PIN_ALREADY_SET`(변경은 `PATCH`).
+- 성공하면 PIN 토큰도 함께 준다. 바로 신체정보 화면으로 넘어가면 되고 PIN을 다시 입력받을 필요가 없다.
+
+**상태 (`GET /status`)**
+- `registered`: PIN 등록 여부(`GET /users/me`의 `pinRegistered`와 같은 값). `locked`: 지금 잠겨 있는지. `lockedUntil`: 잠금 해제 시각(잠기지 않았으면 `null`).
+
+**확인 (`POST /verify`)**
+- 틀리면 400 `PIN_INVALID`, `data.remainingAttempts`(4 → 3 → 2 → 1).
+- **연속 5번** 틀리면 그 응답부터 403 `PIN_LOCKED`, `data.lockedUntil`(5번째 실패 + 10분, 초 단위로 올림. 형식 `"2026-11-23T12:10:00"`, 서버 시간대 기준). 잠긴 동안은 맞는 PIN도 403.
+- 맞히면 실패 횟수가 0으로 돌아간다. 잠금이 끝나면 다시 5번 시도할 수 있다.
+- PIN이 없으면 403 `PIN_NOT_REGISTERED` → PIN 등록 화면으로 안내.
+
+```json
+{ "pin": "012345" }
+{ "success": false, "message": "PIN이 올바르지 않습니다.", "data": { "remainingAttempts": 4 }, "errorCode": "PIN_INVALID" }
+{ "success": false, "message": "PIN 입력이 잠겼습니다. 잠시 후 다시 시도해 주세요.", "data": { "lockedUntil": "2026-11-23T12:10:00" }, "errorCode": "PIN_LOCKED" }
+```
+
+**변경·복구 (`PATCH`)**
+
+| 계정 | 보내는 값 | 결과 |
+|---|---|---|
+| 모두 | `currentPin` | 평소 변경. 틀리면 400 `PIN_INVALID`이고 **확인(`verify`)과 같은 실패 횟수**에 들어간다. 잠긴 동안은 403 `PIN_LOCKED` |
+| 이메일 가입 | `currentPassword` | PIN 분실·잠금 시 복구. **잠긴 동안에도 가능**, 성공하면 잠금과 실패 횟수가 풀린다. 비밀번호가 틀리면 400 `CURRENT_PASSWORD_MISMATCH`(PIN 실패 횟수에는 들어가지 않음) |
+| 이메일 가입 | 둘 다 없음 | 400 `INVALID_REQUEST` |
+| 소셜 전용 | `currentPassword` | 400 `PASSWORD_NOT_SET` |
+| 소셜 전용 | 둘 다 없음 | 로그인 상태만으로 재설정 허용(Q-24) |
+| 모두 | `currentPin`과 `currentPassword`를 함께 | 400 `INVALID_REQUEST` |
+
+- PIN이 없으면 403 `PIN_NOT_REGISTERED`(먼저 `PUT`).
+- 한 회원당 1분에 5번까지(형식 오류 포함). 넘으면 429와 `Retry-After`. 비밀번호 변경과는 따로 세므로, 두 API를 합치면 비밀번호를 1분에 최대 10번 확인할 수 있다(알려진 한계).
+
+```json
+{ "newPin": "246810", "currentPin": "012345" }
+{ "newPin": "246810", "currentPassword": "Passw0rd!" }
+```
+
+**서버가 PIN 토큰을 무효화하지 않는다 (PIN7-5, 알려진 한계)**
+- 서버는 PIN 토큰의 서명과 만료만 확인한다. 그래서 **PIN 변경·복구, 로그아웃, 비밀번호 변경 뒤에도 이미 발급된 PIN 토큰은 발급 후 최대 10분 동안 유효하다.**
+- 즉 아직 유효한 access 토큰과 PIN 토큰을 **둘 다** 가진 요청은 그 남은 기간 동안 PIN이 필요한 API에 접근할 수 있다. (access 토큰이 없거나 거절되면 — 예: 탈퇴 대기·정지 계정 — 그 단계에서 막힌다.)
+- 프론트 규칙: PIN 토큰은 **메모리(변수·상태)에만** 두고 localStorage·쿠키에 저장하지 않는다. 다음 때 **바로 버린다** — 로그아웃, 비밀번호 변경 204, PIN 변경·복구 204, 재로그인이 필요해 로그인 화면으로 갈 때, PIN 관련 403 응답(단위 8의 `PIN_REQUIRED`·`PIN_EXPIRED` 포함), 신체정보 화면을 벗어날 때(권장). **프론트에서 버리는 것은 노출을 줄일 뿐, 서버에서 토큰을 무효화하는 것은 아니다.**
+
+**대기 (알려진 한계)**
+- 같은 회원의 PIN 요청은 서버가 한 번에 하나씩 처리한다(동시에 여러 번 틀려도 5회를 넘지 않게). 그동안 **같은 회원의** 로그인·토큰 재발급·비밀번호 변경이 잠시 기다릴 수 있다. 보통은 짧지만 PIN 요청이 몰리면 대기도 길어질 수 있다.
 
 ## 쿠키를 바꾸는 요청 (프론트 연동 규칙)
 

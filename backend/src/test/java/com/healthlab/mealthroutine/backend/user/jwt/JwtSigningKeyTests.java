@@ -38,6 +38,6 @@ class JwtSigningKeyTests {
     @Test
     void propertiesNeverPrintTheSecret() {
         String secret = Base64.getEncoder().encodeToString(new byte[32]);
-        assertThat(new JwtProperties(secret, null, null).toString()).doesNotContain(secret);
+        assertThat(new JwtProperties(secret, null, null, null).toString()).doesNotContain(secret);
     }
 }

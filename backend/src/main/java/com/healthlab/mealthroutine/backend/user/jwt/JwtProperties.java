@@ -5,13 +5,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * app.jwt.* settings. {@code secret} is the Base64 text from JWT_SECRET (JWT_SECRET_TEST in tests).
+ * {@code pinTtl} is the PIN token lifetime (P-02: 10 minutes).
  * toString() never prints the secret.
  */
 @ConfigurationProperties(prefix = "app.jwt")
-public record JwtProperties(String secret, Duration accessTtl, Duration refreshTtl) {
+public record JwtProperties(String secret, Duration accessTtl, Duration refreshTtl, Duration pinTtl) {
 
     @Override
     public String toString() {
-        return "JwtProperties[secret=(hidden), accessTtl=" + accessTtl + ", refreshTtl=" + refreshTtl + "]";
+        return "JwtProperties[secret=(hidden), accessTtl=" + accessTtl + ", refreshTtl=" + refreshTtl
+                + ", pinTtl=" + pinTtl + "]";
     }
 }

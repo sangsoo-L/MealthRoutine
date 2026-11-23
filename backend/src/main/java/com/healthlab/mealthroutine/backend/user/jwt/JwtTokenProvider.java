@@ -24,6 +24,7 @@ public class JwtTokenProvider {
 
     static final String TOKEN_TYPE_CLAIM = "token_type";
     static final String ACCESS_TOKEN_TYPE = "access";
+    static final String PIN_TOKEN_TYPE = "pin";
     private static final String ALGORITHM = "HS256";
     // Digits only, no sign or leading zero. The range (1 to Long.MAX_VALUE) is checked when parsing.
     private static final Pattern USER_ID = Pattern.compile("[1-9][0-9]*");
@@ -56,22 +57,49 @@ public class JwtTokenProvider {
     }
 
     /**
+     * PIN token (P-02, PIN7-5): sub=userId, token_type=pin, lifetime app.jwt.pin-ttl. Sent as X-Pin-Token to the
+     * PIN-protected APIs (member unit 8). The server keeps no state for it, so it stays valid until exp even after
+     * a PIN change, logout or password change.
+     */
+    public String createPinToken(Long userId, Instant now) {
+        return Jwts.builder()
+                .subject(String.valueOf(userId))
+                .claim(TOKEN_TYPE_CLAIM, PIN_TOKEN_TYPE)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(properties.pinTtl())))
+                .signWith(key, Jwts.SIG.HS256)
+                .compact();
+    }
+
+    /**
      * Checks the signature with our key, the HS256 algorithm, exp, sub and token_type.
      * Only token problems become EXPIRED/INVALID here; nothing else is caught.
      */
     public AccessTokenResult parseAccessToken(String token) {
+        return parse(token, ACCESS_TOKEN_TYPE);
+    }
+
+    /**
+     * Same checks as {@link #parseAccessToken} but for token_type=pin, so neither kind of token is accepted in
+     * the other's place. The caller must still check that the user id equals the logged-in user (unit 8).
+     */
+    public AccessTokenResult parsePinToken(String token) {
+        return parse(token, PIN_TOKEN_TYPE);
+    }
+
+    private AccessTokenResult parse(String token, String tokenType) {
         Jws<Claims> jws;
         try {
             jws = parser.parseSignedClaims(token);
         } catch (ExpiredJwtException e) {
-            // The signature was already checked before jjwt looked at exp. A non-access token stays INVALID.
-            return userIdOf(e.getHeader(), e.getClaims()) == null
+            // The signature was already checked before jjwt looked at exp. A token of another type stays INVALID.
+            return userIdOf(e.getHeader(), e.getClaims(), tokenType) == null
                     ? AccessTokenResult.invalid() : AccessTokenResult.expired();
         } catch (JwtException | IllegalArgumentException e) {
             return AccessTokenResult.invalid();
         }
         Claims claims = jws.getPayload();
-        Long userId = userIdOf(jws.getHeader(), claims);
+        Long userId = userIdOf(jws.getHeader(), claims, tokenType);
         if (userId == null) {
             return AccessTokenResult.invalid();
         }
@@ -83,7 +111,7 @@ public class JwtTokenProvider {
     }
 
     /** The user id when every required part is right, otherwise null. */
-    private static Long userIdOf(Header header, Claims claims) {
+    private static Long userIdOf(Header header, Claims claims, String tokenType) {
         if (header == null || claims == null || !ALGORITHM.equals(header.getAlgorithm())) {
             return null;
         }
@@ -91,7 +119,7 @@ public class JwtTokenProvider {
         if (claims.getExpiration() == null) {
             return null;
         }
-        if (!ACCESS_TOKEN_TYPE.equals(claims.get(TOKEN_TYPE_CLAIM))) {
+        if (!tokenType.equals(claims.get(TOKEN_TYPE_CLAIM))) {
             return null;
         }
         String subject = claims.getSubject();
