@@ -79,7 +79,7 @@ export const GROUPS = {
   profile: ['profile-settings'],
   bodygoal: ['body-goal-settings'],
   membership: ['membership-settings'],
-  community: ['community'],
+  community: ['community', 'community-draft'],
   growth: ['growth-history'],
 }
 

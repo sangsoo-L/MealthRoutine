@@ -20,6 +20,7 @@ import {
   type PostDetail,
   type PostState,
 } from '../../community/community.ts'
+import { createDraftSubmitTracker } from '../../community/commentDraft.ts'
 import type { AnswerEligibility } from '../../community/useCommunity.ts'
 import {
   errorClass,
@@ -68,7 +69,8 @@ function LoginLink({ children }: { children: string }) {
 
 /**
  * 댓글(자유게시판)·답변(Q&A) 입력. 빈 내용은 막고, 서버가 성공 응답을 준 때만 비운다. 실패하면 입력을 유지한다.
- * 처리 중에는 다시 제출해도 한 번만 나간다.
+ * 처리 중에는 다시 제출해도 한 번만 나간다. 응답을 기다리는 동안 입력을 고쳤다면(전송 당시와 입력 변경 버전이 다르면)
+ * 성공 응답이 와도 새로 쓴 내용은 지우지 않는다(`commentDraft.ts`).
  */
 function CommentForm({
   kind,
@@ -79,10 +81,10 @@ function CommentForm({
 }) {
   const [draft, setDraft] = useState('')
   const [invalid, setInvalid] = useState(false)
-  const [phase, setPhase] = useState<'idle' | 'busy' | 'failed' | 'done'>(
-    'idle',
-  )
-  const busyRef = useRef(false)
+  const [phase, setPhase] = useState<
+    'idle' | 'busy' | 'failed' | 'done' | 'doneKept'
+  >('idle')
+  const [tracker] = useState(createDraftSubmitTracker)
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const id = useId()
   const noun = kind === 'answer' ? '답변' : '댓글'
@@ -90,26 +92,28 @@ function CommentForm({
   function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
     setDraft(event.target.value)
     setInvalid(false)
-    if (!busyRef.current) setPhase('idle')
+    tracker.edit()
+    if (!tracker.busy) setPhase('idle')
   }
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (busyRef.current) return
+    if (tracker.busy) return
     const body = validateComment(draft)
     if (body === null) {
       setInvalid(true)
       areaRef.current?.focus()
       return
     }
-    busyRef.current = true
+    const token = tracker.begin()
+    if (token === null) return
     setPhase('busy')
     const ok = await onSubmit(body)
-    busyRef.current = false
-    if (ok) {
+    const outcome = tracker.finish(token, ok)
+    if (outcome === 'cleared') {
       setDraft('')
       setPhase('done')
-    } else setPhase('failed')
+    } else setPhase(outcome === 'kept' ? 'doneKept' : 'failed')
   }
 
   return (
@@ -155,6 +159,11 @@ function CommentForm({
         {phase === 'done' ? (
           <p data-community-done="" className={help}>
             {noun}을 등록했어요.
+          </p>
+        ) : null}
+        {phase === 'doneKept' ? (
+          <p data-community-done="kept" className={help}>
+            먼저 보낸 {noun}을 등록했어요. 새로 쓰던 내용은 그대로 남아 있어요.
           </p>
         ) : null}
       </div>
