@@ -23,16 +23,18 @@ Node.js **24 이상**(`package.json`의 `engines`)이 필요합니다. 검증한
 
 ```sh
 npm ci            # 설치(package-lock.json 기준)
-npm run dev       # 개발 서버. 터미널에 표시된 주소(기본 http://localhost:5173)를 연다
+npm run dev       # 개발 서버. 터미널에 표시된 주소(기본 http://localhost:5173)를 연다. 로그인하려면 백엔드(localhost:8080)도 실행
 npm run build     # 운영 빌드를 dist/에 생성
 npm run preview   # 빌드 결과를 로컬에서 확인
 ```
 
 ## 환경변수 설정
 
-**필수 환경변수는 없습니다.** `.env`를 만들 필요가 없고 비밀 값·API 키도 쓰지 않습니다. 소스에서 사용자 정의 `import.meta.env` 변수를 읽는 곳이 없습니다.
+**필수 환경변수는 없습니다.** 비밀 값·API 키도 쓰지 않습니다. 선택 변수는 하나입니다.
 
-- `.env.example`은 안내용이며 변수가 들어 있지 않습니다. 백엔드 API 주소 같은 값은 **계약이 정해진 뒤** 이름만 이 파일에 추가하고, 실제 값은 Git에서 제외되는 `.env.local` 등에 둡니다. `.env`, `.env.*`는 Git에서 제외됩니다(`.env.example`만 예외).
+- `VITE_DEV_AUTH=true`(개발 서버 전용): 실제 백엔드 대신 개발용 모의 계정으로 로그인합니다. 비우면(기본) 실제 백엔드로 로그인합니다. 운영 빌드는 이 값과 상관없이 실제 백엔드를 씁니다. 설명은 `.env.example`에 있습니다.
+- 실제 값은 Git에서 제외되는 `.env.development.local` 등에 둡니다. `.env`, `.env.*`는 Git에서 제외됩니다(`.env.example`만 예외).
+- API 주소 환경변수는 없습니다. 브라우저는 같은 출처의 `/api`로만 호출하고, 개발 서버(`vite.config.js`의 `server.proxy`)가 `http://localhost:8080`으로 전달합니다(`npm run preview`도 같은 설정을 씁니다).
 - 개발용 기능은 Vite가 제공하는 `import.meta.env.DEV`로 구분합니다. 이 값은 빌드 때 상수가 되어 운영 빌드에서 개발용 코드가 제거됩니다.
 - Chrome 회귀 테스트에는 선택 환경변수가 있습니다(`tests/chrome/README.md`).
 
@@ -48,13 +50,13 @@ npm run preview   # 빌드 결과를 로컬에서 확인
 
 ## 개발용 Mock과 운영 환경의 차이
 
-| 구분          | 개발 서버(`npm run dev`)                          | 운영 빌드(`npm run build`)                                             |
-| ------------- | ------------------------------------------------- | ---------------------------------------------------------------------- |
-| 로그인        | 개발 전용 모의 계정(아래 표)으로 로그인           | 항상 실패(실제 인증 연결 전)                                           |
-| 기록·목표 등  | 브라우저 IndexedDB·sessionStorage의 개발용 저장소 | 저장소 없음. 서버가 필요한 화면은 "연결 전·준비 중"                    |
-| 커뮤니티      | 탭 메모리 예시 글(새로고침하면 초기화)            | "아직 글을 볼 수 없어요"(글이 없다는 뜻이 아님), 작성 폼은 등록 비활성 |
-| AI·사진 분석  | 로컬 예시 추천, `?devAnalysis=` 개발 검증 상태    | AI 호출 없음. 분석 서버 연결 전 안내                                   |
-| 멤버십·사용량 | 서버 연결 전("연결 전")                           | 서버가 준 값만 표시, 지금은 연결 전. 결제·구독 성공을 만들지 않음      |
+| 구분          | 개발 서버(`npm run dev`)                                                      | 운영 빌드(`npm run build`)                                             |
+| ------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| 로그인        | 실제 백엔드(`/api` 전달). `VITE_DEV_AUTH=true`면 개발 전용 모의 계정(아래 표) | 실제 백엔드. 배포 서버가 같은 출처의 `/api`를 백엔드로 전달해야 함     |
+| 기록·목표 등  | 브라우저 IndexedDB·sessionStorage의 개발용 저장소                             | 저장소 없음. 서버가 필요한 화면은 "연결 전·준비 중"                    |
+| 커뮤니티      | 탭 메모리 예시 글(새로고침하면 초기화)                                        | "아직 글을 볼 수 없어요"(글이 없다는 뜻이 아님), 작성 폼은 등록 비활성 |
+| AI·사진 분석  | 로컬 예시 추천, `?devAnalysis=` 개발 검증 상태                                | AI 호출 없음. 분석 서버 연결 전 안내                                   |
+| 멤버십·사용량 | 서버 연결 전("연결 전")                                                       | 서버가 준 값만 표시, 지금은 연결 전. 결제·구독 성공을 만들지 않음      |
 
 개발용 데이터는 `import.meta.env.DEV` 분기 안에서만 불러옵니다. 이를 어기면 `npm run verify:dist`가 실패합니다.
 
@@ -116,8 +118,15 @@ npm run test:dashboard     # 대시보드 관련 일부
 
 실제 Chrome(헤드리스)으로 화면 동작을 확인하는 스크립트입니다. **개발 서버가 실행 중이어야 합니다.** 서버가 없으면 환경 오류(종료 코드 2)로 끝납니다.
 
+Chrome 회귀 테스트는 개발용 모의 계정으로 로그인하므로 **개발 서버를 `VITE_DEV_AUTH=true`로 띄웁니다.** 가장 쉬운 방법은 OS와 상관없이 `frontend/.env.development.local` 파일에 `VITE_DEV_AUTH=true` 한 줄을 넣는 것입니다(Git 제외 파일, 실제 백엔드로 확인할 때는 지우거나 주석 처리). 명령으로 줄 때는 다음과 같습니다.
+
 ```sh
-npm run dev -- --port 5199 --strictPort        # 터미널 1
+VITE_DEV_AUTH=true npm run dev -- --port 5199 --strictPort     # macOS·Git Bash
+$env:VITE_DEV_AUTH='true'; npm run dev -- --port 5199 --strictPort   # Windows PowerShell
+```
+
+```sh
+npm run dev -- --port 5199 --strictPort        # 터미널 1 (위처럼 VITE_DEV_AUTH=true)
 npm run test:chrome                            # 터미널 2: 전체(오래 걸립니다)
 npm run test:chrome -- --list                  # 스크립트·그룹 목록(서버·Chrome 불필요)
 npm run test:chrome -- --group community       # 그룹만
@@ -164,7 +173,7 @@ npm run test:chrome -- --only w02-compose      # 스크립트만
 
 ## 테스트용 모의 계정
 
-개발 서버(`npm run dev`)에서만 쓰는 **개발 전용 모의 계정**입니다. 서버에 만든 계정이 아니고 실제 인증이 아니며, 운영 빌드에는 포함되지 않습니다. 이메일은 `example.com` 가상 주소이며 계정 정보 전체(비밀번호 포함)는 `src/auth/dev/devAccounts.ts`에 있습니다. Chrome 회귀 테스트도 같은 계정으로 로그인합니다.
+개발 서버(`npm run dev`)를 **`VITE_DEV_AUTH=true`로 실행했을 때만** 쓰는 **개발 전용 모의 계정**입니다(기본 개발 서버는 실제 백엔드로 로그인). 서버에 만든 계정이 아니고 실제 인증이 아니며, 운영 빌드에는 포함되지 않습니다. 이메일은 `example.com` 가상 주소이며 계정 정보 전체(비밀번호 포함)는 `src/auth/dev/devAccounts.ts`에 있습니다. Chrome 회귀 테스트도 같은 계정으로 로그인합니다.
 
 | 이메일                        | 닉네임   | 멤버십 유형 |
 | ----------------------------- | -------- | ----------- |
@@ -184,29 +193,63 @@ npm run test:chrome -- --only w02-compose      # 스크립트만
 | 구분                        | 현재 상태                                                                                                                                                                                                                                 |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 백엔드 구현                 | 팀 Repository의 `develop` 브랜치에서 **일부 기능이 구현 진행 중**입니다(예: 인증·회원, 프로필, 운동·루틴·세션, 식단 목표·음식·식단 기록, 퀴즈·보상). 어디까지 구현됐는지는 `develop` 브랜치의 `backend/`와 `docs/`를 기준으로 확인합니다. |
-| 프론트엔드·백엔드 실제 연동 | **아직 진행 전**입니다. 이 프론트엔드에는 서버 API 호출 코드가 없고, 아래 연결 위치의 팩토리 함수는 운영 빌드에서 `null`을 돌려줍니다.                                                                                                    |
+| 프론트엔드·백엔드 실제 연동 | **인증(로그인·로그아웃·새로고침 후 로그인 유지·내 정보)과 API 호출 공통 코드만 연결**됐습니다(아래 "API 호출 공통 코드"). 그 밖의 화면은 아직이며 아래 연결 위치의 팩토리 함수는 운영 빌드에서 `null`을 돌려줍니다.                       |
 | API 요청·응답 계약          | **담당자와 대조해 확정해야 합니다.** 백엔드가 구현돼 있어도 프론트엔드의 타입·필드명(`MembershipInfo`, `PostSummary` 등)은 임의 가정이라 그대로 맞는다고 보지 않습니다.                                                                   |
 | 참고할 API 문서             | 팀 Repository의 `docs/`(예: `api_member_v1.0.md`, `api_exercise_v1.0.md`)와 `backend/` 소스를 참고합니다. 이 패키지에는 해당 문서가 들어 있지 않습니다.                                                                                   |
 
 - 아래 표의 "계약 확정: 아니오"는 **프론트엔드 쪽 계약이 확정되지 않았다**는 뜻이며 의도적으로 유지했습니다. 백엔드 구현이 있는 영역도 요청·응답 필드, 오류 응답, 인증 방식을 담당자와 대조한 뒤에 연결 코드를 작성합니다.
 - 연결 순서와 우선순위는 팀이 정합니다. 프론트엔드 쪽에서 새로 결정한 것은 없습니다.
 
+### API 호출 공통 코드
+
+회원 파트(팀장)가 만든 인증 공통 기반입니다. 다른 파트는 **자기 도메인 연결 파일에서 `apiRequest`만 가져다 씁니다.** `src/api/`와 `src/auth/`의 인증 파일은 지정 담당(팀장)만 수정하고, 프론트 연결 PR은 WOOJIN 님이 리뷰합니다.
+
+```ts
+import { ApiError, apiRequest } from '../api/http.ts'
+
+const me = await apiRequest<{ userId: number }>('GET', '/users/me') // 로그인 필요(기본)
+// 비회원도 되는 조회는 auth: 'optional'(로그인했으면 토큰을 붙임). 경로는 각 파트의 API 문서를 따른다.
+await apiRequest('POST', '/health/measurements', { body: { weightKg: 70 } })
+await apiRequest('GET', '/health/metrics', {
+  headers: { 'X-Pin-Token': pinToken },
+})
+
+try {
+  await apiRequest('POST', '/users/me/pin/verify', { body: { pin } })
+} catch (error) {
+  if (error instanceof ApiError && error.errorCode === 'PIN_INVALID') {
+    // error.data에 서버의 실패 상세(remainingAttempts 등)가 그대로 있다
+  }
+}
+```
+
+- **경로:** `/api/v1` 뒤 부분만 씁니다(`/users/me`). `/`로 시작하지 않거나 `//`·`://`·`\`가 들어간 경로는 요청 없이 오류입니다.
+- **결과:** 성공하면 응답의 `data`, 204·빈 본문이면 `undefined`. 실패하면 `ApiError { status, errorCode, message, data, retryAfter }`. 서버에 닿지 못하면 `status 0`·`errorCode 'NETWORK'`, 응답 형식이 다르면 `'INVALID_RESPONSE'`. 취소(`signal`)는 원래 `AbortError`를 그대로 던집니다.
+- **`auth`:** `'required'`(기본, 로그인 안 했으면 요청 없이 `401 LOGIN_REQUIRED`) / `'optional'`(비회원도 되는 조회) / `'none'`(토큰·세션을 전혀 쓰지 않음).
+- **토큰은 다루지 않습니다.** access 토큰은 메모리에만 있고 꺼내는 함수도 없습니다. `401 TOKEN_EXPIRED`이면 공통 코드가 재발급 후 **한 번만** 다시 보냅니다. `INVALID_TOKEN`·`LOGIN_REQUIRED`·`403 ACCOUNT_SUSPENDED`는 로그인 상태를 끝냅니다(화면은 로그아웃 상태가 됨). 그 밖의 403(PIN 관련·`ACCESS_DENIED`)·4xx·5xx는 그 요청만 실패합니다.
+- **자동 재전송 없음:** 네트워크 오류·500은 서버가 이미 처리했을 수 있어 다시 보내지 않습니다. 필요하면 화면에서 사용자에게 다시 시도하게 합니다.
+- **헤더:** `X-Pin-Token` 같은 추가 헤더는 `headers`로 넘깁니다. `Authorization`·`X-Requested-With`, 본문이 있을 때 `Content-Type`은 넣을 수 없습니다(대소문자 무관).
+- **본문:** 일반 객체·배열만 JSON으로 보냅니다. `FormData`·`Blob`(파일 업로드)은 아직 지원하지 않습니다. 추가할 때는 `Content-Type`을 직접 붙이지 않는 규칙으로 공통 코드를 확장합니다(담당과 협의).
+- **`cookieChanging: true`:** refresh 쿠키를 만들거나 지우는 요청(예: 비밀번호 변경)에만 씁니다. `auth` 모드(`required`·`optional`·`none`)와 상관없이 로그인·로그아웃·재발급과 한 번에 하나씩 순서대로 보냅니다.
+- **배포:** 브라우저는 같은 출처의 `/api`만 호출합니다. 배포 서버(역방향 프록시 등)가 `/api`를 백엔드로 전달해야 하며 refresh 쿠키(`Secure`)는 HTTPS에서만 저장됩니다(`localhost`는 예외). 배포 설정은 팀이 정합니다.
+- **알려진 한계:** 탭 사이에는 재발급 순서를 맞추지 않습니다(재시도로 완화만). 새로고침했을 때 다른 탭에서 다른 계정으로 로그인돼 있으면 이 탭도 그 계정으로 바뀌고 이 탭의 임시 입력이 지워지며, 따로 안내하지 않습니다. 멤버십 유형(`entitlement`)은 멤버십 API 연결 전까지 임시로 `free`이고, 닉네임이 없는 회원은 `회원`으로 표시합니다.
+
 ### 연결 위치와 미확정 계약
 
 **원칙: 요청·응답 형식은 거의 모두 미확정입니다.** 아래 "계약 확정"이 "아니오"인 항목의 엔드포인트·필드명은 프론트엔드가 가정한 모양이며 백엔드와 협의되기 전에는 확정으로 보지 않습니다. 모든 연결 자리는 `createXxxSource()`/`createXxxRepository()` 같은 **팩토리 함수**이며, 운영 빌드에서는 `null`을 돌려주고 화면이 "연결 전·준비 중"을 보입니다. 연결할 때는 같은 인터페이스를 구현한 객체를 돌려주도록 팩토리만 바꾸면 됩니다(화면·검증·상태 처리는 그대로 씁니다). 공통 미정 사항: Base URL, 인증 토큰 전달·갱신, 요청·응답 본문, 공통 응답 래퍼, HTTP 상태 코드, 오류 응답 형식, 페이지네이션, 날짜·시간대, 이미지 업로드 방식, AI 비동기 작업 상태값, PIN 인증 증명 전달 방식.
 
-| 영역                  | 프론트엔드 연결 위치                                                                                                                                                                               | 계약 확정 | 미연결 시 동작                                                              | 백엔드와 협의할 사항                                                                                                                                                                                                       |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 인증·회원가입         | `src/auth/authBackend.ts`(`AuthBackend`: login·restore·persist·clear), `unavailableBackend.ts`, `passwordReset.ts`, `pages/SignupPage.tsx`                                                         | 아니오    | 운영 로그인 항상 실패. 가입은 개발용 체험 흐름만, 비밀번호 재설정 요청 불가 | 로그인·가입·소셜·재설정·토큰 갱신 형식과 오류, 로그인 응답의 멤버십 유형(`free`·`basic`·`pro`, 옛 `exercise`·`meal`·`full`은 모르는 값으로 조회 실패 처리)                                                                 |
-| PIN(2차 비밀번호)     | `src/pin-settings/`(훅), `src/exercise-goal/exerciseGoalSource.ts`(PIN 저장·확인 경계)                                                                                                             | 아니오    | 등록·변경·확인 불가 안내(개발용 로컬 PIN은 운영 번들에 없음)                | 등록·변경·검증 API, PIN 인증 결과의 전달·검증 방식(몸무게·신체 정보는 PIN 인증 후에만 조회), 5회 불일치 잠금의 서버 책임                                                                                                   |
-| 프로필·신체·건강 목표 | `profile/profile.ts`, `body-measurements/bodySource.ts`, `health-goal/goalSource.ts`, `weight-log/`, `notifications/`                                                                              | 아니오    | 각 화면이 연결 전 안내                                                      | 필드·단위, 몸무게 이력·월간 확인·알림 계약(명세에 알림 API 없음), 목표 저장 필드(운동·식단 비율)                                                                                                                           |
-| 운동(탐색·루틴·기록)  | `exercise/exerciseSource.ts`, `favoriteSource.ts`, `workoutSource.ts`(목록·세션·기록·루틴), `workoutPlanSource.ts`                                                                                 | 아니오    | 개발 서버만 시드·IndexedDB. 운영은 준비 중                                  | 운동 마스터·태그(난이도·부위·도구)·시드 출처와 이용 권리 확인, 루틴·세션·기록 모델, 날짜별 계획                                                                                                                            |
-| 운동 AI               | `ai/exercisePlanSource.ts`(로컬 예시), `exercise/recommend/planSource.ts`(규칙 기반 초급 추천), 실제 AI API 연결 코드 없음                                                                         | 아니오    | 로컬 예시·규칙 기반만. 실제 AI 호출 없음                                    | 운동 추천 요청·결과·피드백 API(#62~64), 사용량 소진 시 응답                                                                                                                                                                |
-| 음식 사진 분석        | `src/photo-analysis/photoAnalysisContract.ts`(`PhotoAnalysisSource.analyze`, 소진은 `PhotoAnalysisQuotaError`)                                                                                     | 아니오    | 분석 시작 불가, "분석 서버가 아직 연결되지 않았어요"                        | 업로드 방식·허용 형식·용량, 작업 ID·상태값, 결과 필드(`foods`·`totalKcal`·`partial`), 소진 거절 응답, 분석 음식→음식 ID 매핑과 식단 등록 API(현재는 식단 기록 화면 이동만), 사진 보관·삭제 정책                            |
-| 통합 AI 멤버십·사용량 | `src/membership/membership.ts`(`MembershipSource`, `createMembershipSource`), `aiAccess.ts`, `useAiAccess.ts`                                                                                      | 아니오    | "연결 전". AI 접근 상태 `unknown`(권한 부여·제한 모두 하지 않음)            | 멤버십(`plan`)·사용량(`usage.limit`·`remaining`)·갱신일·운동·식단별 내역 조회, 권한 판정과 소진 시 AI 요청 오류, `GET /users/me/entitlements`와의 역할 분담, 유료 횟수(30·100회)·가격·결제 정책 확정, 결제·멤버십 변경 API |
-| 커뮤니티              | `src/community/communitySource.ts`(`CommunitySource`: 목록·상세·작성·댓글/답변·응원), `community.ts`(타입·검증)                                                                                    | 아니오    | 목록·상세 "아직 글을 볼 수 없어요", 작성 등록 비활성                        | 게시판(자유·Q&A) 구분, Q&A 카테고리·답변(댓글 재사용 여부)·답변 자격(질문 영역 이해도 중급 이상) 서버 판정, 정렬·페이지네이션, 응원(게시글 좋아요 #88·#89), 수정·삭제·신고 화면(명세에 없음)                               |
-| 식단(음식·기록·목표)  | `food/foodSource.ts`, `mealSource.ts`, `mealPlanSource.ts`, `foodFavoriteSource.ts`, `meal-goal/mealGoalSource.ts`, `ai/meal/mealPlanContract.ts`                                                  | 아니오    | 개발 서버만 샘플·IndexedDB. 운영은 준비 중. 식단 AI 추천 결과를 만들지 않음 | 음식 검색·영양 필드, 끼니 기록 모델, 식단 목표 계산 정책(검증 전이라 저장 불가), 식단 추천 API(#65~69)                                                                                                                     |
-| 기타 연결 대기 화면   | `inquiry/inquiry.ts`, `support/notices.ts`·`faq.ts`, `food-request/foodRequest.ts`, `growth-history/`(경험치·포인트), `quiz/quizSource.ts`, `onboarding-assessment/assessmentSource.ts`, `mypage/` | 아니오    | 각 화면이 연결 전 안내(가짜 공지·내역을 만들지 않음)                        | 문의·음식 등록 요청·공지·경험치 내역 API(명세에 없음), 퀴즈·보상, 이해도 결과 조회                                                                                                                                         |
+| 영역                  | 프론트엔드 연결 위치                                                                                                                                                                               | 계약 확정   | 미연결 시 동작                                                              | 백엔드와 협의할 사항                                                                                                                                                                                                       |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 인증·회원가입         | `src/auth/authBackend.ts`, `serverBackend.ts`(로그인·로그아웃·시작 확인 **연결됨**), `src/api/`(공통 호출), `passwordReset.ts`, `pages/SignupPage.tsx`                                             | 로그인만 예 | 가입은 개발용 체험 흐름만(후속 F2), 비밀번호 재설정 요청 불가               | 로그인·가입·소셜·재설정·토큰 갱신 형식과 오류, 로그인 응답의 멤버십 유형(`free`·`basic`·`pro`, 옛 `exercise`·`meal`·`full`은 모르는 값으로 조회 실패 처리)                                                                 |
+| PIN(2차 비밀번호)     | `src/pin-settings/`(훅), `src/exercise-goal/exerciseGoalSource.ts`(PIN 저장·확인 경계)                                                                                                             | 아니오      | 등록·변경·확인 불가 안내(개발용 로컬 PIN은 운영 번들에 없음)                | 등록·변경·검증 API, PIN 인증 결과의 전달·검증 방식(몸무게·신체 정보는 PIN 인증 후에만 조회), 5회 불일치 잠금의 서버 책임                                                                                                   |
+| 프로필·신체·건강 목표 | `profile/profile.ts`, `body-measurements/bodySource.ts`, `health-goal/goalSource.ts`, `weight-log/`, `notifications/`                                                                              | 아니오      | 각 화면이 연결 전 안내                                                      | 필드·단위, 몸무게 이력·월간 확인·알림 계약(명세에 알림 API 없음), 목표 저장 필드(운동·식단 비율)                                                                                                                           |
+| 운동(탐색·루틴·기록)  | `exercise/exerciseSource.ts`, `favoriteSource.ts`, `workoutSource.ts`(목록·세션·기록·루틴), `workoutPlanSource.ts`                                                                                 | 아니오      | 개발 서버만 시드·IndexedDB. 운영은 준비 중                                  | 운동 마스터·태그(난이도·부위·도구)·시드 출처와 이용 권리 확인, 루틴·세션·기록 모델, 날짜별 계획                                                                                                                            |
+| 운동 AI               | `ai/exercisePlanSource.ts`(로컬 예시), `exercise/recommend/planSource.ts`(규칙 기반 초급 추천), 실제 AI API 연결 코드 없음                                                                         | 아니오      | 로컬 예시·규칙 기반만. 실제 AI 호출 없음                                    | 운동 추천 요청·결과·피드백 API(#62~64), 사용량 소진 시 응답                                                                                                                                                                |
+| 음식 사진 분석        | `src/photo-analysis/photoAnalysisContract.ts`(`PhotoAnalysisSource.analyze`, 소진은 `PhotoAnalysisQuotaError`)                                                                                     | 아니오      | 분석 시작 불가, "분석 서버가 아직 연결되지 않았어요"                        | 업로드 방식·허용 형식·용량, 작업 ID·상태값, 결과 필드(`foods`·`totalKcal`·`partial`), 소진 거절 응답, 분석 음식→음식 ID 매핑과 식단 등록 API(현재는 식단 기록 화면 이동만), 사진 보관·삭제 정책                            |
+| 통합 AI 멤버십·사용량 | `src/membership/membership.ts`(`MembershipSource`, `createMembershipSource`), `aiAccess.ts`, `useAiAccess.ts`                                                                                      | 아니오      | "연결 전". AI 접근 상태 `unknown`(권한 부여·제한 모두 하지 않음)            | 멤버십(`plan`)·사용량(`usage.limit`·`remaining`)·갱신일·운동·식단별 내역 조회, 권한 판정과 소진 시 AI 요청 오류, `GET /users/me/entitlements`와의 역할 분담, 유료 횟수(30·100회)·가격·결제 정책 확정, 결제·멤버십 변경 API |
+| 커뮤니티              | `src/community/communitySource.ts`(`CommunitySource`: 목록·상세·작성·댓글/답변·응원), `community.ts`(타입·검증)                                                                                    | 아니오      | 목록·상세 "아직 글을 볼 수 없어요", 작성 등록 비활성                        | 게시판(자유·Q&A) 구분, Q&A 카테고리·답변(댓글 재사용 여부)·답변 자격(질문 영역 이해도 중급 이상) 서버 판정, 정렬·페이지네이션, 응원(게시글 좋아요 #88·#89), 수정·삭제·신고 화면(명세에 없음)                               |
+| 식단(음식·기록·목표)  | `food/foodSource.ts`, `mealSource.ts`, `mealPlanSource.ts`, `foodFavoriteSource.ts`, `meal-goal/mealGoalSource.ts`, `ai/meal/mealPlanContract.ts`                                                  | 아니오      | 개발 서버만 샘플·IndexedDB. 운영은 준비 중. 식단 AI 추천 결과를 만들지 않음 | 음식 검색·영양 필드, 끼니 기록 모델, 식단 목표 계산 정책(검증 전이라 저장 불가), 식단 추천 API(#65~69)                                                                                                                     |
+| 기타 연결 대기 화면   | `inquiry/inquiry.ts`, `support/notices.ts`·`faq.ts`, `food-request/foodRequest.ts`, `growth-history/`(경험치·포인트), `quiz/quizSource.ts`, `onboarding-assessment/assessmentSource.ts`, `mypage/` | 아니오      | 각 화면이 연결 전 안내(가짜 공지·내역을 만들지 않음)                        | 문의·음식 등록 요청·공지·경험치 내역 API(명세에 없음), 퀴즈·보상, 이해도 결과 조회                                                                                                                                         |
 
 개발용 예시 저장소(IndexedDB 키, 탭 메모리 등)는 서버가 대신 보관하는 값을 흉내 낸 것입니다. 서버 연결 후에는 해당 개발용 모듈과 `dev/`·`dev-mock/` 폴더를 지웁니다. 삭제된 API(운동 루틴 좋아요 `POST /api/v1/workout-routines/{routineId}/likes`)는 쓰지 않으며 좋아요는 커뮤니티 게시글 좋아요로 통합됐습니다.
 
