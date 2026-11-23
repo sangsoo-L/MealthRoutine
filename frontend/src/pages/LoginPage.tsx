@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useMatches } from 'react-router'
 import { getRouteHandle } from '../app/routeHandle.ts'
 import { useAuth } from '../auth/authContext.ts'
 import { safeReturnTo } from '../auth/returnTo.ts'
+import { isSignedUpState } from '../auth/signupApi.ts'
 import {
   AuthBody,
   AuthFrame,
@@ -38,6 +39,10 @@ const FORM_MESSAGES = {
  * authFailed는 이메일이든 비밀번호든 고치면 지운다.
  */
 type FieldErrorKey = 'passwordTooShort' | 'authFailed'
+
+/** 가입 성공 뒤 로그인 화면에서 보이는 안내(F2-D3). 가입은 자동 로그인을 하지 않는다(SIGNUP-RES-1). */
+const SIGNED_UP_NOTICE =
+  '회원가입이 완료됐어요. 가입한 이메일과 비밀번호로 로그인해 주세요.'
 
 function EyeIcon({ crossed }: { crossed: boolean }) {
   return (
@@ -116,7 +121,12 @@ function PasswordInput({
   )
 }
 
-function LoginForm() {
+/**
+ * hideStartupNotice: 회원가입 직후(F2-D3)처럼 앱 시작 확인 뒤 서버에 다시 닿은 것이 확인된 경우 true.
+ * 이때는 과거 시작 확인의 연결 실패 안내(F1-D7 connectionNotice)를 숨긴다(방금 성공한 가입을 실패로 오해하지 않게).
+ * 이 화면에서 새로 시도한 로그인의 연결 실패(noticeVisible)는 그대로 보인다.
+ */
+function LoginForm({ hideStartupNotice }: { hideStartupNotice: boolean }) {
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [errorKey, setErrorKey] = useState<FieldErrorKey | null>(null)
   const [noticeVisible, setNoticeVisible] = useState(false)
@@ -232,9 +242,14 @@ function LoginForm() {
         {submitting ? (
           <p className={noticeClass}>{FORM_MESSAGES.submitting}</p>
         ) : null}
-        {/* 제출 결과의 연결 실패, 또는 앱 시작 확인이 서버에 닿지 못한 경우(F1-D7). 같은 문구를 한 번만 보여 준다. */}
+        {/* 제출 결과의 연결 실패, 또는 앱 시작 확인이 서버에 닿지 못한 경우(F1-D7). 같은 문구를 한 번만 보여 준다.
+            가입 직후에는 과거 시작 확인 실패 안내만 숨긴다(hideStartupNotice). */}
         {noticeVisible ||
-        (connectionNotice && !submitting && !errorKey && !suspendedMessage) ? (
+        (connectionNotice &&
+          !hideStartupNotice &&
+          !submitting &&
+          !errorKey &&
+          !suspendedMessage) ? (
           <p className={noticeClass}>{FORM_MESSAGES.connectionFailed}</p>
         ) : null}
       </div>
@@ -273,6 +288,8 @@ export default function LoginPage() {
   const parent = getRouteHandle(matches.at(-1)?.handle).parent ?? null
   // 비밀번호 재설정(A04)으로 갈 때도 로그인 후 돌아갈 경로(검증된 값만)를 이어 가 A04의 "로그인으로 돌아가기"가 되돌려 준다.
   const returnTo = safeReturnTo(location.state)
+  // 회원가입(A03) 성공 직후 들어왔는지(F2-D3). 표시용 값 하나만 받으며 인증·PIN·온보딩 완료의 증거가 아니다.
+  const signedUp = isSignedUpState(location.state)
 
   return (
     <AuthFrame>
@@ -303,7 +320,12 @@ export default function LoginPage() {
           <h3 id="login-form-title" className="sr-only">
             로그인
           </h3>
-          <LoginForm />
+          <div role="status">
+            {signedUp ? (
+              <p className={noticeClass}>{SIGNED_UP_NOTICE}</p>
+            ) : null}
+          </div>
+          <LoginForm hideStartupNotice={signedUp} />
           <div className="mt-1 flex justify-center">
             <Link
               to="/password/reset"
