@@ -1,11 +1,14 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { FOCUS_LABEL } from '../../health-goal/goalPolicy.ts'
 import type {
   HealthGoalInput,
   HealthGoalState,
   HealthManagementGoal,
 } from '../../health-goal/goalTypes.ts'
+import { MY_DESTINATIONS, MY_PAGE_PATH } from '../../mypage/destinations.ts'
 import type { KnowledgeState } from '../../mypage/mypageTypes.ts'
+import Icon from '../icons/Icon.tsx'
 import HealthGoalSheet from '../health-goal/HealthGoalSheet.tsx'
 import RatioBar from '../health-goal/RatioBar.tsx'
 import { focusRing, sectionTitleClass } from './myStyles.ts'
@@ -115,6 +118,19 @@ export default function HealthGoalSummary({
         나의 건강 목표
       </h2>
       <div className="mt-2.5">{body}</div>
+      {/* P10 건강 목표 상세 설정. 연결 전(조회·저장 수단 없음)에는 링크를 두지 않는다. 진입한 곳(P01)으로 돌아오게 알린다. */}
+      {MY_DESTINATIONS.healthGoal.to !== null &&
+      goal.status !== 'unavailable' ? (
+        <Link
+          to={MY_DESTINATIONS.healthGoal.to}
+          state={{ from: MY_PAGE_PATH }}
+          data-goal-detail-link=""
+          className={`mt-1 inline-flex min-h-11 items-center gap-1 text-body leading-snug font-semibold text-brand transition-colors hover:text-brand-hover motion-reduce:transition-none ${focusRing}`}
+        >
+          건강 목표 상세 설정
+          <Icon name="chevron-right" size={18} />
+        </Link>
+      ) : null}
 
       {sheet ? (
         <HealthGoalSheet

@@ -78,12 +78,13 @@ for (const [label, w, hh] of [
     )
     check(
       h,
-      `A3(${label}). 둘러보기 링크: 운동 찾기 → /exercises, 음식 찾기 → /foods`,
+      // 둘러보기의 타일 두 개는 검색 튜토리얼 카드(로그인 홈 개편으로 이전)로 통합되어 링크 문구가 "시작하기"로 바뀌었다. 경로는 그대로다.
+      `A3(${label}). 둘러보기 링크: 운동 탐색 시작하기 → /exercises, 음식 검색 시작하기 → /foods`,
       tiles.length === 2 &&
         tiles[0].h === '/exercises' &&
-        /운동 찾기/.test(tiles[0].t) &&
+        /운동 탐색 시작하기/.test(tiles[0].t) &&
         tiles[1].h === '/foods' &&
-        /음식 찾기/.test(tiles[1].t),
+        /음식 검색 시작하기/.test(tiles[1].t),
       JSON.stringify(tiles),
     )
     // 클릭 → 비회원도 화면이 열린다(로그인 안내로 막히지 않는다)
@@ -157,10 +158,10 @@ await scenario('B-support-guest', async (h) => {
   )
   check(
     h,
-    'B2. 챗봇·1:1 문의는 링크가 아니라 "준비 중"으로만 알린다',
+    'B2. 1:1 문의는 S02 링크(2026-11-21 연결)이고 화면이 없는 키워드 챗봇만 "준비 중"으로 알린다',
     /키워드 챗봇/.test(s.text) &&
-      /1:1 문의/.test(s.text) &&
-      (s.text.match(/준비 중/g) ?? []).length === 2,
+      s.links.some((l) => l.h === '/support/inquiry' && /1:1 문의/.test(l.t)) &&
+      (s.text.match(/준비 중/g) ?? []).length === 1,
   )
   await h.go('/support/notices/없는공지', 200)
   await waitH1(h, '공지사항')
@@ -286,10 +287,15 @@ await scenario('C-member-links', async (h) => {
   )
   check(
     h,
-    'C2. 내 운동 루틴은 W06 링크이고, 아직 화면이 없는 항목(내 문의 등)은 그대로 "준비 중"이다',
-    (s.text.match(/준비 중/g) ?? []).length >= 8 &&
+    'C2. 내 운동 루틴·문의·내 문의·프로필·키·몸무게·건강 목표·멤버십 관리는 링크(2026-11-21 연결)이고, 아직 화면이 없는 항목(결제 내역·약관·회원 탈퇴)만 "준비 중"이다',
+    (s.text.match(/준비 중/g) ?? []).length === 3 &&
       link('내 운동 루틴')?.h === '/records/exercise/routines' &&
-      !link('내 문의'),
+      link('문의')?.h === '/support/inquiry' &&
+      link('내 문의')?.h === '/mypage/inquiries' &&
+      link('프로필·개인정보')?.h === '/settings/profile' &&
+      link('키·몸무게')?.h === '/settings/body' &&
+      link('건강 목표')?.h === '/settings/health-goal' &&
+      link('멤버십 관리')?.h === '/settings/membership',
     String((s.text.match(/준비 중/g) ?? []).length),
   )
   for (const [label, path, h1] of [

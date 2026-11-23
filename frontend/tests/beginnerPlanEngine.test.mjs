@@ -127,11 +127,8 @@ test('권한 분리: 엔진은 식단 이해도·AI 이용 권한·PIN 보호 �
       name,
     )
   }
-  // 기존 v5.0 AI 운동 플랜 이용 권한(유료/체험)은 변하지 않았다.
-  assert.equal(Entitlements.getExercisePlanAccess('free'), 'trial')
-  assert.equal(Entitlements.getExercisePlanAccess('exercise'), 'paid')
-  assert.equal(Entitlements.getExercisePlanAccess('full'), 'paid')
-  assert.equal(Entitlements.getExercisePlanAccess('meal'), 'unspecified')
+  // 멤버십 상품 유형별 AI 접근 함수(옛 getExercisePlanAccess)는 통합 AI 멤버십 정책으로 없어졌다. AI 사용 상태는 서버 사용량이 정한다.
+  assert.equal(Entitlements.getExercisePlanAccess, undefined)
 })
 
 test('입력·카탈로그 실패: 잘못된 입력은 검증 실패를 그대로, 카탈로그가 비면 catalogUnavailable, 후보가 없으면 noCandidates', () => {

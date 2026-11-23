@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type Ref, type SubmitEvent } from 'react'
-import { Navigate, useLocation, useMatches } from 'react-router'
+import { Link, Navigate, useLocation, useMatches } from 'react-router'
 import { getRouteHandle } from '../app/routeHandle.ts'
 import { useAuth } from '../auth/authContext.ts'
 import { safeReturnTo } from '../auth/returnTo.ts'
@@ -20,7 +20,7 @@ import BackLink from '../components/layout/BackLink.tsx'
 
 const MIN_PASSWORD_LENGTH = 8
 
-/** 화면 문구 출처: 스토리보드 v5.0(documents/스토리보드_v5.0/storyboard.html)의 A01 정의 */
+/** 화면 문구 출처: 스토리보드 v5.0(v5.0 스토리보드)의 A01 정의 */
 const FORM_MESSAGES = {
   passwordTooShort: '체험용 비밀번호는 8자 이상 입력해 주세요.',
   // 입력이 개발용 계정과 맞지 않을 때. 어느 입력이 틀렸는지 알려 주지 않는다.
@@ -238,12 +238,10 @@ function LoginForm() {
 }
 
 /**
- * A01 로그인 화면. 기능·문구 기준은 화면명세_v5.0.json과 v5.0 HTML 스토리보드다.
+ * A01 로그인 화면. 기능·문구 기준은 v5.0 화면 명세과 v5.0 HTML 스토리보드다.
  *
  * 회원가입(A03)은 `/signup` 라우트로 연결한다.
- * 비밀번호 재설정(A04)은 대상 라우트가 없어 href 없는 <a>(HTML 표준의 자리표시 링크)로 둔다.
- * 클릭할 수 없는 상태에서 링크처럼 보이지 않도록 brand 색을 쓰지 않는다.
- * A04 라우트가 정해지면 react-router의 Link로 바꾼다.
+ * 비밀번호 재설정(A04)은 `/password/reset` 라우트로 연결한다.
  *
  * 로그인은 UI 개발용이며 실제 인증(POST /api/v1/auth/login)이 아니다. 처리는 useAuth().login에 맡긴다.
  * 이미 로그인한 사용자는 /home으로 보낸다. 로그인에 성공해도 같은 경로로 이동한다.
@@ -258,6 +256,8 @@ export default function LoginPage() {
   }
   // 상단 바가 없어서 뒤로가기(→홈)는 이 틀 안에서 직접 그린다(라우트 handle.bodyBack). 목적지는 handle.parent다.
   const parent = getRouteHandle(matches.at(-1)?.handle).parent ?? null
+  // 비밀번호 재설정(A04)으로 갈 때도 로그인 후 돌아갈 경로(검증된 값만)를 이어 가 A04의 "로그인으로 돌아가기"가 되돌려 준다.
+  const returnTo = safeReturnTo(location.state)
 
   return (
     <AuthFrame>
@@ -290,9 +290,14 @@ export default function LoginPage() {
           </h3>
           <LoginForm />
           <div className="mt-1 flex justify-center">
-            <a className="inline-flex min-h-11 items-center text-support font-normal text-muted">
+            <Link
+              to="/password/reset"
+              state={returnTo ? { returnTo } : undefined}
+              data-login-reset-link=""
+              className="inline-flex min-h-11 items-center text-support font-semibold text-brand underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
               비밀번호를 잊으셨나요?
-            </a>
+            </Link>
           </div>
         </section>
 

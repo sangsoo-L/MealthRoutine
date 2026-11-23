@@ -35,7 +35,11 @@ import {
   ASSUMED_SECONDS_PER_REP,
   ASSUMED_TRANSITION_SECONDS,
 } from '../../../exercise/recommend/rules.ts'
-import type { AiAccess } from '../../../auth/entitlements.ts'
+import {
+  AI_EXHAUSTED_TEXT,
+  type AiAccess,
+} from '../../../membership/aiAccess.ts'
+import { PATH_MEMBERSHIP } from '../../../membership/membership.ts'
 import Icon from '../../icons/Icon.tsx'
 import {
   composeCard,
@@ -331,7 +335,8 @@ export function ResultView({
  * I02-1 AI 운동 플랜 · 조건 선택과 추천(`/ai/exercise/plan`, 회원 전용) 본문. 난이도 → 부위 → 도구 → 시간 4단계를 한 번에 한 질문으로 받고,
  * 같은 난이도 시드 루틴의 운동량 근거로 만든 **로컬 예시** 목록을 보여 준다(실제 AI 추천이 아니다). 이전 단계로 돌아가도 선택값을 유지한다.
  * 결과의 "목록 등록"은 추천을 기존 운동 초안으로 바꿔 오늘/내일 목록으로 등록하고 운동 목록 편집(W02)으로 보낸다(저장은 W02·W11의 기존 절차).
- * 체험 횟수는 다루지 않고 서버 권한 검증을 한 것처럼 표현하지 않는다.
+ * 접근 상태(access)는 서버가 확인한 통합 AI 사용량에서만 나온다. 서버 미연결(unknown)에서도 로컬 예시는 AI 요청이 아니라 그대로 열리고,
+ * 서버가 확인한 잔여가 0(exhausted)이면 새 요청을 제한하는 안내만 보인다. 남은 횟수 숫자를 만들거나 권한 검증을 한 것처럼 표현하지 않는다.
  */
 export default function ExercisePlanFlowView({
   access,
@@ -396,17 +401,27 @@ export default function ExercisePlanFlowView({
     )
   }
 
-  if (access === 'unspecified') {
+  if (access === 'exhausted') {
     return (
       <div className="flex min-w-0 flex-col gap-6 break-keep wrap-anywhere">
         {header}
-        <section className={composeCard} data-plan-access="unspecified">
-          <h2 className={composeSectionTitle}>이용 권한을 확인할 수 없어요</h2>
+        <section
+          role="status"
+          className={composeCard}
+          data-plan-access="exhausted"
+        >
+          <h2 className={composeSectionTitle}>{AI_EXHAUSTED_TEXT.title}</h2>
           <p className="mt-2 text-body leading-relaxed font-normal text-muted">
-            지금 회원 구분으로는 이 기능의 이용 권한을 정할 수 없어요. 서버 연동
-            뒤에 안내해 드릴게요.
+            {AI_EXHAUSTED_TEXT.body}
           </p>
-          <Link to="/ai/exercise" className={`mt-3 ${composeSecondaryButton}`}>
+          <Link
+            to={PATH_MEMBERSHIP}
+            state={{ from: '/ai/exercise/plan' }}
+            className={`mt-3 ${composeSecondaryButton}`}
+          >
+            {AI_EXHAUSTED_TEXT.link}
+          </Link>
+          <Link to="/ai/exercise" className={`mt-2 ${composeSecondaryButton}`}>
             AI 운동 플랜 안내로 돌아가기
           </Link>
         </section>

@@ -47,9 +47,20 @@ public class User {
 
     private boolean isAgreedTerm;
 
-    /** Read only until the PIN feature; used for pinRegistered. */
+    /**
+     * The three PIN columns are never written by an entity flush (PIN7-4, like LOGIN6-2): PinAttemptService changes
+     * them only with UPDATE queries while it holds the row lock, so a stale entity cannot put an old value back.
+     */
     @Column(insertable = false, updatable = false)
     private String pinHash;
+
+    /** Wrong PINs in a row (TINYINT UNSIGNED, DB default 0). At most 5 is ever stored, so a byte is enough. */
+    @Column(insertable = false, updatable = false)
+    private byte pinFailedCount;
+
+    /** PIN attempts are refused while now is before this time. */
+    @Column(insertable = false, updatable = false)
+    private LocalDateTime pinLockedUntil;
 
     /** SHA-256 of the current refresh token, never the token itself (P-01). */
     private String refreshTokenHash;

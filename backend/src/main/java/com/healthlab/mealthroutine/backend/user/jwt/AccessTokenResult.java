@@ -1,7 +1,7 @@
 package com.healthlab.mealthroutine.backend.user.jwt;
 
 /**
- * Result of reading an access token. Expired is kept apart from other failures so the client knows
+ * Result of reading an access token (also used for a PIN token, which has the same three outcomes). Expired is kept apart from other failures so the client knows
  * when refreshing makes sense (decision AUTH2-3). userId is set only when the status is VALID.
  */
 public record AccessTokenResult(Status status, Long userId) {

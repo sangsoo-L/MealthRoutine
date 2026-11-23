@@ -437,7 +437,7 @@ test('입력 흐름: 4단계 순서·이전 이동·다중 선택 토글(기준 
 const flow = (props) =>
   render(
     createElement(FlowView, {
-      access: 'paid',
+      access: 'available',
       source: { exercises, evidence },
       ...props,
     }),
@@ -454,16 +454,24 @@ test('화면: 첫 단계는 난이도 3개 선택, 로컬 예시임을 표시하
     assert.match(html, new RegExp(`data-choice="${value}"`))
   assert.doesNotMatch(html, /체험|남은 횟수|차감/)
   assert.doesNotMatch(html, /AI가 분석|맞춤 추천 결과/)
-  // trial도 입력 허용
-  assert.match(flow({ access: 'trial' }), /data-plan-step="difficulty"/)
+  // 서버 미연결(unknown)도 로컬 예시는 AI 요청이 아니라 입력을 허용하고, 권한을 부여했다는 표현은 없다.
+  const unknown = flow({ access: 'unknown' })
+  assert.match(unknown, /data-plan-step="difficulty"/)
+  assert.doesNotMatch(unknown, /data-plan-access|사용 횟수를 모두 사용/)
 })
 
-test('화면: 권한을 확정할 수 없으면 안내만, 운동 데이터가 없으면 준비 중 안내만 보인다', () => {
-  const unspecified = flow({ access: 'unspecified' })
-  assert.match(unspecified, /data-plan-access="unspecified"/)
-  assert.match(unspecified, /이용 권한을 확인할 수 없어요/)
-  assert.doesNotMatch(unspecified, /data-plan-step|data-choice/)
-  assert.doesNotMatch(unspecified, /서버 검증을 마쳤|권한이 확인/)
+test('화면: 서버가 확인한 잔여가 0이면 신규 요청 제한 안내만, 운동 데이터가 없으면 준비 중 안내만 보인다', () => {
+  const exhausted = flow({ access: 'exhausted' })
+  assert.match(exhausted, /data-plan-access="exhausted"/)
+  assert.match(exhausted, /AI 사용 횟수를 모두 사용했어요/)
+  assert.match(exhausted, /운동 AI와 식단 AI는 공통 사용 횟수를 함께 써요/)
+  assert.match(
+    exhausted,
+    /운동·식단 기록과 조회는 횟수와 상관없이 계속 쓸 수 있어요/,
+  )
+  assert.match(exhausted, /href="\/settings\/membership"/)
+  assert.doesNotMatch(exhausted, /data-plan-step|data-choice/)
+  assert.doesNotMatch(exhausted, /서버 검증을 마쳤|권한이 확인|\d+회 남/)
   const off = flow({ source: null })
   assert.match(off, /data-plan-unavailable/)
   assert.match(off, /준비 중이에요/)

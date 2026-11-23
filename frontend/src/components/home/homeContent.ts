@@ -1,8 +1,8 @@
 /**
- * 회원 홈(MemberHomePage)에서 쓰는 바로가기 6개·퀴즈 카드·공지의 문구와, 아직 쓰지 않는 검색 안내(HomeDiscovery) 문구. 비로그인 랜딩(H01)의 문구는 landing/landingContent.ts에 있다.
+ * 회원 홈(MemberHomePage)에서 쓰는 빠른 실행 6개·퀴즈 카드·공지의 문구와, 비회원 랜딩의 검색 안내(LandingExplore) 문구(HOME_GUIDE_*). 비로그인 랜딩(H01)의 문구는 landing/landingContent.ts에 있다.
  *
  * H01 홈 비회원 화면의 콘텐츠. 문구와 구성은 공개 스토리보드 v5.0(가이드 기반 리디자인 v5.0)의 비회원 홈을 그대로 옮긴 것이다.
- * (documents/의 스토리보드는 v4.0이라 홈 구성이 다르며, 이 파일은 v5.0을 기준으로 한다.)
+ * (이전 버전 스토리보드는 v4.0이라 홈 구성이 다르며, 이 파일은 v5.0을 기준으로 한다.)
  *
  * 이 값들은 시안용 정적 데이터(Mock)다. 운동·음식 소개 콘텐츠와 공지사항은 실제 API가 연결되면 응답으로 교체한다.
  * `to`가 null이면 목적지 경로가 라우터에 없거나 확정되지 않은 항목이며, 화면에서는 비활성으로 표시한다.
@@ -35,8 +35,8 @@ export const HOME_SHORTCUTS: readonly HomeShortcut[] = [
   { label: 'AI 코칭', emoji: '✨', tone: 'brand', to: '/ai' },
   { label: '운동 찾기', emoji: '🏋️', tone: 'exercise', to: '/exercises' },
   { label: '음식 찾기', emoji: '🔎', tone: 'meal', to: '/foods' },
-  // 커뮤니티 목록(C01)은 라우터에 경로가 없고 화면 경로도 확정되지 않아 연결하지 않는다.
-  { label: '커뮤니티', emoji: '💬', tone: 'brand', to: null },
+  // 커뮤니티 자유게시판(C01, `/community`, 사용자 승인 임시 확정 URL)으로 연결한다.
+  { label: '커뮤니티', emoji: '💬', tone: 'brand', to: '/community' },
 ]
 
 /**
@@ -133,17 +133,6 @@ export const HOME_GUIDE_TOPICS: readonly HomeGuideTopic[] = [
     ctaLabel: '음식 검색 시작하기',
     to: '/foods',
   },
-]
-
-export interface HomeNotice {
-  tag: string
-  title: string
-}
-
-/** 공지사항 미리보기 2개(시안 콘텐츠). 목적지는 모두 고객지원(S01)이다. */
-export const HOME_NOTICES: readonly HomeNotice[] = [
-  { tag: '안내', title: '시안 이용 안내' },
-  { tag: '서비스', title: '무료 기록과 AI 코칭 이용 안내' },
 ]
 
 /** 이모지 타일 배경 클래스. Tailwind가 클래스를 찾을 수 있도록 완성된 문자열로 둔다. */

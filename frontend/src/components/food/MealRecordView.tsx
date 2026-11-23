@@ -14,7 +14,13 @@ import {
   summarizeMeals,
   totalKcalText,
 } from '../../food/mealView.ts'
-import { foodDetailPath, PATH_MEAL } from '../../food/foodPaths.ts'
+import {
+  foodDetailPath,
+  PATH_MEAL,
+  PATH_MEAL_RECORD,
+} from '../../food/foodPaths.ts'
+import { PATH_PHOTO } from '../../photo-analysis/photoAnalysisPolicy.ts'
+import Icon from '../icons/Icon.tsx'
 import FoodFavoriteButton from './FoodFavoriteButton.tsx'
 import MealRecordItem, { type MealEditAction } from './MealRecordItem.tsx'
 import {
@@ -280,6 +286,18 @@ export default function MealRecordView<T extends MealEntry>({
             ? ` · ${copy.countLabel} ${summary.totals.recordCount}개 · ${copy.kcalPrefix}${totalKcalText(summary.totals)}`
             : ''}
         </p>
+        {variant === 'record' ? (
+          // 명세 D02 path: "사진 → I04". 사진 음식 분석(AI)으로 가는 진입 링크이며 직접 기록은 그대로 이 화면에서 한다.
+          <Link
+            to={PATH_PHOTO}
+            state={{ from: PATH_MEAL_RECORD }}
+            data-photo-entry=""
+            className={`mt-3 gap-2 ${mealSecondaryButton}`}
+          >
+            <Icon name="camera" size={18} />
+            사진으로 식단 기록하기
+          </Link>
+        ) : null}
       </header>
 
       <div aria-live="polite" className="empty:hidden">

@@ -2,6 +2,7 @@
 // 실행: frontend에서 `npm run dev -- --port 5199 --strictPort`를 띄운 뒤 `node tests/chrome/run.mjs --only <이름>`. 상세: tests/chrome/README.md
 // S7 P2-4 실제 Chrome + 개발용 IndexedDB 검증: 초급 운동 추천 UI. 시나리오마다 새 프로필.  node p24-verify.mjs [A|B|C|D|E|F|G|ALL]
 import { start } from '../lib/session.mjs'
+import { reloadSettled } from '../lib/history.mjs'
 
 const only = (process.argv[2] ?? 'ALL').toUpperCase()
 const results = []
@@ -532,10 +533,9 @@ if (run('C'))
       await h.path(),
     )
     // 권한 변경 후 새로고침: 저장된 추천 상태가 있어도 화면을 쓸 수 없다
-    await h.ev(`location.reload()`)
-    await h.sleep(1200)
+    await reloadSettled(h)
     check(
-      'C-6 권한 변경 후 새로고침: 저장된 추천 상태로도 추천 화면에 들어갈 수 없다',
+      'C-6권한 변경 후 새로고침: 저장된 추천 상태로도 추천 화면에 들어갈 수 없다',
       /이 기능을 쓸 수 없어요/.test(await mainText(h)) &&
         !/오늘의 운동이 준비됐어요/.test(await mainText(h)),
     )
@@ -778,13 +778,14 @@ if (run('E'))
       'E-7 키보드: 확정 버튼 Enter로 W11 검토로 이동한다',
       (await h.path()) === '/records/exercise/review',
     )
-    // W12: AI 플랜은 그대로(준비 중), 직접 구성도 그대로
+    // W12: AI 추천은 현재 "로컬 예시" 링크(I02-1)이고, 직접 구성 선택은 그대로
     await h.go('/records/exercise/new', 1000)
     const w12 = await mainText(h)
     check(
-      'E-8 W12: AI 추천은 "준비 중" 그대로, 유료/체험 로직 없음, 직접 구성 선택 유지',
+      'E-8 W12: AI 추천은 "로컬 예시"(준비 중 아님), 유료/체험 로직 없음, 직접 구성 선택 유지',
       /AI 추천으로 시작하기/.test(w12) &&
-        /준비 중/.test(w12) &&
+        /로컬 예시/.test(w12) &&
+        !/준비 중/.test(w12) &&
         /직접 운동 목록 구성하기/.test(w12) &&
         !/오늘의 운동 추천받기/.test(w12),
     )

@@ -328,8 +328,16 @@ function ResultView({ outcome, hasNutrition, onRetry }: ResultViewProps) {
           검색 결과가 없어요
         </p>
         <p className="mt-2 text-body leading-relaxed font-normal text-muted">
-          검색어와 필터 조건을 바꿔 보세요. 없는 음식 등록 요청은 준비 중이에요.
+          검색어와 필터 조건을 바꿔 보세요.
         </p>
+        <Link
+          to="/foods/request"
+          state={{ from: '/foods' }}
+          data-food-request-link=""
+          className="mt-2 inline-flex min-h-11 items-center text-body font-semibold text-meal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-meal"
+        >
+          찾는 음식이 없나요? 음식 등록 요청하기
+        </Link>
       </div>
     )
   }
