@@ -1,5 +1,8 @@
-import { useLocation } from 'react-router'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { useAuth } from '../auth/authContext.ts'
+import { isPinLockedState } from '../body-access/bodyAccessNotice.ts'
+import { useBodyReveal } from '../body-access/useBodyReveal.ts'
 import { useBodyMeasurementStatus } from '../body-measurements/useBodyMeasurementStatus.ts'
 import { useHealthGoal } from '../health-goal/useHealthGoal.ts'
 import { useWeightCheck } from '../weight-log/useWeightCheck.ts'
@@ -30,7 +33,8 @@ import { useMyPageSummary } from '../mypage/useMyPageSummary.ts'
  *   `?sample=empty`(비어 있음) 예시. 개발용 값이 있으면 맨 위에 안내 한 줄(DevDataNotice)이 보이고, 구역마다 배지를 붙이지 않는다.
  * - 이해도(운동·식단)는 계정의 이해도 확인 결과를 읽어 하나의 종합 등급으로 보여 준다(mypage/knowledgeSource.ts,
  *   mypage/overallKnowledge.ts). 결과가 없으면 개발용 임시 회원은 초기값, 그 밖의 계정은 "미확인"이다.
- * - 신체 정보는 어떤 경로로도 값을 받지 않는다(BodyInfoSummary).
+ * - 신체 정보는 기본 마스킹이고 등록 여부만 받는다(BodyInfoSummary). 수치는 P05에서 2차 비밀번호를 확인한 뒤의 열람 권한이 있는 동안에만
+ *   메모리에서 읽어 보여 주고(useBodyReveal), 숨기기·1분·이 화면을 벗어남·로그아웃·PIN 변경이면 곧바로 다시 가린다.
  *
  * 면: 흰 카드는 나의 성장과 "건강 목표·신체 정보 묶음" 둘뿐이다. 프로필·포인트·이번 주 활동은 카드 없이 바탕 위에 놓고,
  * 멤버십은 옅은 파란 면이다. 섹션 사이는 20px(gap-5)이고 관련 있는 포인트·멤버십만 12px(gap-3)로 묶는다.
@@ -45,7 +49,19 @@ export default function MyPage() {
   const goal = useHealthGoal(user?.id ?? '')
   const weight = useWeightCheck(user?.id ?? '')
   // 월간 몸무게 알림에서 들어오면(/mypage#weight-log) 몸무게 기록 섹션의 진입 버튼으로 포커스를 옮긴다.
-  const { hash } = useLocation()
+  const location = useLocation()
+  const { hash } = location
+  const navigate = useNavigate()
+  // P05에서 5회 불일치로 돌아왔다면 잠금 안내를 한 번 보이고 router state는 지운다(새로고침해도 안내가 남지 않게 한다).
+  const [lockedNotice] = useState(() => isPinLockedState(location.state))
+  useEffect(() => {
+    if (isPinLockedState(location.state))
+      void navigate(
+        { pathname: location.pathname, search: location.search, hash },
+        { replace: true, state: null },
+      )
+  }, [location, hash, navigate])
+  const reveal = useBodyReveal(user?.id ?? '')
 
   // AuthGate 안에 있어 로그인한 회원에게만 렌더링된다. 사용자가 없는 경우는 도달하지 않는다.
   if (!user) return null
@@ -87,7 +103,12 @@ export default function MyPage() {
           save={goal.save}
           onRetry={goal.reload}
         />
-        <BodyInfoSummary body={body.state} save={body.save} />
+        <BodyInfoSummary
+          body={body.state}
+          save={body.save}
+          reveal={reveal}
+          lockedNotice={lockedNotice}
+        />
         <WeightLogSummary
           body={body.state}
           weight={weight.state}

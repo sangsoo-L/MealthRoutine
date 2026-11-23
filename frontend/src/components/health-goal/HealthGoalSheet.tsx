@@ -68,15 +68,21 @@ export default function HealthGoalSheet({
 const optionBase =
   'flex min-h-14 w-full cursor-pointer flex-col gap-2 rounded-card border p-3 text-left transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand motion-reduce:transition-none'
 
-function GoalForm({
+/**
+ * 목표 설정 폼 본체. 시트(HealthGoalSheet)와 P10 화면이 같이 쓴다.
+ * `onSaved`가 있으면 저장 성공 뒤 닫지 않고 알린다(화면에 머무는 P10). 없으면 기존처럼 `close()`로 닫는다. 취소 버튼은 항상 `close()`다.
+ */
+export function GoalForm({
   goal,
   knowledge,
   save,
   close,
   closing,
+  onSaved,
 }: Omit<HealthGoalSheetProps, 'onClose'> & {
   close: () => void
   closing: boolean
+  onSaved?: () => void
 }) {
   const groupId = useId()
   const submitting = useRef(false)
@@ -113,7 +119,13 @@ function GoalForm({
     setSaveFailed(false)
     try {
       await save({ exerciseRatio: selected, policy })
-      close()
+      if (onSaved) {
+        setSaving(false)
+        submitting.current = false
+        onSaved()
+      } else {
+        close()
+      }
     } catch {
       // 실패하면 기존 목표는 그대로이고 선택은 남겨 다시 시도할 수 있게 한다.
       setSaveFailed(true)

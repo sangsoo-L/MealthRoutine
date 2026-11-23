@@ -100,12 +100,12 @@ test('폼 구성: 초급·미확인은 간편, 중급은 활동량, 고급은 �
   assert.equal(Policy.LEVELS.includes(null), false)
 })
 
-test('반환 경로: 허용 목록의 내부 경로만 쓰고 I03이 없으면 AI 서비스 안내로 연결한다', () => {
+test('반환 경로: 허용 목록의 내부 경로만 쓰고 I03은 구현되어 있어 그대로 돌아간다', () => {
   const r = Paths.resolveReturnPath
-  assert.equal(Paths.I03_IMPLEMENTED, false)
+  assert.equal(Paths.I03_IMPLEMENTED, true)
   assert.equal(r('/records/meal', '/x'), '/records/meal')
   assert.equal(r('/ai', '/records/meal'), '/ai')
-  assert.equal(r('/ai/meal', '/records/meal'), '/ai') // I03 미구현
+  assert.equal(r('/ai/meal', '/records/meal'), '/ai/meal') // I03 구현됨
   for (const bad of [
     'https://evil.example',
     '//evil.example',
@@ -885,7 +885,7 @@ test('I07: 목표 없음이 확인됐을 때만 안내 본문이 보이고, 조�
 })
 
 // ── 라우트·범위 ───────────────────────────────────────────────────────────────
-test('라우트: D01-4·I07은 회원 전용이고 I07의 상위 화면은 I01이며(I03↔I07 반복 방지) I03 라우트는 만들지 않았다', () => {
+test('라우트: D01-4·I07은 회원 전용이고 I07의 상위 화면은 I01이며(I03↔I07 반복 방지) I03은 회원 전용 라우트로 구현되어 있다', () => {
   const router = read('../src/app/router.tsx')
   const gate = router.indexOf('element: <AuthGate />')
   const goal = router.indexOf("path: 'records/meal/goal',")
@@ -901,9 +901,10 @@ test('라우트: D01-4·I07은 회원 전용이고 I07의 상위 화면은 I01�
   assert.match(reqBody, /parent: '\/ai'/)
   assert.doesNotMatch(reqBody, /parent: '\/ai\/meal'/)
   assert.match(reqBody, /ownH1: true/)
-  // I03(AI 식단 플랜)은 아직 없다: 미구현 화면을 만들거나 노출하지 않는다.
-  assert.doesNotMatch(router, /path: 'ai\/meal',/)
-  assert.doesNotMatch(router, /screenId: 'I03/)
+  // I03(AI 식단 플랜)은 구현되어 있고 I07과 같은 회원 전용 영역(AuthGate 안)에 있다.
+  const i03 = router.indexOf("path: 'ai/meal',")
+  assert.ok(i03 > gate)
+  assert.match(router.slice(i03, i03 + 400), /screenId: 'I03'/)
   // I07 페이지는 목표가 있으면 돌아갈 곳으로 replace 이동하고 돌아갈 곳은 검증한다.
   const page = code('../src/pages/MealGoalRequiredPage.tsx')
   assert.match(page, /<Navigate to=\{returnTo\} replace \/>/)

@@ -2,7 +2,7 @@ import type { Exercise } from './exerciseTypes.ts'
 
 /**
  * 운동 루틴 읽기 모델. 루틴 화면(W06~W08)은 아직 없고, 지금은 운동 JSON 시드(exercise/seed/)의 조회 계층만 이 모양으로 돌려준다.
- * 화면용 임시 형태이며 API 응답 구조가 아니다(운동 루틴 API의 응답 구조는 미확정, frontend/docs/api-status.md).
+ * 화면용 임시 형태이며 API 응답 구조가 아니다(운동 루틴 API의 응답 구조는 미확정, README의 API 인수인계).
  * 실제 API가 정해지면 변환을 저장소 구현에 둔다.
  *
  * - id는 원본 routine_id를 문자열로 바꾼 값이다. 새로 만들거나 바꾸지 않는다.

@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import {
   MY_DESTINATIONS,
+  MY_PAGE_PATH,
   type MyDestination,
 } from '../../mypage/destinations.ts'
 import type {
@@ -61,10 +62,42 @@ function ActivityTile({
   ) : (
     <Link
       to={destination.to}
+      state={{ from: MY_PAGE_PATH }}
       className={`${base} transition-colors hover:brightness-95 motion-reduce:transition-none ${focusRing}`}
     >
       {body}
     </Link>
+  )
+}
+
+/**
+ * 값이 없을 때도 쓸 수 있는 이동 링크(수치·기록을 보여 주지 않고 화면으로만 안내한다). 이동한 화면의 "이전"은 마이페이지로 돌아온다.
+ * 데이터 상태(연결 전·기록 0건·불러오기 실패)와 무관하게 같은 세 화면으로 간다.
+ */
+const ENTRY_LINKS = [
+  { label: '운동 기록 보기', destination: MY_DESTINATIONS.weeklyExercise },
+  { label: '식단 기록 보기', destination: MY_DESTINATIONS.weeklyMeal },
+  { label: '주간 리포트 보기', destination: MY_DESTINATIONS.weeklyScore },
+] as const
+
+function EntryLinks() {
+  return (
+    <ul role="list" className="mt-1 flex flex-col" data-weekly-entry-links="">
+      {ENTRY_LINKS.map(({ label, destination }) =>
+        destination.to === null ? null : (
+          <li key={destination.screenId}>
+            <Link
+              to={destination.to}
+              state={{ from: MY_PAGE_PATH }}
+              className={`inline-flex min-h-11 items-center gap-1 text-body leading-snug font-semibold text-brand transition-colors hover:text-brand-hover motion-reduce:transition-none ${focusRing}`}
+            >
+              {label}
+              <Icon name="chevron-right" size={18} />
+            </Link>
+          </li>
+        ),
+      )}
+    </ul>
   )
 }
 
@@ -86,7 +119,8 @@ const EMPTY_TEXT = {
  * - 값이 없으면 큰 타일 세 개를 반복하지 않고 한 줄 빈 상태만 보인다. 연결 전(unavailable)·기록 0건(empty)·불러오기 실패(error)는
  *   문구가 서로 다르다. 기록이나 점수를 임의로 만들지 않는다.
  * - 제목은 "이번 주 활동"만 둔다. 주차·날짜 범위는 백엔드 주간 리포트 기준이 정해진 뒤에 붙인다.
- * - 이동(W10·D03·I05)은 화면이 없어 타일은 정보만 보여 준다(경로가 채워지면 타일이 링크가 된다).
+ * - 이동(W10·D03·I05): 값이 있으면 타일이 링크이고, 값이 없을 때(연결 전·기록 0건·실패)는 빈 상태 문구 아래의 링크 세 개로 같은 화면에 갈 수 있다.
+ *   이동한 화면의 "이전"은 마이페이지로 돌아온다(`state.from`). 링크는 수치를 만들지 않는다.
  */
 export default function WeeklyActivity({ weekly }: WeeklyActivityProps) {
   return (
@@ -122,12 +156,15 @@ export default function WeeklyActivity({ weekly }: WeeklyActivityProps) {
           />
         </div>
       ) : (
-        <p
-          role={weekly.state === 'error' ? 'alert' : undefined}
-          className="mt-2.5 rounded-card bg-surface px-4 py-3 text-body leading-snug font-normal text-muted"
-        >
-          {EMPTY_TEXT[weekly.state]}
-        </p>
+        <>
+          <p
+            role={weekly.state === 'error' ? 'alert' : undefined}
+            className="mt-2.5 rounded-card bg-surface px-4 py-3 text-body leading-snug font-normal text-muted"
+          >
+            {EMPTY_TEXT[weekly.state]}
+          </p>
+          <EntryLinks />
+        </>
       )}
     </section>
   )

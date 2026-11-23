@@ -173,9 +173,10 @@ check(
   JSON.stringify([s.h1, s.nav]),
 )
 check(
-  'W12: AI 추천 카드는 "준비 중"이며 누를 수 있는 요소(버튼·링크)가 없음',
+  // 커밋 0198750에서 W12의 AI 추천은 "준비 중" 항목이 로컬 예시(I02-1) 링크로 바뀌었다(실제 AI 호출·체험 횟수·멤버십 로직은 없다).
+  'W12: AI 추천 카드는 "로컬 예시"로 표시되는 I02-1(/ai/exercise/plan) 링크이고 "준비 중"이 아님',
   await ev(
-    `(()=>{const g=document.querySelector('[aria-label="AI 추천으로 시작하기, 준비 중"]');return !!g&&g.innerText.includes('준비 중')&&g.querySelectorAll('button,a,[tabindex]').length===0})()`,
+    `(()=>{const a=document.querySelector('a[data-method-ai]');return !!a&&a.getAttribute('href')==='/ai/exercise/plan'&&a.innerText.includes('AI 추천으로 시작하기')&&a.innerText.includes('로컬 예시')&&!a.innerText.includes('준비 중')})()`,
   ),
 )
 check(
@@ -908,11 +909,11 @@ check(
 await seed('free', ['16', '22'])
 await open(NEW)
 const ai = await ev(
-  `getComputedStyle(document.querySelector('[aria-label="AI 추천으로 시작하기, 준비 중"]')).backgroundColor`,
+  `getComputedStyle(document.querySelector('a[data-method-ai]')).backgroundColor`,
 )
 check(
-  'W12 AI 카드 배경이 의도한 페이지 색(#f6f8fc)으로 적용됨(클래스 충돌 없음)',
-  ai === 'rgb(246, 248, 252)',
+  'W12 AI 카드(링크)는 일반 카드 색(surface #ffffff)으로 적용됨(클래스 충돌 없음)',
+  ai === 'rgb(255, 255, 255)',
   ai,
 )
 check(

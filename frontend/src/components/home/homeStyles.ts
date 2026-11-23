@@ -18,6 +18,17 @@ export const focusRingOnBrand =
  */
 export const sectionBand = '-mx-5 border-y border-line bg-surface px-5 py-6'
 
+/**
+ * 로그인 홈(H01)의 정보 카드. 밝은 중립 배경(페이지 면) 위의 흰 카드로 영역을 나눈다(이번 주 활동·바로가기·오늘의 기록·최근 활동).
+ * 안쪽 좌우 여백(px-[20px])은 카드 안에 글이 겹겹이 놓여 있어 글자 확대 때 본문 폭을 잠식하지 않도록 px로 고정한다.
+ */
+export const homeCard =
+  'rounded-card border border-line bg-surface px-[20px] py-5'
+
+/** 카드 제목 */
+export const homeCardTitle =
+  'text-section-title leading-snug font-semibold text-content'
+
 /** 운동(인디고)·식단(앰버) 도메인별 색 클래스 */
 export const DOMAIN_TONE = {
   exercise: {

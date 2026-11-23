@@ -1,7 +1,7 @@
 /**
  * 신체 정보(키·몸무게)의 타입.
  *
- * 실제 API(`POST/GET /api/v1/health/measurements`)의 요청·응답 구조는 확정되지 않았다(api-policy.md §4). 이 타입은 화면이 필요로 하는
+ * 실제 API(`POST/GET /api/v1/health/measurements`)의 요청·응답 구조는 확정되지 않았다(API 정책 문서 §4). 이 타입은 화면이 필요로 하는
  * 값만 담은 임시 형태다. 신체 정보 조회(GET)는 2차 비밀번호(PIN) 인증 후에만 가능하도록 기획되어 있어, 화면은 실제 수치를 읽지 않고
  * "등록 여부"(BodyMeasurementStatus)만 안다. 값은 저장소 안에서만 존재한다.
  */
@@ -23,6 +23,15 @@ export interface BodyMeasurements {
 export interface BodyMeasurementStatus {
   height: boolean
   weight: boolean
+}
+
+/**
+ * PIN 열람 권한으로 읽은 신체 수치(P05 확인 뒤 P01). 등록되지 않았거나 유효하지 않은 항목은 null이다.
+ * 이 값은 화면의 메모리에만 두고 열람 권한이 끝나면 곧바로 버린다(저장·URL·라우터 state·로그에 넣지 않는다).
+ */
+export interface BodyMeasurementValues {
+  heightCm: number | null
+  weightKg: number | null
 }
 
 /** 저장 요청. 입력한 항목만 담는다(이미 등록된 항목은 보내지 않는다). */

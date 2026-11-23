@@ -6,7 +6,7 @@ import SupportSearchInput from './SupportSearchInput.tsx'
 
 /**
  * S04 FAQ 본문. 질문·답변 검색, 질문 아코디언(키보드로 열고 닫는 <details>), 관련 화면 링크, 검색 결과 없음("전체 보기")을 그린다.
- * 질문·답변은 지금 구현되었거나 확정된 내용뿐이다(support/faq.ts). 챗봇(S03)·1:1 문의(S02)는 화면이 없어 준비 중으로만 알린다.
+ * 질문·답변은 지금 구현되었거나 확정된 내용뿐이다(support/faq.ts). 1:1 문의(S02)는 문의 작성 화면으로 가고(회원 전용이라 비회원은 로그인 안내를 본다), 챗봇(S03)은 화면이 없어 준비 중으로만 알린다.
  */
 export default function FaqView({
   items,
@@ -148,14 +148,26 @@ export default function FaqView({
               />
             </Link>
           </li>
-          {['키워드 챗봇', '1:1 문의'].map((label) => (
-            <li key={label}>
-              <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 text-body font-normal text-muted">
-                <span className="min-w-0">{label}</span>
-                <span className={`${chipClass} bg-page`}>준비 중</span>
-              </div>
-            </li>
-          ))}
+          <li>
+            <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 text-body font-normal text-muted">
+              <span className="min-w-0">키워드 챗봇</span>
+              <span className={`${chipClass} bg-page`}>준비 중</span>
+            </div>
+          </li>
+          <li>
+            <Link
+              to="/support/inquiry"
+              state={{ from: '/support/faq' }}
+              className={`flex min-h-11 items-center justify-between gap-3 px-4 py-3 text-body font-semibold text-content ${focusRing}`}
+            >
+              <span className="min-w-0">1:1 문의</span>
+              <Icon
+                name="chevron-right"
+                size={18}
+                className="shrink-0 text-muted"
+              />
+            </Link>
+          </li>
         </ul>
       </section>
     </div>

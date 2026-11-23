@@ -1,6 +1,6 @@
 /**
  * 라우트 `handle` 메타데이터 구조와 하단 탭 정의.
- * 화면 ID·화면명의 근거는 documents/화면명세_v5.0.json이고, 프로젝트 URL은 frontend/docs/screen-route-map.md이다.
+ * 화면 ID·화면명의 근거는 v5.0 화면 명세이고, 프로젝트 URL은 화면 대응표이다.
  */
 
 import type { IconName } from '../components/icons/iconTypes.ts'

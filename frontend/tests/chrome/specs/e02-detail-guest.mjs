@@ -51,6 +51,16 @@ const login = async (email, pw) => {
   await ev(`document.querySelector('form').requestSubmit()`)
   await sleep(1400)
 }
+// 고정 대기만으로는 부하가 큰 환경에서 화면이 아직 그려지지 않을 수 있다. 조건이 참이 될 때까지(최대 약 9초) 기다린 뒤 마지막 값을 돌려준다.
+const waitEv = async (expr, n = 60) => {
+  let v = false
+  for (let i = 0; i < n; i++) {
+    v = await ev(expr)
+    if (v) return v
+    await sleep(150)
+  }
+  return v
+}
 const waitArticle = async (n = 40) => {
   for (let i = 0; i < n; i++) {
     if (await ev(`!!document.querySelector('main article h1')`)) return true
@@ -230,6 +240,14 @@ check(
 )
 const sr = `/search?q=${q('맨몸 스쿼트')}&c=exercise`
 await go(sr, 1300)
+// 부하가 큰 환경에서는 검색 결과가 고정 대기 안에 그려지지 않을 수 있다. 결과 링크가 그려질 때까지 기다린 뒤 누른다.
+for (
+  let i = 0;
+  i < 60 &&
+  !(await ev(`!!document.querySelector('main a[href^="/exercises/"]')`));
+  i++
+)
+  await sleep(150)
 await ev(`document.querySelector('main a[href^="/exercises/"]').click()`)
 await sleep(900)
 await waitArticle()
@@ -271,7 +289,7 @@ check(
 await go('/exercises/no-such-exercise', 1200)
 check(
   '없는 운동 ID(비회원): "찾을 수 없는 운동이에요", 로그인 이동 없음',
-  await ev(
+  await waitEv(
     `document.querySelector('main').innerText.includes('찾을 수 없는 운동이에요')&&location.pathname==='/exercises/no-such-exercise'`,
   ),
 )
@@ -281,7 +299,7 @@ await ev(
 await go('/exercises/5', 1200)
 check(
   '운동 조회 실패(비회원): role=alert, 로그인 이동 없음',
-  await ev(
+  await waitEv(
     `!!document.querySelector('main [role=alert]')&&location.pathname==='/exercises/5'`,
   ),
 )

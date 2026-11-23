@@ -1,3 +1,4 @@
+import { registerAccountCleanup } from '../../auth/accountScope.ts'
 import {
   HEIGHT_RANGE,
   WEIGHT_RANGE,
@@ -26,7 +27,30 @@ export const GOAL_KEY_PREFIX = 'mealthroutine.dev.exercise-goal.value.'
 export const ACCESS_MS = 60_000
 export const PIN_LOCK_MS = 5 * 60_000
 const ITERATIONS = 600_000
-const grants = new Map<string, { ownerId: string; expiresAt: number }>()
+/**
+ * 열람 권한. `credential`은 발급 당시 PIN 자격의 식별 값(솔트+해시)이다. 확인 때마다 지금 저장된 자격과 비교해
+ * 다른 탭에서 PIN이 바뀐 권한도 무효로 만든다(권한 Map은 탭마다 따로라 `revokeOwnerGrants`가 닿지 않는다). 화면·로그에는 내보내지 않는다.
+ */
+const grants = new Map<
+  string,
+  { ownerId: string; expiresAt: number; credential: string }
+>()
+
+/**
+ * 개발용 열람 권한을 모두 지운다. 로그인·로그아웃(계정 전환) 때 `clearAccountScopedData`가 호출한다.
+ * 저장된 PIN 자격(해시·실패 횟수)은 지우지 않는다. 권한 토큰은 메모리에만 있다.
+ */
+export function revokeAllLocalGoalAccess(): void {
+  grants.clear()
+}
+registerAccountCleanup(revokeAllLocalGoalAccess)
+
+/** 한 계정의 열람 권한만 지운다. PIN을 바꾼 뒤 이전 권한이 남지 않게 한다. */
+function revokeOwnerGrants(ownerId: string): void {
+  for (const [token, grant] of grants) {
+    if (grant.ownerId === ownerId) grants.delete(token)
+  }
+}
 
 interface LocalStorageLike {
   getItem(key: string): string | null
@@ -151,10 +175,57 @@ export function createLocalExerciseGoalRepository(
     )
     return hex(new Uint8Array(bits))
   }
+  /**
+   * 현재 PIN을 확인한다. 잠금 확인·실패 횟수 증가·5회 시 5분 잠금·성공 시 횟수 초기화를 한곳에서 맡아
+   * unlock(W01-1·D01-4)과 changePin(P12)이 같은 계정별 횟수를 공유한다. 성공하면 초기화된 자격을 돌려준다.
+   */
+  async function verifyCurrentPin(pin: string): Promise<PinCredential> {
+    checkRead()
+    if (!/^\d{6}$/.test(pin)) throw new ExerciseGoalError('pinFormat')
+    const c = credential()
+    if (!c) throw new ExerciseGoalError('pinMissing')
+    if (c.retryAt > now()) throw new ExerciseGoalError('locked', c.retryAt)
+    const hash = await hashPin(pin, c.salt)
+    const latest = credential()
+    if (!latest || latest.hash !== c.hash || latest.salt !== c.salt)
+      throw new ExerciseGoalError('contextChanged')
+    if (latest.retryAt > now())
+      throw new ExerciseGoalError('locked', latest.retryAt)
+    let different = 0
+    for (let i = 0; i < hash.length; i++)
+      different |= hash.charCodeAt(i) ^ c.hash.charCodeAt(i)
+    checkWrite()
+    if (different !== 0) {
+      const failures =
+        (latest.retryAt > 0 && latest.retryAt <= now() ? 0 : latest.failures) +
+        1
+      const retryAt = failures >= 5 ? now() + PIN_LOCK_MS : 0
+      write(pinKey, { ...latest, failures: Math.min(5, failures), retryAt })
+      throw new ExerciseGoalError(
+        retryAt ? 'locked' : 'pinWrong',
+        retryAt || undefined,
+        retryAt ? 0 : 5 - failures,
+      )
+    }
+    const cleared = { ...latest, failures: 0, retryAt: 0 }
+    write(pinKey, cleared)
+    return cleared
+  }
   function authorize(access: GoalAuthorization) {
     const grant = grants.get(access.token)
     if (!grant || grant.ownerId !== ownerId || grant.expiresAt <= now()) {
       if (grant?.ownerId === ownerId) grants.delete(access.token)
+      throw new ExerciseGoalError('expired')
+    }
+    // 발급 뒤 PIN 자격이 바뀌었으면(다른 탭의 변경 포함) 무효다. 자격을 읽지 못해도 열어 두지 않는다(실패하면 닫는다).
+    let current: PinCredential | null = null
+    try {
+      current = credential()
+    } catch {
+      current = null
+    }
+    if (!current || current.salt + current.hash !== grant.credential) {
+      grants.delete(access.token)
       throw new ExerciseGoalError('expired')
     }
   }
@@ -261,43 +332,56 @@ export function createLocalExerciseGoalRepository(
         retryAt: 0,
       } satisfies PinCredential)
     },
-    async unlock(pin) {
+    async changePin(currentPin, newPin, confirmation) {
       checkRead()
-      if (!/^\d{6}$/.test(pin)) throw new ExerciseGoalError('pinFormat')
-      const c = credential()
-      if (!c) throw new ExerciseGoalError('pinMissing')
-      if (c.retryAt > now()) throw new ExerciseGoalError('locked', c.retryAt)
-      const hash = await hashPin(pin, c.salt)
-      const latest = credential()
-      if (!latest || latest.hash !== c.hash || latest.salt !== c.salt)
-        throw new ExerciseGoalError('contextChanged')
-      if (latest.retryAt > now())
-        throw new ExerciseGoalError('locked', latest.retryAt)
-      let different = 0
-      for (let i = 0; i < hash.length; i++)
-        different |= hash.charCodeAt(i) ^ c.hash.charCodeAt(i)
       checkWrite()
-      if (different !== 0) {
-        const failures =
-          (latest.retryAt > 0 && latest.retryAt <= now()
-            ? 0
-            : latest.failures) + 1
-        const retryAt = failures >= 5 ? now() + PIN_LOCK_MS : 0
-        write(pinKey, { ...latest, failures: Math.min(5, failures), retryAt })
-        throw new ExerciseGoalError(
-          retryAt ? 'locked' : 'pinWrong',
-          retryAt || undefined,
-        )
-      }
-      write(pinKey, { ...latest, failures: 0, retryAt: 0 })
+      // 새 PIN의 형식·확인·동일 여부는 입력끼리의 비교라 현재 PIN 실패 횟수에 넣지 않는다.
+      if (!/^\d{6}$/.test(currentPin) || !/^\d{6}$/.test(newPin))
+        throw new ExerciseGoalError('pinFormat')
+      if (newPin !== confirmation) throw new ExerciseGoalError('pinMismatch')
+      if (newPin === currentPin) throw new ExerciseGoalError('pinSame')
+      // 현재 PIN 확인은 unlock과 같은 계정별 실패 횟수·잠금을 쓴다(잠금 중이면 여기서 막힌다).
+      const verified = await verifyCurrentPin(currentPin)
+      const salt = hex(getCrypto().getRandomValues(new Uint8Array(16)))
+      const hash = await hashPin(newPin, salt)
+      // 해시 계산 동안 다른 곳에서 PIN이 바뀌었으면 덮어쓰지 않는다.
+      const latest = credential()
+      if (
+        !latest ||
+        latest.hash !== verified.hash ||
+        latest.salt !== verified.salt
+      )
+        throw new ExerciseGoalError('contextChanged')
+      checkWrite()
+      // 단일 쓰기. 실패하면 기존 PIN이 그대로다.
+      write(pinKey, {
+        v: 1,
+        ownerId,
+        salt,
+        hash,
+        failures: 0,
+        retryAt: 0,
+      } satisfies PinCredential)
+      // 이미 발급된 열람 권한(W01-1·D01-4)은 새 PIN으로 다시 확인하게 한다.
+      revokeOwnerGrants(ownerId)
+    },
+    async unlock(pin) {
+      const verified = await verifyCurrentPin(pin)
       const token = hex(getCrypto().getRandomValues(new Uint8Array(24)))
       const expiresAt = now() + ACCESS_MS
-      grants.set(token, { ownerId, expiresAt })
+      grants.set(token, {
+        ownerId,
+        expiresAt,
+        credential: verified.salt + verified.hash,
+      })
       return { token, expiresAt }
     },
     lock(access) {
       if (grants.get(access.token)?.ownerId === ownerId)
         grants.delete(access.token)
+    },
+    verifyAccess(access) {
+      authorize(access)
     },
     async getProfile(access) {
       return protectedProfile(access)

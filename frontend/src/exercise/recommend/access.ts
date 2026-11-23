@@ -6,7 +6,7 @@ import type { KnowledgeLevels } from '../../mypage/mypageTypes.ts'
  * - 기준은 **운동 이해도**(`loadKnowledgeLevels(userId)`의 `levels.exercise.tier`)뿐이다. 식단 이해도(`levels.meal`)는 읽지도 않는다.
  * - 허용은 `beginner` 하나다. 중급·고급, 값이 없음(null·undefined, 미확인), 알 수 없는 값은 모두 막는다.
  * - 운동 이해도는 기능 제공 여부를 정하는 값이며 실제 운동 수행 능력으로 추정하지 않는다.
- * - v5.0 AI 운동 플랜의 이용 권한(auth/entitlements.getExercisePlanAccess)과 별개이며 서로 호출하지 않는다.
+ * - AI 운동 플랜(I02-1)의 AI 사용 상태(membership/aiAccess)와 별개이며 서로 호출하지 않는다.
  *
  * 이 판별은 화면 진입·추천 엔진·WorkoutDraft 변환 모두에서 호출한다(버튼을 숨기는 것만으로는 충분하지 않다).
  */

@@ -291,7 +291,7 @@ export function QuizNotice({
       ) : null}
       <Link
         to="/home"
-        className={`mt-4 inline-block text-body font-semibold text-brand underline ${quizFocusRing}`}
+        className={`mt-4 inline-flex min-h-11 items-center text-body font-semibold text-brand underline ${quizFocusRing}`}
       >
         홈으로
       </Link>

@@ -152,6 +152,15 @@ export default function LevelGuideView({
         </p>
       </section>
 
+      {/* P14 경험치 내역으로 간다(P14 ↔ P15 상호 이동). 진입한 곳(P15)으로 돌아오게 알린다. */}
+      <Link
+        to="/mypage/experience"
+        state={{ from: '/mypage/level' }}
+        data-level-history-link=""
+        className={`flex min-h-11 w-full items-center justify-center rounded-control border border-brand bg-surface px-4 text-body font-semibold text-brand hover:bg-brand-soft ${focusRing}`}
+      >
+        경험치 내역 보기
+      </Link>
       <Link
         to="/mypage"
         className={`flex min-h-11 w-full items-center justify-center rounded-control border border-brand bg-surface px-4 text-body font-semibold text-brand hover:bg-brand-soft ${focusRing}`}

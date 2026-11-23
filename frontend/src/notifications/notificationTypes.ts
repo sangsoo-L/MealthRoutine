@@ -89,7 +89,7 @@ export class NotificationError extends Error {
 
 /**
  * 알림 데이터 경계. 구현은 계정 하나에 묶여 있고 다른 계정의 알림에 접근하지 않는다.
- * 운영 API 계약은 아직 없다(api-spec.md에 알림 API가 없다). 개발용 Mock 구현과 나중에 만들 API 구현을 이 인터페이스로 교체한다.
+ * 운영 API 계약은 아직 없다(API 명세서에 알림 API가 없다). 개발용 Mock 구현과 나중에 만들 API 구현을 이 인터페이스로 교체한다.
  */
 export interface NotificationRepository {
   /** 'mock'이면 개발용 저장소이며 개발 서버에서만 쓴다. */
