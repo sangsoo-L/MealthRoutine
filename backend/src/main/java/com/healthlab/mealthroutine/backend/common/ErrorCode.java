@@ -46,6 +46,13 @@ public enum ErrorCode {
     PIN_LOCKED(HttpStatus.FORBIDDEN, "PIN 입력이 잠겼습니다. 잠시 후 다시 시도해 주세요."),
     PIN_NOT_REGISTERED(HttpStatus.FORBIDDEN, "PIN이 등록되지 않았습니다. PIN을 먼저 등록해 주세요."),
     PIN_ALREADY_SET(HttpStatus.CONFLICT, "이미 PIN이 등록되어 있습니다."),
+    // PIN-protected APIs (HEALTH8-11): 403, not 401 — the access token is fine, only the PIN check is missing.
+    // PIN_REQUIRED: no X-Pin-Token, a forged one, an access token, or another member's valid PIN token.
+    // PIN_EXPIRED: a properly signed PIN token past its expiry, whoever it belongs to.
+    PIN_REQUIRED(HttpStatus.FORBIDDEN, "PIN 확인이 필요합니다."),
+    PIN_EXPIRED(HttpStatus.FORBIDDEN, "PIN 확인 시간이 지났습니다. PIN을 다시 입력해 주세요."),
+    // Another member's record and a missing record get the same 404 (HEALTH8-12).
+    MEASUREMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "신체정보 기록을 찾을 수 없습니다."),
     DATA_CONFLICT(HttpStatus.CONFLICT, "다른 데이터와 충돌하여 처리할 수 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 

@@ -5,6 +5,7 @@
 -- 회원 테이블 변경(회원 파트): users.user_id AUTO_INCREMENT(인라인 PK, PK_USERS ALTER 제거). ERDCloud는 AUTO_INCREMENT를 표현하지 못해 이 파일에서 관리.
 -- 회원 테이블 변경(회원 파트): users에 최신 ERD의 토큰·PIN 컬럼 6개 반영(refresh_token_hash·refresh_token_expires_at·reset_token_hash·reset_token_expires_at·pin_failed_count·pin_locked_until). 기존 DB는 database/migration/20261118_users_token_pin_columns.sql 참고.
 -- 출석 테이블 추가(정민재): attendances, (user_id, attend_date) UNIQUE로 하루 1회.
+-- 회원 테이블 변경(회원 파트): health_measurements.measurement_id·health_goals.health_goal_id AUTO_INCREMENT(인라인 PK, PK_HEALTH_MEASUREMENTS·PK_HEALTH_GOALS ALTER 제거). 기존 DB는 database/migration/20261123_health_pk_auto_increment.sql 참고.
 SET NAMES utf8mb4;
 
 CREATE TABLE `meal_record_items` (
@@ -320,7 +321,7 @@ CREATE TABLE `food_analysis_jobs` (
 );
 
 CREATE TABLE `health_measurements` (
-	`measurement_id`	BIGINT	NOT NULL,
+	`measurement_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`measured_at`	DATETIME	NOT NULL	COMMENT '측정시점',
 	`height_cm`	DECIMAL(5,2)	NULL	COMMENT '키',
@@ -506,7 +507,7 @@ CREATE TABLE `experience_transactions` (
 );
 
 CREATE TABLE `health_goals` (
-	`health_goal_id`	BIGINT	NOT NULL,
+	`health_goal_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`goal_type`	ENUM('weight','fitness','health','habit','other')	NOT NULL	COMMENT '목표 유형',
 	`target_value`	DECIMAL(8,2)	NULL	COMMENT '목표량',
@@ -574,10 +575,6 @@ ALTER TABLE `food_analysis_jobs` ADD CONSTRAINT `PK_FOOD_ANALYSIS_JOBS` PRIMARY 
 	`food_analysis_job_id`
 );
 
-ALTER TABLE `health_measurements` ADD CONSTRAINT `PK_HEALTH_MEASUREMENTS` PRIMARY KEY (
-	`measurement_id`
-);
-
 ALTER TABLE `notification_events` ADD CONSTRAINT `PK_NOTIFICATION_EVENTS` PRIMARY KEY (
 	`notification_event_id`
 );
@@ -614,10 +611,6 @@ ALTER TABLE `report_actions` ADD CONSTRAINT `PK_REPORT_ACTIONS` PRIMARY KEY (
 	`report_action_id`
 );
 
-
-ALTER TABLE `health_goals` ADD CONSTRAINT `PK_HEALTH_GOALS` PRIMARY KEY (
-	`health_goal_id`
-);
 
 ALTER TABLE `meal_record_items` ADD CONSTRAINT `FK_meal_records_TO_meal_record_items_1` FOREIGN KEY (
 	`meal_record_id`
