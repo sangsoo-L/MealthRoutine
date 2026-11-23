@@ -104,4 +104,137 @@
   --radius-card: 0.75rem;
   --radius-control: 0.5rem;
   --shadow-card: none;
+  /* PC 앱 프레임 전용. 카드에는 쓰지 않는다(카드는 그림자 없음). */
+  --shadow-app: 0 8px 32px rgb(37 99 235 / 0.08);
+  /*
+   * 인트로 스플래시 (전체 3초)
+   * 0~0.8초 위·아래 조각 등장, 0.8~1.1초 결합, 1.1~1.6초 서비스명, 1.5~2.0초 슬로건,
+   * 2.0~2.7초 유지, 2.7~3.0초 전체 Fade Out
+   */
+  --animate-intro-logo-top: intro-piece-top 1.1s both;
+  --animate-intro-logo-bottom: intro-piece-bottom 1.1s both;
+  --animate-intro-name: intro-fade 0.5s ease-out 1.1s both;
+  --animate-intro-slogan: intro-fade 0.5s ease-out 1.5s both;
+  --animate-intro-out: intro-out 3s linear both;
+  /* 초기설문(A02) 질문 전환: 다음은 오른쪽에서, 이전은 왼쪽에서 들어온다. */
+  --animate-survey-next: survey-next 0.28s ease-out both;
+  --animate-survey-back: survey-back 0.28s ease-out both;
+  /*
+   * 화면 전환(RouteTransition). 모든 앱 내부 라우트 이동이 공통으로 쓴다.
+   * slide: 일반 이동, fade: 최상위 화면 도착, pop: 브라우저 뒤로가기·앞으로가기.
+   * fill-mode backwards: 끝난 뒤에는 애니메이션 값을 남기지 않아 transform이 완전히 사라진다.
+   */
+  --animate-route-slide: route-slide 0.22s ease-out backwards;
+  --animate-route-fade: route-fade 0.18s ease-out backwards;
+  --animate-route-pop: route-fade 0.12s ease-out backwards;
+
+  @keyframes route-slide {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes route-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes survey-next {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes survey-back {
+    from {
+      opacity: 0;
+      transform: translateX(-16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* 위쪽 조각: 우측 상단에서 중앙으로 (이동 거리는 조각 이미지 크기의 퍼센트) */
+  @keyframes intro-piece-top {
+    0% {
+      opacity: 0;
+      transform: translate(28%, -28%);
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    72.73% {
+      opacity: 1;
+      transform: translate(3%, -3%);
+      animation-timing-function: ease-in-out;
+    }
+    100% {
+      opacity: 1;
+      transform: translate(0, 0);
+    }
+  }
+
+  /* 아래쪽 조각: 좌측 하단에서 중앙으로 */
+  @keyframes intro-piece-bottom {
+    0% {
+      opacity: 0;
+      transform: translate(-28%, 28%);
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    72.73% {
+      opacity: 1;
+      transform: translate(-3%, 3%);
+      animation-timing-function: ease-in-out;
+    }
+    100% {
+      opacity: 1;
+      transform: translate(0, 0);
+    }
+  }
+
+  @keyframes intro-fade {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes intro-out {
+    0%,
+    90% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+/*
+ * PC 앱 프레임(640px 이상): 앱 바깥 배경과 스크롤바 자리.
+ * 스크롤바가 생기고 사라져도 앱이 좌우로 움직이지 않도록 자리를 항상 확보하고,
+ * 스크롤바 자리까지 바깥 배경색이 이어지도록 html에도 같은 색을 둔다.
+ * 모바일(640px 미만)은 적용하지 않는다. 기준은 Tailwind sm(40rem)과 같다.
+ */
+@media (min-width: 40rem) {
+  html {
+    background-color: var(--color-brand-soft);
+    scrollbar-gutter: stable;
+  }
 }

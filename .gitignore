@@ -284,9 +284,6 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/java,windows,intellij,pycharm,visualstudiocode
 
-.env
-!.env.example
-
 # AI model weights and local IDE files
 /ai-server/food_model/weights/
 /ai-server/.idea/
@@ -294,3 +291,6 @@ $RECYCLE.BIN/
 
 # Accidental local file
 /$zip
+
+# Raw database files
+database/raw/

@@ -7,4 +7,7 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, Long> 
 
     /** The column's collation ignores letter case, so "Gildong" and "gildong" count as the same nickname. */
     boolean existsByDisplayName(String displayName);
+
+    /** Same check for a nickname change: another user's nickname counts, the user's own does not (NICK-1). */
+    boolean existsByDisplayNameAndUserIdNot(String displayName, Long userId);
 }

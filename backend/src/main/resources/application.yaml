@@ -4,6 +4,10 @@ spring:
   # Gradle runs from backend/, while an IDE may run from the repo root.
   config:
     import: optional:file:.env[.properties],optional:file:../.env[.properties]
+  # Login is JWT only (decision AUTH2-1). Without this, Spring Security would create a default user
+  # and print a generated password at startup.
+  autoconfigure:
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/mealthroutine}
     username: ${DB_USERNAME:mealthroutine}

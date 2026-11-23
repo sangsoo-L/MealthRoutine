@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -85,7 +86,8 @@ class LoginApiTests {
         assertThat(claims.get("role", String.class)).isEqualTo("user");
         assertThat(Duration.between(claims.getIssuedAt().toInstant(), claims.getExpiration().toInstant()))
                 .isEqualTo(Duration.ofMinutes(30));
-        assertThat(claims.keySet()).containsExactlyInAnyOrder("sub", "role", "iat", "exp");
+        assertThat(claims.get("token_type", String.class)).isEqualTo("access");
+        assertThat(claims.keySet()).containsExactlyInAnyOrder("sub", "role", "iat", "exp", "token_type");
 
         Map<String, Object> row = jdbcTemplate.queryForMap(
                 "select refresh_token_hash, refresh_token_expires_at from users where user_id = ?", userId);
@@ -136,17 +138,30 @@ class LoginApiTests {
                 .andExpect(jsonPath(ERROR_CODE).value("ACCOUNT_SUSPENDED"))
                 .andExpect(jsonPath("$.message").value("정지된 계정입니다. 고객센터에 문의해 주세요."))
                 .andExpect(header().doesNotExist("Set-Cookie"));
-        login(EMAIL, "Wrong0rd!").andExpect(status().isUnauthorized()).andExpect(jsonPath(ERROR_CODE).value("LOGIN_FAILED"));
+        assertThat(failedBody(login(EMAIL, "Wrong0rd!"))).contains("LOGIN_FAILED");
         assertThat(storedHash(userId)).isNull();
     }
 
     @Test
     void deletedAccountWithEmailAndHashLeftIsRefused() throws Exception {
         long userId = insertUser(EMAIL, PASSWORD, "deleted");
+        String unknown = failedBody(login("nobody@example.com", PASSWORD));
 
-        login(EMAIL, PASSWORD)
+        assertThat(failedBody(login(EMAIL, PASSWORD))).isEqualTo(unknown);
+        assertThat(storedHash(userId)).isNull();
+    }
+
+    /** The LOGIN_FAILED exception is by error code, not URL: the filter still rejects a bad token here. */
+    @Test
+    void badTokenOnTheLoginUrlIsRejectedBeforeTheLogin() throws Exception {
+        long userId = insertUser(EMAIL, PASSWORD, "active");
+
+        mockMvc.perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt")
+                        .content("{\"email\":\"" + EMAIL + "\",\"password\":\"" + PASSWORD + "\"}"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath(ERROR_CODE).value("LOGIN_FAILED"))
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"invalid_token\""))
+                .andExpect(jsonPath(ERROR_CODE).value("INVALID_TOKEN"))
                 .andExpect(header().doesNotExist("Set-Cookie"));
         assertThat(storedHash(userId)).isNull();
     }
@@ -180,6 +195,8 @@ class LoginApiTests {
     private static String failedBody(ResultActions actions) throws Exception {
         return actions.andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist("Set-Cookie"))
+                // Decision AUTH2-3: LOGIN_FAILED has no WWW-Authenticate, the same for every reason.
+                .andExpect(header().doesNotExist(HttpHeaders.WWW_AUTHENTICATE))
                 .andReturn().getResponse().getContentAsString();
     }
 
