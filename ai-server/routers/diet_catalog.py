@@ -77,6 +77,17 @@ class FoodOption(BaseModel):
     # 현재 Spring FoodResponse에는 없는 확장 필드.
     # 검증된 원재료 정보가 없으면 반드시 null로 유지.
     allergens: list[str] | None = None
+    # DB 출처에서 원재료/알레르겐 표기를 충분히 검증한 경우에만 True.
+    allergens_verified: bool = False
+
+
+class UserDietContext(BaseModel):
+    """선택적 개인화 정보. 최종 목표 열량 산출·검증은 Spring의 책임."""
+
+    bmr_kcal: Decimal | None = Field(default=None, gt=0, le=5000)
+    current_weight_kg: Decimal | None = Field(default=None, gt=0, le=500)
+    target_weight_kg: Decimal | None = Field(default=None, gt=0, le=500)
+    goal: Literal["weight_loss", "weight_gain", "maintenance", "fitness"] | None = None
 
 
 class CatalogDietRequest(BaseModel):
@@ -106,6 +117,8 @@ class CatalogDietRequest(BaseModel):
         default="",
         max_length=500,
     )
+
+    user_context: UserDietContext | None = None
 
     excluded_food_ids: list[int] = Field(
         default_factory=list,
@@ -231,7 +244,7 @@ def _filter_candidates(
 
     for food in candidates:
         # 미확인 원재료는 안전한 음식으로 취급하지 않는다.
-        if food.allergens is None:
+        if food.allergens is None or not food.allergens_verified:
             continue
 
         food_allergens = {
@@ -281,7 +294,8 @@ def _generate(
         "가능한 한 목표 열량 ±15% 범위에 맞추세요. "
         "단, 열량을 맞추기 위해 부자연스럽게 "
         "과도한 인분을 추천하지 마세요. "
-        "사용자의 음식 기호를 고려하세요. "
+        "사용자의 음식 기호, 목표 체중, 체중 관리 목적, 기초대사량 정보가 있으면 고려하세요. "
+        "하지만 최종 target_calories_kcal은 서버에서 정한 기준이므로 임의 변경하지 마세요. "
         "영양정보가 누락되었다면 수치를 만들지 마세요. "
         "요청된 meal_type을 각각 정확히 한 번 사용하세요. "
         "같은 끼니에 동일한 food_id를 중복 사용하지 마세요. "
@@ -296,6 +310,10 @@ def _generate(
             ),
             "meal_types": req.meal_types,
             "preferences": req.preferences,
+            "user_context": (
+                req.user_context.model_dump(mode="json")
+                if req.user_context is not None else None
+            ),
             "available_foods": prompt_foods,
         },
         ensure_ascii=False,
@@ -432,10 +450,21 @@ def _generate(
 
     if req.allergies:
         warnings.append(
-            "알레르겐 정보가 등록된 음식만 후보로 "
-            "사용했습니다. 원재료 표기와 교차 접촉 "
-            "가능성은 사용자가 추가 확인해야 합니다."
+            "검증됐다고 명시된 알레르겐 정보로만 후보를 거른 결과입니다. "
+            "원재료 표기, 동의어 및 교차 접촉 여부는 사용자가 확인해야 합니다."
         )
+
+    # LLM의 요약이 실제 수치와 모순될 수 있으므로 서버 계산 결과를 우선한다.
+    summary = draft.summary
+    if calorie_target_met is False:
+        summary = (
+            f"추천 식단 예상 열량은 {total_calories}kcal이며, "
+            f"목표 {req.target_calories_kcal}kcal와 "
+            f"{calorie_deviation_percent}% 차이가 있습니다. "
+            "음식 구성과 인분 수를 확인해 주세요."
+        )
+    elif calorie_target_met is None:
+        summary = "영양정보가 부족하여 목표 열량 적합성을 판단할 수 없습니다."
 
     return {
         "status": "generated",
@@ -448,7 +477,7 @@ def _generate(
         "calorie_target_met": calorie_target_met,
         "calorie_deviation_percent": calorie_deviation_percent,
         "meals": meals,
-        "summary": draft.summary,
+        "summary": summary,
         "warnings": warnings,
         "note": (
             "추천 결과는 사용자가 수정·거부할 수 있습니다. "
@@ -489,7 +518,7 @@ async def recommend_from_foods(
         if request.allergies:
             raise HTTPException(
                 422,
-                "알레르기 정보가 검증된 추천 가능 음식이 "
+                "알레르겐 원재료 정보가 검증된 추천 가능 음식이 "
                 "없습니다. Spring에서 검증된 후보를 "
                 "전달해야 합니다.",
             )

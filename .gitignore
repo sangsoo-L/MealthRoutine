@@ -286,3 +286,11 @@ $RECYCLE.BIN/
 
 .env
 !.env.example
+
+# AI model weights and local IDE files
+/ai-server/food_model/weights/
+/ai-server/.idea/
+/.vscode/
+
+# Accidental local file
+/$zip

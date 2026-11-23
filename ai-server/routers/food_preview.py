@@ -3,6 +3,7 @@
 
 import io
 import logging
+from decimal import Decimal
 
 from fastapi import (
     APIRouter,
@@ -16,6 +17,7 @@ from openai import OpenAIError
 from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
+from routers.diet_catalog import FoodOption, _calculate_nutrients
 from services.food_detector import get_food_detector
 from services.food_vision import (
     FoodMenu,
@@ -50,6 +52,7 @@ def _menu_item(
     name: str,
     confidence: float | None,
     alternatives: list[str] | None = None,
+    estimated_quantity: float | None = None,
 ) -> dict:
     """음식 하나의 대표 메뉴 및 대체 후보를 반환 형식으로 변환."""
     return {
@@ -57,6 +60,8 @@ def _menu_item(
         "alternatives": alternatives or [],
         "confidence_score": confidence,
         "suggested_food_id": None,
+        "estimated_quantity": estimated_quantity,
+        "estimated_calories_kcal": None,
     }
 
 
@@ -97,6 +102,15 @@ def _match_alternatives(
     ][:3]
 
 
+def _estimated_quantity_for(name: str, vision_menus: list[FoodMenu]) -> float | None:
+    """대표 음식명이 일치할 때에만 해당 LLM 인분 추정값을 연결."""
+    key = normalize_food_name(name)
+    for menu in vision_menus:
+        if normalize_food_name(menu.primary) == key:
+            return menu.estimated_quantity
+    return None
+
+
 @router.post(
     "/food-analyses",
     summary="YOLO + LLM 음식 분석 및 Spring DB 검색 (개발용)",
@@ -110,6 +124,10 @@ async def analyze_food_preview(
     match_db: bool = Query(
         False,
         description="Spring Boot 음식 DB에서 음식명 검색",
+    ),
+    estimate_portions: bool = Query(
+        False,
+        description="LLM으로 대략적인 인분 수 추정(불확실하면 null). 실제 섭취량은 사용자가 확인",
     ),
     authorization: str | None = Header(
         default=None,
@@ -205,6 +223,7 @@ async def analyze_food_preview(
     if (
         min_confidence < LLM_FALLBACK_THRESHOLD
         or include_alternatives
+        or estimate_portions
     ):
         try:
             vision_provider, vision_menus = (
@@ -285,6 +304,7 @@ async def analyze_food_preview(
                 menu.primary,
                 None,
                 menu.alternatives,
+                menu.estimated_quantity,
             )
             for menu in vision_menus
         ]
@@ -310,6 +330,7 @@ async def analyze_food_preview(
                     item["name"],
                     item["confidence"],
                     alternatives,
+                    _estimated_quantity_for(item["name"], vision_menus),
                 )
             )
 
@@ -369,9 +390,23 @@ async def analyze_food_preview(
             )
 
             if result is not None:
-                food["suggested_food_id"] = (
-                    result["suggested_food_id"]
-                )
+                food["suggested_food_id"] = result["suggested_food_id"]
+
+                # 사진 인분 추정과 유일한 DB 정확 매칭이 모두 있어야 계산한다.
+                # Spring 저장 시에는 사용자가 확인한 quantity로 재계산한다.
+                if (food["suggested_food_id"] is not None
+                        and food["estimated_quantity"] is not None):
+                    exact = [entry for entry in result["exact_matches"]
+                             if entry.get("foodId") == food["suggested_food_id"]]
+                    if len(exact) == 1:
+                        try:
+                            db_food = FoodOption.model_validate(exact[0])
+                            nutrients = _calculate_nutrients(
+                                db_food, Decimal(str(food["estimated_quantity"]))
+                            )
+                            food["estimated_calories_kcal"] = nutrients["calories_kcal"]
+                        except (ValueError, TypeError, ArithmeticError):
+                            logger.warning("음식 DB 영양정보 미리보기 계산 실패")
 
     # 9. 기존 candidates 응답과의 호환성 유지
     candidates = [
@@ -383,12 +418,21 @@ async def analyze_food_preview(
         for food in foods
     ]
 
+    # 사진만으로 계산되지 않는 음식이 하나라도 있으면 합계도 미확정(null).
+    if foods and all(food["estimated_calories_kcal"] is not None for food in foods):
+        estimated_total_calories_kcal = round(
+            sum(food["estimated_calories_kcal"] for food in foods), 2
+        )
+    else:
+        estimated_total_calories_kcal = None
+
     # 10. 최종 응답
     return {
         "source": source,
-        "status": "review_required",
+        "status": "review_required" if foods else "no_food_detected",
         "candidates": candidates,
         "foods": foods,
+        "estimated_total_calories_kcal": estimated_total_calories_kcal,
         "yolo_foods": yolo_names,
         "vision_provider": vision_provider,
         "vision_foods": vision_names,
@@ -399,6 +443,7 @@ async def analyze_food_preview(
         "note": (
             "AI 분석 결과는 사용자 확인이 필요합니다. "
             "음식 DB 매칭 및 저장 여부와 관계없이 "
-            "최종 음식 선택은 사용자가 확인해야 합니다."
+            "음식명과 실제 섭취량은 사용자가 확인해야 합니다. "
+            "추정 인분과 열량은 미리보기이며 확정 영양정보가 아닙니다."
         ),
     }

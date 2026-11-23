@@ -25,6 +25,15 @@ class FoodMenu(BaseModel):
         default_factory=list,
         description="같은 음식에 대한 다른 예측 후보 (최대 3개)",
     )
+    estimated_quantity: float | None = Field(
+        default=None,
+        ge=0.1,
+        le=5.0,
+        description=(
+            "사진만으로 판단 가능한 경우의 대략적인 인분 수. "
+            "크기 비교 기준이 부족하면 null. 정확한 중량이나 실제 섭취량이 아님"
+        ),
+    )
 
 
 class FoodAnalysis(BaseModel):
@@ -45,8 +54,11 @@ FOOD_MENU_PROMPT = (
     "대체 후보는 해당 메뉴의 재료명이나 토핑명이 아니어야 합니다. "
     "사진으로 구별할 근거가 없으면 지나치게 구체적인 종류를 단정하지 마세요. "
     "후보가 억지스럽다면 alternatives를 빈 배열로 두세요. "
+    "estimated_quantity는 사진에 근거한 대략적인 인분 수(0.1~5)를 추정할 때만 작성하세요. "
+    "사진만으로 분량을 가늠할 크기 단서가 부족하면 반드시 null로 두세요. "
+    "실제로 먹은 양이나 정확한 g 중량을 확인했다고 주장하지 마세요. "
     "동일 음식은 중복 나열하지 말고, 음식이 보이지 않으면 foods를 빈 배열로 반환하세요. "
-    "반드시 foods 배열의 각 항목에 primary와 alternatives를 포함하세요."
+    "각 항목에 primary, alternatives, estimated_quantity를 포함하세요."
 )
 
 EXCLUDED_NAMES = {"00000000", "test1", "test3", "spoon"}
@@ -96,7 +108,11 @@ def clean_food_menus(menus: list[FoodMenu]) -> list[FoodMenu]:
             for name in unique_food_names(menu.alternatives)
             if normalize_food_name(name) not in primary_keys
         ][:MAX_ALTERNATIVES]
-        result.append(FoodMenu(primary=primary, alternatives=alternatives))
+        result.append(FoodMenu(
+            primary=primary,
+            alternatives=alternatives,
+            estimated_quantity=menu.estimated_quantity,
+        ))
         if len(result) == MAX_MENUS:
             break
 

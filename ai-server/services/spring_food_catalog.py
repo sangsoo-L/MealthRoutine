@@ -10,6 +10,7 @@ Spring 음식 API 요청에만 재사용한다.
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -104,7 +105,10 @@ def _search_foods(
             "음식 검색 결과가 올바르지 않습니다."
         )
 
-    content = data.get("content", [])
+    if "content" not in data:
+        raise SpringFoodApiError("음식 검색 응답에 content 필드가 없습니다.")
+
+    content = data["content"]
 
     if not isinstance(content, list):
         raise SpringFoodApiError(
@@ -131,8 +135,16 @@ def resolve_food_names(
     truncated = len(unique_names) > MAX_DB_LOOKUPS
     results = []
 
-    for name in unique_names[:MAX_DB_LOOKUPS]:
-        foods = _search_foods(name, authorization)
+    # Spring 검색 요청은 상호 독립적이므로 병렬 조회하여 최악 지연을 줄인다.
+    # executor.map은 입력 순서를 유지하며 실패 시 예외를 그대로 전달한다.
+    search_names = unique_names[:MAX_DB_LOOKUPS]
+    with ThreadPoolExecutor(max_workers=min(4, len(search_names) or 1)) as pool:
+        search_results = list(pool.map(
+            lambda query: _search_foods(query, authorization),
+            search_names,
+        ))
+
+    for name, foods in zip(search_names, search_results):
         key = normalize_food_name(name)
 
         exact_matches = [
@@ -153,7 +165,10 @@ def resolve_food_names(
         # 하나의 음식만 정확히 일치할 때 자동 ID 제안
         suggested_id = None
 
-        if len(exact_matches) == 1:
+        # 첫 페이지가 꽉 찼다면 뒤 페이지에 같은 이름이 더 있을 수 있다.
+        # 이 경우 ID를 자동 확정하지 않고 사용자가 DB 결과를 선택하도록 한다.
+        search_incomplete = len(foods) >= SEARCH_PAGE_SIZE
+        if len(exact_matches) == 1 and not search_incomplete:
             suggested_id = exact_matches[0].get("foodId")
 
         results.append({
@@ -161,6 +176,7 @@ def resolve_food_names(
             "suggested_food_id": suggested_id,
             "exact_matches": exact_matches,
             "related_matches": related_matches,
+            "search_incomplete": search_incomplete,
         })
 
     return results, truncated

@@ -16,3 +16,8 @@ typing_extensions==4.16.0
 uvicorn==0.54.0
 python-dotenv==1.2.4
 openai==3.40.0
+
+# 자체 YOLOv3 음식 이미지 추론에 필요한 런타임 라이브러리
+numpy>=2.0,<3
+opencv-python>=4.8,<5
+torch>=2.6,<3
