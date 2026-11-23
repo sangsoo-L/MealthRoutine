@@ -2,7 +2,7 @@
  * 통합검색(/search)의 공통 타입과 검색 처리 경계.
  *
  * 운동·음식 검색 API(GET /api/v1/exercises, GET /api/v1/foods)는 명세서에 경로만 있고 요청·응답 구조가 정의되지 않았으며
- * 연결된 코드도 없다(frontend/docs/api-status.md). 그래서 아래 결과 타입은 화면을 그리기 위한 임시 형태이지 API 계약이 아니다.
+ * 연결된 코드도 없다(README의 API 인수인계). 그래서 아래 결과 타입은 화면을 그리기 위한 임시 형태이지 API 계약이 아니다.
  * 필드는 모두 "있을 때만" 보여 주며, 값이 없는 항목을 만들어 채우지 않는다.
  * 운동 결과 타입(ExerciseResult)은 운동 도메인(exercise/exerciseTypes.ts)에 있다.
  */

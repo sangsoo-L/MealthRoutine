@@ -8,7 +8,7 @@ interface SearchGuideTopicProps {
 }
 
 /**
- * HomeDiscovery의 항목. 회원 홈이 사용하고 비회원 랜딩(H01)은 렌더링하지 않는다.
+ * 검색 사용법 소개 카드. 비회원 랜딩의 "가입 없이 둘러보기"(LandingExplore)가 사용한다(예전에는 회원 홈의 HomeDiscovery 항목이었다).
  *
  * 검색 사용법 소개 한 건(운동 검색 또는 음식 검색): 제목, 검색 화면 미리보기, 시작하기 링크.
  *

@@ -1,8 +1,8 @@
-// Chrome 회귀 테스트 실행기. 스크립트를 하나씩 별도 프로세스로 실행하고 종료 코드·PASS/FAIL 건수·실행 시간을 모아 보고한다.
+﻿// Chrome 회귀 테스트 실행기. 스크립트를 하나씩 별도 프로세스로 실행하고 종료 코드·PASS/FAIL 건수·실행 시간을 모아 보고한다.
 //
 //   node tests/chrome/run.mjs                    전체 실행
 //   node tests/chrome/run.mjs --list             스크립트·그룹 목록
-//   node tests/chrome/run.mjs --group plan,a11y  그룹만 실행(그룹: explore detail record workout dashboard history support routine meal workoutplan plan a11y)
+//   node tests/chrome/run.mjs --group plan,a11y  그룹만 실행(그룹: explore detail record workout dashboard history support routine meal workoutplan plan a11y quiz aimeal mypage auth foodrequest pin homedash ailanding aihub inquiry profile bodygoal membership growth photo community)
 //   node tests/chrome/run.mjs --only w02-compose,e02-to-w02
 //   옵션: --timeout-sec N(스크립트당 제한, 기본 900) · --spec-dir <경로>(selftest용)
 //
@@ -66,6 +66,21 @@ export const GROUPS = {
   ],
   a11y: ['a11y-tool-cards'],
   quiz: ['quiz'],
+  aimeal: ['ai-meal-plan'],
+  mypage: ['mypage-weekly-links'],
+  auth: ['a04-password-reset'],
+  foodrequest: ['f03-food-request'],
+  pin: ['pin-settings', 'p05-body-unlock', 'signup-pin'],
+  homedash: ['home-dashboard'],
+  ailanding: ['ai-landing'],
+  aihub: ['ai-hub'],
+  photo: ['photo-analysis'],
+  inquiry: ['inquiry-screens'],
+  profile: ['profile-settings'],
+  bodygoal: ['body-goal-settings'],
+  membership: ['membership-settings'],
+  community: ['community'],
+  growth: ['growth-history'],
 }
 
 function parseArgs(argv) {

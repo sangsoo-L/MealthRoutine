@@ -68,6 +68,7 @@ export type ExerciseGoalErrorCode =
   | 'pinExists'
   | 'pinMissing'
   | 'pinWrong'
+  | 'pinSame'
   | 'locked'
   | 'expired'
   | 'validation'
@@ -76,11 +77,18 @@ export type ExerciseGoalErrorCode =
 export class ExerciseGoalError extends Error {
   readonly code: ExerciseGoalErrorCode
   readonly retryAt?: number
-  constructor(code: ExerciseGoalErrorCode, retryAt?: number) {
+  /** `pinWrong`에서만 채운다. 잠기기까지 남은 확인 횟수다. 다른 코드에서는 없다(기존 호출부는 읽지 않는다). */
+  readonly remaining?: number
+  constructor(
+    code: ExerciseGoalErrorCode,
+    retryAt?: number,
+    remaining?: number,
+  ) {
     super(`exercise goal ${code}`)
     this.name = 'ExerciseGoalError'
     this.code = code
     this.retryAt = retryAt
+    this.remaining = remaining
   }
 }
 
@@ -88,8 +96,22 @@ export interface ExerciseGoalRepository {
   readonly kind: 'local'
   getPinStatus(): Promise<{ configured: boolean; retryAt: number | null }>
   registerPin(pin: string, confirmation: string): Promise<void>
+  /**
+   * 현재 PIN을 확인한 뒤 새 PIN으로 바꾼다(P12). 현재 PIN 확인은 `unlock`과 같은 실패 횟수·잠금을 쓴다.
+   * 형식·확인 불일치·동일 번호는 횟수에 넣지 않는다. 성공하면 이 계정의 열람 권한을 모두 무효화하고, 실패하면 기존 PIN을 바꾸지 않는다.
+   */
+  changePin(
+    currentPin: string,
+    newPin: string,
+    confirmation: string,
+  ): Promise<void>
   unlock(pin: string): Promise<GoalAuthorization>
   lock(access: GoalAuthorization): void
+  /**
+   * 열람 권한이 지금도 유효한지 확인한다(P05 신체 정보 열람). 소유 계정·만료 시각·발급 뒤 PIN이 바뀌지 않았는지(다른 탭의 변경 포함)를
+   * 매번 저장소에서 다시 확인하며, 하나라도 어긋나면 그 권한을 지우고 `expired`를 던진다. 값을 돌려주지 않는다.
+   */
+  verifyAccess(access: GoalAuthorization): void
   getProfile(access: GoalAuthorization): Promise<ExerciseGoalProfile | null>
   getProfilePrefill(
     access: GoalAuthorization,

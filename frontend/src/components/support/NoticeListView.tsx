@@ -15,7 +15,7 @@ import SupportSearchInput from './SupportSearchInput.tsx'
  * - 공지가 하나도 없으면(운영 공지 데이터 없음) "등록된 공지가 없어요"만 보인다. 가짜 공지를 만들지 않는다.
  * - 검색은 목록 아래에 있다(화면명세 S01). 제목·본문에서 찾고 결과가 없으면 "전체 보기"로 검색어를 지운다.
  * - 각 공지는 분류·제목·작성자·게시일을 보이고 행 전체가 상세(S01-1)로 가는 링크다(검색어를 함께 넘긴다).
- * 공지·FAQ 사이를 오가는 탭은 없다. FAQ는 아래의 안내 줄에서 간다. 키워드 챗봇(S03)·1:1 문의(S02)는 화면이 없어 준비 중으로만 알린다.
+ * 공지·FAQ 사이를 오가는 탭은 없다. FAQ는 아래의 안내 줄에서 간다. 1:1 문의(S02)는 문의 작성 화면으로 가고(회원 전용이라 비회원은 로그인 안내를 본다), 키워드 챗봇(S03)은 화면이 없어 준비 중으로만 알린다.
  */
 export default function NoticeListView({
   notices,
@@ -167,14 +167,26 @@ export default function NoticeListView({
               />
             </Link>
           </li>
-          {['키워드 챗봇', '1:1 문의'].map((label) => (
-            <li key={label}>
-              <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 text-body font-normal text-muted">
-                <span className="min-w-0">{label}</span>
-                <span className={`${chipClass} bg-page`}>준비 중</span>
-              </div>
-            </li>
-          ))}
+          <li>
+            <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 text-body font-normal text-muted">
+              <span className="min-w-0">키워드 챗봇</span>
+              <span className={`${chipClass} bg-page`}>준비 중</span>
+            </div>
+          </li>
+          <li>
+            <Link
+              to="/support/inquiry"
+              state={{ from: noticeListPath(query) }}
+              className={`flex min-h-11 items-center justify-between gap-3 px-4 py-3 text-body font-semibold text-content ${focusRing}`}
+            >
+              <span className="min-w-0">1:1 문의</span>
+              <Icon
+                name="chevron-right"
+                size={18}
+                className="shrink-0 text-muted"
+              />
+            </Link>
+          </li>
         </ul>
       </section>
     </div>

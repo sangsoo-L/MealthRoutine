@@ -450,12 +450,13 @@ await scenario('C-member', async (h) => {
   const empty = await snap(h)
   check(
     h,
-    'C6. D01 빈 상태: 아직 기록 없음·끼니 카드 3개·D02 링크·준비 중 안내, 목표 열량 숫자는 만들지 않는다',
+    'C6. D01 빈 상태: 아직 기록 없음·끼니 카드 3개·D02 링크·목표 없음 안내(D01-4), 목표 열량 숫자는 만들지 않는다',
     /아직 기록 없음/.test(empty.text) &&
       (await h.ev(`document.querySelectorAll('[data-meal-card]').length`)) ===
         3 &&
       empty.links.some((l) => l.h === '/records/meal/record') &&
-      /준비 중/.test(empty.text) &&
+      /아직 정하지 않았어요/.test(empty.text) &&
+      empty.links.some((l) => l.h === '/records/meal/goal') &&
       !(await h.ev(`!!document.querySelector('[data-today-kcal]')`)),
     empty.text.slice(0, 200),
   )

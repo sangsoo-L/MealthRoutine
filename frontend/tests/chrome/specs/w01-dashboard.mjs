@@ -1,6 +1,6 @@
 // [chrome 회귀] W01 대시보드 현행 구조
 // 실행: frontend에서 `npm run dev -- --port 5199 --strictPort`를 띄운 뒤 `node tests/chrome/run.mjs --only <이름>`. 상세: tests/chrome/README.md
-// S8-3A 신규: W01 현행 기준 검증. 기준 문서: frontend/docs/w01-dashboard-redesign.md(2026-11-12 사용자 지시 리디자인 + 2026-11-16 S8-2 실제 기록 연결).
+// S8-3A 신규: W01 현행 기준 검증. 기준 문서: 운동 대시보드 설계 메모(2026-11-12 사용자 지시 리디자인 + 2026-11-16 S8-2 실제 기록 연결).
 // 구 w01·r2 스크립트가 기대하던 구조(h1 "운동 대시보드", 목표 배너 최상단, 내 운동 루틴 섹션 등)는 이 문서의 구조로 대체되었다. 프로젝트 소스는 수정하지 않는다.
 import { start } from '../lib/session.mjs'
 
@@ -134,10 +134,13 @@ check(
     s.links.some(
       (l) => l.h === '/records/exercise/stats' && /통계 보기/.test(l.t),
     ) &&
-    // 루틴·통계가 연결되어 "준비 중"은 접힌 "다음 운동 준비하기"의 주간 리포트 안내 한 곳뿐이다(접혀 있어도 준비 중임을 알린다).
+    // 내일 운동 계획(W10)과 주간 리포트(I05)가 모두 연결된 현재 동작: 접힌 "다음 운동 준비하기" 요약에도 "준비 중"이 없다.
+    // (이전에는 주간 리포트만 "준비 중"이었다. NextExerciseSection이 리포트 경로를 받아 활성 항목으로 바뀌었다.)
     (s.text.slice(s.text.indexOf('운동 관리')).match(/준비 중/g) ?? [])
-      .length === 1 &&
-    /주간 리포트\(준비 중\)/.test(s.text.slice(s.text.indexOf('운동 관리'))),
+      .length === 0 &&
+    /내일 운동 계획 · 주간 리포트/.test(
+      s.text.slice(s.text.indexOf('운동 관리')),
+    ),
   JSON.stringify({
     links: s.links.filter((l) => /routines|stats/.test(l.h ?? '')),
     pending: (s.text.match(/준비 중/g) ?? []).length,

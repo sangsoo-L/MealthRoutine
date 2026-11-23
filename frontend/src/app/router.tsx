@@ -4,7 +4,13 @@ import AuthOrExperienceGate from '../guards/AuthOrExperienceGate.tsx'
 import AppShell from '../layouts/AppShell.tsx'
 import AiExercisePage from '../pages/AiExercisePage.tsx'
 import AiExercisePlanPage from '../pages/AiExercisePlanPage.tsx'
+import AiMealFoodsPage from '../pages/AiMealFoodsPage.tsx'
+import AiMealPlanPage from '../pages/AiMealPlanPage.tsx'
+import AiMealResultPage from '../pages/AiMealResultPage.tsx'
+import AiMealSelectPage from '../pages/AiMealSelectPage.tsx'
 import AiPage from '../pages/AiPage.tsx'
+import AiPhotoAnalysisPage from '../pages/AiPhotoAnalysisPage.tsx'
+import AiPhotoPage from '../pages/AiPhotoPage.tsx'
 import WeeklyReportPage from '../pages/WeeklyReportPage.tsx'
 import WeeklyScorePage from '../pages/WeeklyScorePage.tsx'
 import HomePage from '../pages/HomePage.tsx'
@@ -12,8 +18,13 @@ import IntroPage from '../pages/IntroPage.tsx'
 import LoginPage from '../pages/LoginPage.tsx'
 import MyPage from '../pages/MyPage.tsx'
 import OnboardingAssessmentPage from '../pages/OnboardingAssessmentPage.tsx'
+import PasswordResetPage from '../pages/PasswordResetPage.tsx'
 import NotificationsPage from '../pages/NotificationsPage.tsx'
 import QuizPage from '../pages/QuizPage.tsx'
+import PinSettingsPage from '../pages/PinSettingsPage.tsx'
+import PointHistoryPage from '../pages/PointHistoryPage.tsx'
+import ProfileSettingsPage from '../pages/ProfileSettingsPage.tsx'
+import PinVerifyPage from '../pages/PinVerifyPage.tsx'
 import SettingsPage from '../pages/SettingsPage.tsx'
 import { NotFoundPlaceholder } from '../pages/PagePlaceholder.tsx'
 import ExerciseDetailPage from '../pages/ExerciseDetailPage.tsx'
@@ -38,7 +49,18 @@ import FavoritesPage from '../pages/FavoritesPage.tsx'
 import LevelGuidePage from '../pages/LevelGuidePage.tsx'
 import NoticeDetailPage from '../pages/NoticeDetailPage.tsx'
 import SupportPage from '../pages/SupportPage.tsx'
+import CommunityBoardPage from '../pages/CommunityBoardPage.tsx'
+import CommunityPostPage from '../pages/CommunityPostPage.tsx'
+import CommunityWritePage from '../pages/CommunityWritePage.tsx'
 import FoodsPage from '../pages/FoodsPage.tsx'
+import FoodRequestPage from '../pages/FoodRequestPage.tsx'
+import BodySettingsPage from '../pages/BodySettingsPage.tsx'
+import ExperienceHistoryPage from '../pages/ExperienceHistoryPage.tsx'
+import HealthGoalSettingsPage from '../pages/HealthGoalSettingsPage.tsx'
+import MembershipSettingsPage from '../pages/MembershipSettingsPage.tsx'
+import InquiryPage from '../pages/InquiryPage.tsx'
+import MyInquiriesPage from '../pages/MyInquiriesPage.tsx'
+import MyRequestsPage from '../pages/MyRequestsPage.tsx'
 import FoodDetailPage from '../pages/FoodDetailPage.tsx'
 import MealDashboardPage from '../pages/MealDashboardPage.tsx'
 import MealDetailPage from '../pages/MealDetailPage.tsx'
@@ -51,6 +73,7 @@ import MealRecordPage from '../pages/MealRecordPage.tsx'
 import ExplorePage from '../pages/ExplorePage.tsx'
 import SearchPage from '../pages/SearchPage.tsx'
 import SignupPage from '../pages/SignupPage.tsx'
+import SignupPinPage from '../pages/SignupPinPage.tsx'
 import SurveyPage from '../pages/SurveyPage.tsx'
 import type { RouteHandle } from './routeHandle.ts'
 
@@ -94,6 +117,29 @@ const signupHandle: RouteHandle = {
   tab: 'home',
   focus: true,
   // 회원가입은 뒤로가기를 그리지 않는다. 로그인으로 돌아가는 길은 본문 하단 안내 카드가 맡는다.
+  bodyBack: true,
+  domain: 'brand',
+  parent: '/login',
+}
+
+const signupPinHandle: RouteHandle = {
+  screenId: 'P05',
+  title: '2차 비밀번호 설정',
+  tab: 'home',
+  focus: true,
+  // 제목(h1)은 화면이 그린다. 돌아가는 길은 폼의 "이전"(→ 회원가입)이라 AppShell은 뒤로가기를 그리지 않는다.
+  ownH1: true,
+  bodyBack: true,
+  domain: 'brand',
+  parent: '/signup',
+}
+
+const passwordResetHandle: RouteHandle = {
+  screenId: 'A04',
+  title: '비밀번호 재설정',
+  tab: 'home',
+  focus: true,
+  // 상단 이전은 로그인 틀 안에서 화면이 직접 그린다(로그인과 같다). 목적지는 로그인(A01)이다.
   bodyBack: true,
   domain: 'brand',
   parent: '/login',
@@ -167,7 +213,7 @@ const notFoundHandle: RouteHandle = {
   parent: null,
 }
 
-// 근거: documents/화면명세_v5.0.json(화면 ID·화면명), URL은 frontend/docs/screen-route-map.md (대표 경로만 정의)
+// 근거: v5.0 화면 명세(화면 ID·화면명), URL은 화면 대응표 (대표 경로만 정의)
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -191,10 +237,23 @@ export const router = createBrowserRouter([
         handle: loginHandle,
       },
       {
+        // A04 비밀번호 재설정. `/password/reset`은 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의, 다른 인증 화면의 `/login`·`/signup`과 같은 일반 경로 규칙). 비회원 포함 누구나 접근한다.
+        path: 'password/reset',
+        element: <PasswordResetPage />,
+        handle: passwordResetHandle,
+      },
+      {
         // A03 회원가입. `/signup`은 기획 문서에 없는 임시 확정이다. (로그인 `/login`과 같은 일반 경로 규칙)
         path: 'signup',
         element: <SignupPage />,
         handle: signupHandle,
+      },
+      {
+        // P05 가입 설정 모드. `/signup/pin`은 사용자 승인으로 정한 경로다(v5.0은 URL 미정의). 회원가입(A03) 다음 단계다.
+        // 비회원도 열 수 있다. 실제 가입·등록은 서버 몫이라 번호를 저장하지 않고, 개발용 가입 체험 중에만 형식을 확인한 뒤 이해도 확인으로 이동한다.
+        path: 'signup/pin',
+        element: <SignupPinPage />,
+        handle: signupPinHandle,
       },
       {
         // A02 초기설문. `/survey`는 기획 문서에 없는 임시 확정이며, 다른 화면과 연결하지 않고 직접 접근만 허용한다.
@@ -441,6 +500,34 @@ export const router = createBrowserRouter([
             } satisfies RouteHandle,
           },
           {
+            // C02 자유게시판 글 작성. URL `/community/posts/new`는 사용자 승인 임시 확정이다(v5.0은 URL 미정의). 회원 전용(AuthGate): 비회원은 로그인 안내를 본다. 서버 연결 전에는 등록 버튼이 비활성이고 등록·저장되지 않는다고 알린다. 상위 화면은 자유게시판(C01).
+            path: 'community/posts/new',
+            element: <CommunityWritePage board="free" />,
+            handle: {
+              screenId: 'C02',
+              title: '자유게시판 글 작성',
+              tab: 'home',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/community',
+            } satisfies RouteHandle,
+          },
+          {
+            // C02-1 초보자 Q&A 질문 작성. URL `/community/qa/new`는 사용자 승인 임시 확정이다. 회원 전용(AuthGate). 서버 연결 전에는 등록할 수 없다. 상위 화면은 초보자 Q&A(C01-2).
+            path: 'community/qa/new',
+            element: <CommunityWritePage board="qa" />,
+            handle: {
+              screenId: 'C02-1',
+              title: '초보자 Q&A 질문 작성',
+              tab: 'home',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/community/qa',
+            } satisfies RouteHandle,
+          },
+          {
             // W06 내 운동 루틴. URL은 사용자 지시로 정한 임시 확정이다(`/records/exercise/routines`, v5.0은 URL 미정의). 회원 전용(AuthGate).
             // 하단 탭은 유지하고 상위 화면은 운동 기록 대시보드(W01)다. 화면이 h1을 직접 가진다.
             path: 'records/exercise/routines',
@@ -561,8 +648,158 @@ export const router = createBrowserRouter([
             } satisfies RouteHandle,
           },
           {
+            // F03 음식 등록 요청. URL `/foods/request`는 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의, 정적 경로라 `/foods/:foodId`보다 먼저 맞는다). 회원 전용(AuthGate).
+            // 서버 연결 전에는 요청을 보내지 않고 접수되지 않았다고 알린다. 하단 탭은 탐색이 활성이고 상위 화면은 F01이며 화면이 h1을 직접 가진다.
+            path: 'foods/request',
+            element: <FoodRequestPage />,
+            handle: {
+              screenId: 'F03',
+              title: '음식 등록 요청',
+              tab: 'explore',
+              focus: false,
+              ownH1: true,
+              domain: 'meal',
+              parent: '/foods',
+            } satisfies RouteHandle,
+          },
+          {
+            // P04 내 요청 내역(요청 있음 상태 P04-1 포함, P04-1은 별도 화면이 아니라 목록 상태다). URL `/mypage/requests`는 사용자 지시로 정한 임시 확정. 회원 전용(AuthGate).
+            // 상위 화면은 상세 설정(P09)이고 화면이 h1을 직접 가진다.
+            path: 'mypage/requests',
+            element: <MyRequestsPage />,
+            handle: {
+              screenId: 'P04',
+              title: '내 요청 내역',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/settings',
+            } satisfies RouteHandle,
+          },
+          {
+            // S02 문의 작성. URL `/support/inquiry`는 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의, 공개 `support` 경로와 별개의 정적 경로). 회원 전용(AuthGate): 비회원은 로그인 안내를 본다.
+            // 서버 연결 전에는 제출 버튼이 비활성이고 접수·저장되지 않는다고 알린다. 상위 화면은 공지사항(S01, 명세)이며 진입한 화면(state.from)이 있으면 "이전"이 그곳으로 돌아간다.
+            // 하단 탭은 마이 탭이 활성이고 화면이 h1을 직접 가진다.
+            path: 'support/inquiry',
+            element: <InquiryPage />,
+            handle: {
+              screenId: 'S02',
+              title: '문의하기',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/support',
+            } satisfies RouteHandle,
+          },
+          {
+            // P13 내 문의(문의 상세는 별도 화면이 아니라 목록 안에서 펼친다). URL `/mypage/inquiries`는 사용자 지시로 정한 임시 확정이다. 회원 전용(AuthGate).
+            // 서버 연결 전에는 조회하지 않고 "아직 볼 수 없어요(문의 없음 아님)"를 알린다. 상위 화면은 상세 설정(P09)이고 화면이 h1을 직접 가진다.
+            path: 'mypage/inquiries',
+            element: <MyInquiriesPage />,
+            handle: {
+              screenId: 'P13',
+              title: '내 문의',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/settings',
+            } satisfies RouteHandle,
+          },
+          {
+            // I03 AI 식단 플랜 · 목표 확인. URL `/ai/meal`은 사용자가 확정했다(v5.0은 URL 미정의). 회원 전용(AuthGate).
+            // 식단 목표를 확인하고 끼니 선택(I03-1)으로 간다. 목표가 없으면 I07로 `replace` 이동한다. 추천·계산·저장은 하지 않는다. 상위 화면은 I01이고 화면이 h1을 직접 가진다.
+            path: 'ai/meal',
+            element: <AiMealPlanPage />,
+            handle: {
+              screenId: 'I03',
+              title: 'AI 식단 플랜 · 목표 확인',
+              tab: 'ai',
+              focus: false,
+              ownH1: true,
+              domain: 'meal',
+              parent: '/ai',
+            } satisfies RouteHandle,
+          },
+          {
+            // I03-1 AI 식단 플랜 · 끼니 선택. URL `/ai/meal/meals`는 사용자가 확정했다. 회원 전용. 이전·다음은 화면이 직접 그려 공통 "이전"을 두지 않는다(bodyBack).
+            path: 'ai/meal/meals',
+            element: <AiMealSelectPage />,
+            handle: {
+              screenId: 'I03-1',
+              title: 'AI 식단 플랜 · 끼니 선택',
+              tab: 'ai',
+              focus: false,
+              ownH1: true,
+              bodyBack: true,
+              domain: 'meal',
+              parent: '/ai/meal',
+            } satisfies RouteHandle,
+          },
+          {
+            // I03-2 AI 식단 플랜 · 음식 조건 설정. URL `/ai/meal/foods`는 사용자가 확정했다. 회원 전용. 앞 단계(끼니) 입력이 없으면 I03-1로 돌려보낸다.
+            path: 'ai/meal/foods',
+            element: <AiMealFoodsPage />,
+            handle: {
+              screenId: 'I03-2',
+              title: 'AI 식단 플랜 · 음식 조건',
+              tab: 'ai',
+              focus: false,
+              ownH1: true,
+              bodyBack: true,
+              domain: 'meal',
+              parent: '/ai/meal/meals',
+            } satisfies RouteHandle,
+          },
+          {
+            // I04 사진 음식 분석과 확인. URL `/ai/meal/photo`는 사용자 확인이 필요한 임시 경로다(v5.0은 URL 미정의, 식단 AI의 `/ai/meal/*` 규칙을 따름). 회원 전용(AuthGate).
+            // 사진을 고르고 미리 본 뒤 분석을 시작한다. 사진은 메모리에만 두고 서버로 보내지 않으며, 분석 서버가 없으면 시작할 수 없다. 상위 화면은 I01이고 화면이 h1을 직접 가진다.
+            path: 'ai/meal/photo',
+            element: <AiPhotoPage />,
+            handle: {
+              screenId: 'I04',
+              title: '사진 음식 분석',
+              tab: 'ai',
+              focus: false,
+              ownH1: true,
+              domain: 'meal',
+              parent: '/ai',
+            } satisfies RouteHandle,
+          },
+          {
+            // I04-1 사진 음식 분석 · AI 대화. URL `/ai/meal/photo/analysis`는 임시 경로다. 회원 전용. 선택한 사진이 없으면 I04로 돌려보낸다. 뒤로가기는 I04다.
+            path: 'ai/meal/photo/analysis',
+            element: <AiPhotoAnalysisPage />,
+            handle: {
+              screenId: 'I04-1',
+              title: '사진 음식 분석 · AI 대화',
+              tab: 'ai',
+              focus: false,
+              ownH1: true,
+              domain: 'meal',
+              parent: '/ai/meal/photo',
+            } satisfies RouteHandle,
+          },
+          {
+            // I03-3 AI 식단 플랜 · 추천·등록. URL `/ai/meal/plan`은 사용자가 확정했다. 회원 전용. 서버 연결 전이라 추천 결과를 만들지 않고, 내일 계획 등록은 열지 않는다.
+            path: 'ai/meal/plan',
+            element: <AiMealResultPage />,
+            handle: {
+              screenId: 'I03-3',
+              title: 'AI 식단 플랜 · 추천 확인',
+              tab: 'ai',
+              focus: false,
+              ownH1: true,
+              bodyBack: true,
+              domain: 'meal',
+              parent: '/ai/meal/foods',
+            } satisfies RouteHandle,
+          },
+          {
             // I07 식단 목표 없음 안내. URL `/ai/meal/goal-required`는 임시 후보이며 사용자 확인이 필요하다(v5.0은 URL 미정의). 회원 전용(AuthGate).
-            // AI 식단 플랜(I03, 아직 구현 전)이 식단 목표가 없을 때 `replace`로 보내는 화면이다. 목표가 이미 있으면 돌아갈 곳으로 이동한다.
+            // AI 식단 플랜(I03)이 식단 목표가 없을 때 `replace`로 보내는 화면이다. 목표가 이미 있으면 돌아갈 곳(I03)으로 이동한다.
             // 상위 화면은 I03 대신 I01이다: I03이 목표 없음에서 이 화면으로 되돌려 보내므로 "이전"이 I03을 가리키면 두 화면이 서로 반복된다. 화면이 h1을 직접 가진다.
             path: 'ai/meal/goal-required',
             element: <MealGoalRequiredPage />,
@@ -714,6 +951,119 @@ export const router = createBrowserRouter([
             } satisfies RouteHandle,
           },
           {
+            // P02 프로필과 개인정보 설정. URL `/settings/profile`은 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의). 회원 전용(AuthGate).
+            // 닉네임·이메일은 로그인 계정의 값이고 나머지 개인정보는 서버가 주는 값만 읽기 전용으로 보인다. 서버 연결 전에는 저장 버튼이 비활성이다.
+            // 하단 탭은 마이 탭이 활성이고 상위 화면은 상세 설정(P09)이며 화면이 h1을 직접 가진다.
+            path: 'settings/profile',
+            element: <ProfileSettingsPage />,
+            handle: {
+              screenId: 'P02',
+              title: '프로필과 개인정보 설정',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/settings',
+            } satisfies RouteHandle,
+          },
+          {
+            // P06 키·몸무게 입력. URL `/settings/body`는 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의). 회원 전용(AuthGate).
+            // 기존 신체 정보 저장소·입력 폼을 재사용하고 수치는 읽지도 보이지도 않는다(열람은 P05). 운영 빌드는 폼 없이 "연결 전"만 보인다.
+            // 하단 탭은 마이 탭이 활성이고 상위 화면은 상세 설정(P09)이며 진입한 화면(state.from)이 있으면 "이전"이 그곳으로 돌아간다. 화면이 h1을 직접 가진다.
+            path: 'settings/body',
+            element: <BodySettingsPage />,
+            handle: {
+              screenId: 'P06',
+              title: '키·몸무게 입력',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/settings',
+            } satisfies RouteHandle,
+          },
+          {
+            // P10 건강 목표 상세 설정. URL `/settings/health-goal`은 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의). 회원 전용(AuthGate).
+            // 기존 건강 목표 저장소·설정 폼을 재사용하고 새 계산식·추천은 없다. 운영 빌드는 폼 없이 "연결 전"만 보인다.
+            // 하단 탭은 마이 탭이 활성이고 상위 화면은 상세 설정(P09)이며 진입한 화면(state.from)이 있으면 "이전"이 그곳으로 돌아간다. 화면이 h1을 직접 가진다.
+            path: 'settings/health-goal',
+            element: <HealthGoalSettingsPage />,
+            handle: {
+              screenId: 'P10',
+              title: '건강 목표 상세 설정',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/settings',
+            } satisfies RouteHandle,
+          },
+          {
+            // P03 멤버십과 결제 관리. URL `/settings/membership`은 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의). 회원 전용(AuthGate):
+            // 명세는 상품 안내를 공개로 두지만 사용자 지시로 인증 정책을 유지해 비회원은 로그인 안내를 본다.
+            // 구독 상태는 서버가 준 값만 보이고(연결 전에는 "연결 전") 결제·구독 버튼은 비활성이다. 하단 탭은 마이 탭이 활성이고 상위 화면은 상세 설정(P09)이며
+            // 진입한 화면(state.from)이 있으면 "이전"이 그곳으로 돌아간다. 화면이 h1을 직접 가진다.
+            path: 'settings/membership',
+            element: <MembershipSettingsPage />,
+            handle: {
+              screenId: 'P03',
+              title: '멤버십과 결제 관리',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/settings',
+            } satisfies RouteHandle,
+          },
+          {
+            // P11 2차 비밀번호 등록. `/settings/pin/register`는 사용자 승인으로 정한 경로다(v5.0은 URL 미정의). P09 메뉴가 미등록일 때 연결한다.
+            // 회원 전용(AuthGate). 화면이 보이는 제목(h1)을 직접 그리고, 뒤로가기("이전")는 AppShell이 상세 설정(P09)으로 그린다.
+            // 서버 연결 전에는 개발 서버에서만 개발용 PIN 저장소로 등록하고 운영 빌드는 "연결 전" 안내만 보인다.
+            path: 'settings/pin/register',
+            element: <PinSettingsPage mode="register" />,
+            handle: {
+              screenId: 'P11',
+              title: '2차 비밀번호 등록',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/settings',
+            } satisfies RouteHandle,
+          },
+          {
+            // P12 2차 비밀번호 변경. `/settings/pin/change`는 사용자 승인으로 정한 경로다. P09 메뉴가 등록됨일 때 연결한다. 나머지는 P11과 같다.
+            path: 'settings/pin/change',
+            element: <PinSettingsPage mode="change" />,
+            handle: {
+              screenId: 'P12',
+              title: '2차 비밀번호 변경',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/settings',
+            } satisfies RouteHandle,
+          },
+          {
+            // P05 신체 정보 확인(확인 모드). `/mypage/body/unlock`은 사용자 승인으로 정한 경로다(v5.0은 URL 미정의).
+            // 회원 전용(AuthGate). P01의 "2차 비밀번호로 신체 정보 보기"에서 들어오고, 확인에 성공하거나 5회 불일치로 잠기면 P01로 `replace` 이동한다.
+            // 하단 탭은 마이 탭이 활성이고 뒤로가기는 진입한 화면(state.from)이며 모르면 P01이다. 화면이 보이는 제목(h1)을 직접 그린다.
+            // 가입 설정 모드는 별도 라우트 `/signup/pin`이다.
+            // 서버 연결 전에는 개발 서버에서만 개발용 PIN 저장소로 확인하고 운영 빌드는 "연결 전" 안내만 보인다.
+            path: 'mypage/body/unlock',
+            element: <PinVerifyPage />,
+            handle: {
+              screenId: 'P05',
+              title: '신체 정보 확인',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/mypage',
+            } satisfies RouteHandle,
+          },
+          {
             // P08 알림 목록. 화면명세 v5.0은 URL을 정의하지 않아 `/notifications`는 사용자 지시로 정한 임시 확정이다.
             // 진입: 홈 인사 줄·마이페이지 프로필 줄의 벨 링크. 비회원은 AuthGate의 로그인 안내를 본다.
             // 하단 탭은 활성 탭이 없고(홈·마이 어디에서든 올 수 있다), 뒤로가기는 진입한 화면(state.from)이며 모르면 홈이다.
@@ -739,6 +1089,36 @@ export const router = createBrowserRouter([
             handle: {
               screenId: 'P07',
               title: '즐겨찾기',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/mypage',
+            } satisfies RouteHandle,
+          },
+          {
+            // P14 경험치 내역. `/mypage/experience`는 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의). 회원 전용(AuthGate), 상위 화면은 P01이다.
+            // 적립 내역은 서버가 준 것만 보이고(연결 전에는 "아직 볼 수 없어요") 경험치를 만들거나 산정하지 않는다. 화면이 h1을 직접 가진다.
+            path: 'mypage/experience',
+            element: <ExperienceHistoryPage />,
+            handle: {
+              screenId: 'P14',
+              title: '경험치 내역',
+              tab: 'my',
+              focus: false,
+              ownH1: true,
+              domain: 'brand',
+              parent: '/mypage',
+            } satisfies RouteHandle,
+          },
+          {
+            // P16 포인트 내역. `/mypage/points`는 사용자 지시로 정한 임시 확정이다(v5.0은 URL 미정의). 회원 전용(AuthGate), 상위 화면은 P01이다.
+            // 적립·사용 내역은 서버가 준 것만 보이고(연결 전에는 "아직 볼 수 없어요") 포인트를 만들거나 적립·차감하지 않는다. 화면이 h1을 직접 가진다.
+            path: 'mypage/points',
+            element: <PointHistoryPage />,
+            handle: {
+              screenId: 'P16',
+              title: '포인트 내역',
               tab: 'my',
               focus: false,
               ownH1: true,
@@ -877,6 +1257,64 @@ export const router = createBrowserRouter([
           ownH1: true,
           domain: 'brand',
           parent: '/settings',
+        } satisfies RouteHandle,
+      },
+      {
+        // C01 자유게시판(공개: 비회원도 열람). URL `/community`는 사용자 승인 임시 확정이다(v5.0은 URL 미정의). 서버가 준 글만 보이고 연결 전에는 "아직 글을 볼 수 없어요"를 알린다.
+        // 상위 화면은 홈(H01)이고 하단 탭은 홈이 활성이다. 화면이 h1을 직접 가진다. 후속 개발(C01-1 운동 루틴 공유)은 만들지 않았다.
+        path: 'community',
+        element: <CommunityBoardPage board="free" />,
+        handle: {
+          screenId: 'C01',
+          title: '자유게시판',
+          tab: 'home',
+          focus: false,
+          ownH1: true,
+          domain: 'brand',
+          parent: '/home',
+        } satisfies RouteHandle,
+      },
+      {
+        // C01-2 초보자 Q&A 목록(공개). URL `/community/qa`는 사용자 승인 임시 확정이다. 상위 화면은 홈(H01, 명세)이다.
+        path: 'community/qa',
+        element: <CommunityBoardPage board="qa" />,
+        handle: {
+          screenId: 'C01-2',
+          title: '초보자 Q&A',
+          tab: 'home',
+          focus: false,
+          ownH1: true,
+          domain: 'brand',
+          parent: '/home',
+        } satisfies RouteHandle,
+      },
+      {
+        // C05 자유게시판 글 상세(공개). URL `/community/posts/:postId`는 사용자 승인 임시 확정이다. 없는 글·잘못된 id는 "찾을 수 없는 글이에요"를 보인다.
+        // 댓글·응원은 회원(화면 안에서 로그인 안내). 상위 화면은 자유게시판(C01)이고 목록에서 들어오면 state.from이 "이전"을 정한다.
+        path: 'community/posts/:postId',
+        element: <CommunityPostPage board="free" />,
+        handle: {
+          screenId: 'C05',
+          title: '자유게시판 글 상세',
+          tab: 'home',
+          focus: false,
+          ownH1: true,
+          domain: 'brand',
+          parent: '/community',
+        } satisfies RouteHandle,
+      },
+      {
+        // C04 초보자 Q&A 상세(공개). URL `/community/qa/:postId`는 사용자 승인 임시 확정이다. 답변은 질문 영역 이해도가 중급 이상인 회원에게만 입력을 연다(안내용, 판정은 서버). 상위 화면은 초보자 Q&A(C01-2).
+        path: 'community/qa/:postId',
+        element: <CommunityPostPage board="qa" />,
+        handle: {
+          screenId: 'C04',
+          title: '초보자 Q&A 상세',
+          tab: 'home',
+          focus: false,
+          ownH1: true,
+          domain: 'brand',
+          parent: '/community/qa',
         } satisfies RouteHandle,
       },
       {

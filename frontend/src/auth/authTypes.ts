@@ -5,8 +5,15 @@
  * 응답 구조가 정해지지 않아 `AuthUser`는 화면 개발에 필요한 최소 필드만 가진 임시 형태다.
  */
 
-/** 회원 유형. free: 일반 회원, exercise: 운동 멤버십, meal: 식단 멤버십, full: 종합 멤버십 */
-export type Entitlement = 'free' | 'exercise' | 'meal' | 'full'
+/**
+ * 멤버십 상품 유형(통합 AI 멤버십). free: 무료(일반 회원), basic: 베이직, pro: 프로.
+ * 운동·식단별 멤버십 상품 구분은 없다(옛 값 exercise·meal·full은 없어졌다).
+ *
+ * 이 값은 표시용 상품 유형일 뿐 **AI 기능 사용 권한이 아니다.** AI 사용 가능 여부와 잔여 횟수는 서버가 확인한 통합 AI 사용량
+ * (`membership/membership.ts`의 `MembershipInfo.usage`)이 기준이고, 이 값으로 기능 접근을 허용하거나 막지 않는다.
+ * 로그인 응답의 실제 계약은 미정이며 `free`·`basic`·`pro`는 멤버십 조회 제안(README의 API 인수인계 협의-9)과 맞춘 값이다.
+ */
+export type Entitlement = 'free' | 'basic' | 'pro'
 
 export interface AuthUser {
   id: string

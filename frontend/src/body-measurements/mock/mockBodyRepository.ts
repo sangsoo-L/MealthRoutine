@@ -6,12 +6,17 @@ import {
   writeMockJson,
 } from '../../dev-mock/devMockStorage.ts'
 import {
+  ExerciseGoalError,
+  type GoalAuthorization,
+} from '../../exercise-goal/exerciseGoalTypes.ts'
+import {
   BodySaveError,
   type BodyMeasurementRepository,
 } from '../bodyRepository.ts'
 import type {
   BodyMeasurementInput,
   BodyMeasurementStatus,
+  BodyMeasurementValues,
 } from '../bodyTypes.ts'
 import {
   HEIGHT_RANGE,
@@ -27,7 +32,8 @@ import {
  *   (처음에는 모두 미등록이다).
  * - 읽은 값은 외부 입력으로 보고 항목마다 검증한다. 0·음수·NaN·범위 밖·문자열 등 유효하지 않은 값은 "없는 것"이다.
  * - 저장은 입력한 항목만 검증해 합치고(기존 유효한 값은 유지), 실패하면 아무것도 바꾸지 않는다.
- * - 수치를 읽는 메서드는 없다(PIN 보호). 화면에는 등록 여부만 나간다.
+ * - 수치는 `getMeasurements(access)`로만 읽는다. 호출마다 PIN 열람 권한(`verifyAccess`)을 다시 확인하고, 확인 수단이 없으면
+ *   (`verifyAccess` 미연결) 거절한다. 그 밖의 경로로는 등록 여부만 나간다(PIN 보호).
  * - 짧은 지연을 둔다. 개발·검수용 스위치(mockFlag)로 조회 실패·저장 실패를 재현할 수 있다.
  */
 
@@ -53,8 +59,10 @@ function statusOf(stored: StoredBody | null): BodyMeasurementStatus {
 export function createMockBodyRepository(options: {
   userId: string
   latencyMs?: number
+  /** PIN 열람 권한 확인. 유효하지 않으면 `ExerciseGoalError('expired')`를 던진다. 없으면 수치를 읽을 수 없다. */
+  verifyAccess?: (access: GoalAuthorization) => void
 }): BodyMeasurementRepository {
-  const { userId, latencyMs = 300 } = options
+  const { userId, latencyMs = 300, verifyAccess } = options
 
   return {
     kind: 'mock',
@@ -63,6 +71,26 @@ export function createMockBodyRepository(options: {
       await mockDelay(latencyMs)
       if (mockFlag('failLoad', 'body')) throw new Error('mock load failure')
       return statusOf(readStored(userId))
+    },
+
+    async getMeasurements(
+      access: GoalAuthorization,
+    ): Promise<BodyMeasurementValues> {
+      // 권한 확인 수단이 없으면 어떤 값도 내주지 않는다. 지연 전후로 두 번 확인해, 기다리는 동안 끝난 권한으로는 읽을 수 없다.
+      if (!verifyAccess) throw new ExerciseGoalError('unavailable')
+      verifyAccess(access)
+      await mockDelay(latencyMs)
+      verifyAccess(access)
+      if (mockFlag('failLoad', 'body')) throw new Error('mock load failure')
+      const stored = readStored(userId)
+      return {
+        heightCm: isValidMeasurement(stored?.heightCm, HEIGHT_RANGE)
+          ? stored.heightCm
+          : null,
+        weightKg: isValidMeasurement(stored?.weightKg, WEIGHT_RANGE)
+          ? stored.weightKg
+          : null,
+      }
     },
 
     async save(input: BodyMeasurementInput) {

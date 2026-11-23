@@ -1,4 +1,4 @@
-import type { Entitlement } from '../auth/authTypes.ts'
+import type { DevAccountId } from '../auth/dev/devAccounts.ts'
 import type {
   KnowledgeLevels,
   MyPageSummary,
@@ -41,7 +41,7 @@ const devMemberModule = import.meta.env.DEV
 
 function devMemberData(userId: string | null) {
   if (!devMemberModule || userId === null) return undefined
-  return devMemberModule.DEV_MEMBER_DATA[userId as Entitlement]
+  return devMemberModule.DEV_MEMBER_DATA[userId as DevAccountId]
 }
 
 export function getMyPageSummary(

@@ -23,6 +23,8 @@ export type IconName =
   | 'dumbbell'
   | 'utensils'
   | 'eye'
+  // AI 서비스 화면의 음식 사진 분석(사진 입력을 뜻하는 아이콘이 없어 추가)
+  | 'camera'
   | 'eye-off'
   | 'clipboard-check'
   | 'calendar-plus'

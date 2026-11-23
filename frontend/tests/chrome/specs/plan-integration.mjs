@@ -2,6 +2,7 @@
 // 실행: frontend에서 `npm run dev -- --port 5199 --strictPort`를 띄운 뒤 `node tests/chrome/run.mjs --only <이름>`. 상세: tests/chrome/README.md
 // S7 P2-5 통합 검증: 실제 Chrome + 개발용 IndexedDB. 시나리오마다 새 프로필.  node p25-verify.mjs [A|B|C|D|E|F|ALL]
 import { start } from '../lib/session.mjs'
+import { reloadSettled } from '../lib/history.mjs'
 
 const only = (process.argv[2] ?? 'ALL').toUpperCase()
 const results = []
@@ -648,10 +649,10 @@ if (run('D'))
   await scenario('p25-D', async (h) => {
     await h.login(U)
     const reload = async (until) => {
-      await h.ev(`location.reload()`)
-      await h.sleep(900)
+      // 부하가 큰 환경에서는 고정 대기 안에 새 문서가 그려지지 않을 수 있어, 새 문서가 그려질 때까지 기다린다.
+      await reloadSettled(h)
       if (until) await h.until(until, 80)
-      await h.sleep(500)
+      await h.sleep(300)
     }
     // 1 구성 방법 선택
     await h.go(PLAN, 1000)
@@ -1017,9 +1018,10 @@ if (run('F'))
     await h.go('/records/exercise/new', 1000)
     const t = await mainText(h)
     check(
-      'F-1 W12: AI 추천 "준비 중" 유지, 직접 구성 선택 유지, 초급 추천 문구 없음',
+      'F-1 W12: AI 추천은 "로컬 예시"(준비 중 아님), 직접 구성 선택 유지, 초급 추천 문구 없음',
       /AI 추천으로 시작하기/.test(t) &&
-        /준비 중/.test(t) &&
+        /로컬 예시/.test(t) &&
+        !/준비 중/.test(t) &&
         /직접 운동 목록 구성하기/.test(t) &&
         !/오늘의 운동 추천받기/.test(t),
     )

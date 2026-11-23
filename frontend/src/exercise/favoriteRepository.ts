@@ -19,7 +19,7 @@ export class FavoriteSaveError extends Error {
  * 그래서 즐겨찾기 저장소와 운동 저장소의 책임이 겹치지 않고, 운동 정보가 바뀌어도 즐겨찾기에 낡은 사본이 남지 않는다.
  *
  * 실제 API(GET·PUT·DELETE /api/v1/users/me/favorite-exercises[/{exerciseId}])는 아직 없고, 목록 응답이 운동 객체 목록이라는 점 외에
- * 요청·응답 구조가 명세서에 정의되지 않았다(frontend/docs/api_exercise_v1.0.md, api-status.md). 연동할 때는 이 인터페이스를 구현한
+ * 요청·응답 구조가 명세서에 정의되지 않았다(운동 영역 API 초안, README의 API 인수인계). 연동할 때는 이 인터페이스를 구현한
  * 객체가 응답에서 id만 뽑아 돌려주면 화면은 그대로 쓴다. 명세는 PUT·DELETE를 멱등으로 둔다(이미 등록돼 있어도, 등록돼 있지 않아도 성공).
  * 개발 환경의 Mock 구현(mock/mockFavoriteRepository.ts)과 나중에 만들 API 구현을 이 인터페이스로 교체한다.
  */

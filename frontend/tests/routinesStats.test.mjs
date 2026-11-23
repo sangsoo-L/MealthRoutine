@@ -1031,8 +1031,26 @@ test('상세 설정(P09): "내 운동 루틴"이 W06으로 연결되고 나머�
   const w06 = items.find((i) => i.screenId === 'W06')
   assert.equal(w06.to, '/records/exercise/routines')
   assert.equal(w06.returnHere, true)
-  for (const id of ['D03', 'P04', 'P13', 'P02', 'P06', 'P03', 'S02'])
-    assert.equal(items.find((i) => i.screenId === id).to, null, id)
+  // D03 식단 리스트는 기존 D03 화면으로 연결했다("이전"은 설정으로 돌아온다).
+  const d03 = items.find((i) => i.screenId === 'D03')
+  assert.equal(d03.to, '/records/meal/list')
+  assert.equal(d03.returnHere, true)
+  // S02·P13은 2026-11-21에 연결했다(inquiry.test.mjs가 확인한다).
+  assert.equal(items.find((i) => i.screenId === 'S02').to, '/support/inquiry')
+  assert.equal(items.find((i) => i.screenId === 'P13').to, '/mypage/inquiries')
+  // P02는 2026-11-21에 연결했다(profileSettings.test.mjs가 확인한다).
+  assert.equal(items.find((i) => i.screenId === 'P02').to, '/settings/profile')
+  // P06·P10은 2026-11-21에 연결했다(bodyGoalSettings.test.mjs가 확인한다).
+  assert.equal(items.find((i) => i.screenId === 'P06').to, '/settings/body')
+  assert.equal(
+    items.find((i) => i.screenId === 'P10').to,
+    '/settings/health-goal',
+  )
+  // P03은 2026-11-21에 연결했다(membershipSettings.test.mjs가 확인한다).
+  assert.equal(
+    items.find((i) => i.screenId === 'P03').to,
+    '/settings/membership',
+  )
 })
 
 test('W01: 운동 관리의 루틴·통계 행이 링크를 받을 때만 이동 링크를 그리고(예시·저장소 없음은 그리지 않는다) 통계의 준비 중 배지가 사라진다', async () => {

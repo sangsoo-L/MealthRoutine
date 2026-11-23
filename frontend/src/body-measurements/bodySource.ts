@@ -18,11 +18,23 @@ const mockStorage = import.meta.env.DEV
   ? await import('../dev-mock/devMockStorage.ts')
   : null
 
+const goalSource = import.meta.env.DEV
+  ? await import('../exercise-goal/exerciseGoalSource.ts')
+  : null
+
 export function createBodyRepository(
   userId: string,
 ): BodyMeasurementRepository | null {
   if (!mockModule || !mockStorage) return null
   // 개발·검수용: API 미연결 상태를 재현한다.
   if (mockStorage.mockFlag('unavailable', 'body')) return null
-  return mockModule.createMockBodyRepository({ userId })
+  // 수치 조회의 PIN 열람 권한 확인은 개발용 PIN 저장소(P11·P12·W01-1과 같은 저장소)에 맡긴다.
+  const goalRepository =
+    goalSource?.createExerciseGoalRepository(userId) ?? null
+  return mockModule.createMockBodyRepository({
+    userId,
+    verifyAccess: goalRepository
+      ? (access) => goalRepository.verifyAccess(access)
+      : undefined,
+  })
 }

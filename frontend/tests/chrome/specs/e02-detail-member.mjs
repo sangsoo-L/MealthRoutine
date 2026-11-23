@@ -410,6 +410,8 @@ await ev(
 )
 await go('/exercises/5', 1100)
 const snapBefore = await readStore(FAV('free'))
+// 화면이 그려질 때까지(별 버튼이 나타날 때까지) 기다린 뒤 누른다. 고정 대기만으로는 부하가 큰 환경에서 버튼이 아직 없을 수 있다.
+await waitStar(() => true, 60)
 await ev(`document.querySelector(${JSON.stringify(star)}).click()`)
 await sleep(300)
 n = await notices()
@@ -721,6 +723,8 @@ for (const [w, h, note] of [
 ]) {
   await vp(w, h)
   await go('/exercises/27', 1000)
+  // 상세 화면(별 버튼)이 그려질 때까지 기다린 뒤 측정한다. 고정 대기만으로는 부하가 큰 환경에서 아직 없을 수 있다.
+  await waitStar(() => true, 60)
   const m = await ev(
     `(()=>{const d=document.documentElement;const els=[...document.querySelectorAll('main article *')].filter(e=>e.getBoundingClientRect().width>0&&!(e.closest('figure')&&e.getAttribute('aria-hidden')==='true'));return{sw:d.scrollWidth,cw:d.clientWidth,over:els.filter(e=>e.getBoundingClientRect().right>d.clientWidth+0.5||e.getBoundingClientRect().left<-0.5).length,btn:Math.min(...[...document.querySelectorAll('main article header button')].map(b=>b.getBoundingClientRect().height)),starW:Math.round(document.querySelector('main article header button').getBoundingClientRect().width)}})()`,
   )

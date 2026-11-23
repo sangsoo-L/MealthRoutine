@@ -136,11 +136,12 @@ test('S01: 공지가 없으면 "등록된 공지가 없어요"만 보이고 공�
   assert.match(out, /등록된 공지가 없어요/)
   assert.doesNotMatch(out, /\/support\/notices\//)
   assert.match(out, /type="search"/)
-  assert.deepEqual(hrefs(out), ['/support/faq'])
-  // 화면이 없는 챗봇·1:1 문의는 링크가 아니라 준비 중으로만 알린다.
-  assert.match(out, /키워드 챗봇/)
+  // 1:1 문의는 S02 문의 작성 화면으로 연결했다(2026-11-21, 사용자 지시). 이전에는 화면이 없어 준비 중이었다.
+  assert.deepEqual(hrefs(out), ['/support/faq', '/support/inquiry'])
   assert.match(out, /1:1 문의/)
-  assert.equal((out.match(/준비 중/g) ?? []).length, 2)
+  // 화면이 없는 키워드 챗봇(S03)만 링크가 아니라 준비 중으로 알린다.
+  assert.match(out, /키워드 챗봇/)
+  assert.equal((out.match(/준비 중/g) ?? []).length, 1)
 })
 
 test('S01: 공지가 있으면 분류·제목·작성자·날짜와 상세 링크(검색어 유지), 전체 건수를 보인다', () => {
@@ -432,7 +433,8 @@ test('P15: 연결된 값이 없으면 "연결 전"·"미확인"이고, 명세의
   assert.doesNotMatch(out, /320|180 EXP|500|Lv\.3/)
   assert.match(out, /아직 정해지지 않았어요/)
   assert.match(out, /지금은 경험치가 쌓이거나 포인트가 지급되지 않고/)
-  assert.deepEqual(hrefs(out), ['/mypage'])
+  // 경험치 내역(P14)으로 가는 링크가 2026-11-21에 추가됐다(P14 ↔ P15 상호 이동).
+  assert.deepEqual(hrefs(out), ['/mypage/experience', '/mypage'])
 })
 
 test('P15: 초보·중급·고급 설명, 이해도와 활동 레벨·경험치와 포인트의 차이, 현재 상태(마이페이지와 같은 값)', () => {
@@ -502,20 +504,59 @@ test('상세 설정(P09): 즐겨찾기·공지사항·FAQ가 실제 화면으로
   assert.equal(to('P08'), '/notifications')
   // W06 내 운동 루틴은 FAST-02에서 연결했다(routinesStats.test.mjs가 확인한다).
   assert.equal(to('W06'), '/records/exercise/routines')
-  for (const id of ['D03', 'P04', 'P13', 'P02', 'P06', 'P03', 'S02'])
-    assert.equal(to(id), null, `${id}는 아직 준비 중`)
+  assert.equal(to('D03'), '/records/meal/list')
+  assert.equal(to('P04'), '/mypage/requests')
+  // S02 문의 작성·P13 내 문의는 2026-11-21에 연결했다(inquiry.test.mjs가 화면을 확인한다).
+  assert.equal(to('S02'), '/support/inquiry')
+  assert.equal(to('P13'), '/mypage/inquiries')
+  // P02 프로필·개인정보는 2026-11-21에 연결했다(profileSettings.test.mjs가 화면을 확인한다).
+  assert.equal(to('P02'), '/settings/profile')
+  // P06 키·몸무게·P10 건강 목표는 2026-11-21에 연결했다(bodyGoalSettings.test.mjs가 화면을 확인한다).
+  assert.equal(to('P06'), '/settings/body')
+  assert.equal(to('P10'), '/settings/health-goal')
+  // P03 멤버십 관리는 2026-11-21에 연결했다(membershipSettings.test.mjs가 화면을 확인한다). 이 메뉴에서 준비 중인 이동 항목은 더 없다.
+  assert.equal(to('P03'), '/settings/membership')
   // 연결한 세 항목은 "이전"이 설정으로 돌아오게 진입 경로를 알린다.
-  for (const id of ['P07', 'S01', 'S04'])
+  for (const id of [
+    'P07',
+    'S01',
+    'S04',
+    'S02',
+    'P13',
+    'P02',
+    'P06',
+    'P10',
+    'P03',
+  ])
     assert.equal(items.find((i) => i.screenId === id).returnHere, true)
 })
 
-test('마이페이지(P01): "레벨 안내"가 P15로 연결되고 경험치 내역·포인트 내역은 그대로 준비 중이다', async () => {
+test('마이페이지(P01): 이번 주 활동의 운동·식단·주간 점수가 W10·D03·I05(주간 리포트)로 연결된다', async () => {
+  const { MY_DESTINATIONS } = await server.ssrLoadModule(
+    '/src/mypage/destinations.ts',
+  )
+  assert.deepEqual(
+    [
+      MY_DESTINATIONS.weeklyExercise,
+      MY_DESTINATIONS.weeklyMeal,
+      MY_DESTINATIONS.weeklyScore,
+    ],
+    [
+      { screenId: 'W10', to: '/records/exercise/my' },
+      { screenId: 'D03', to: '/records/meal/list' },
+      { screenId: 'I05', to: '/ai/weekly-report' },
+    ],
+  )
+})
+
+test('마이페이지(P01): "레벨 안내"가 P15로, 경험치 내역·포인트 내역이 P14·P16으로 연결된다(2026-11-21)', async () => {
   const { MY_DESTINATIONS } = await server.ssrLoadModule(
     '/src/mypage/destinations.ts',
   )
   assert.equal(MY_DESTINATIONS.levelGuide.to, '/mypage/level')
-  assert.equal(MY_DESTINATIONS.experienceHistory.to, null)
-  assert.equal(MY_DESTINATIONS.pointHistory.to, null)
+  // P14·P16은 2026-11-21에 연결했다(growthHistory.test.mjs가 화면을 확인한다). 이전에는 화면이 없어 null이었다.
+  assert.equal(MY_DESTINATIONS.experienceHistory.to, '/mypage/experience')
+  assert.equal(MY_DESTINATIONS.pointHistory.to, '/mypage/points')
 })
 
 test('랜딩: 운동 찾기·음식 찾기·고객지원에 "화면 준비 중"이 없고 실제 경로로 연결된다', async () => {

@@ -119,6 +119,21 @@ export async function mustClick(h, re, scope = 'main') {
  */
 export const READONLY_RESULT = `/이미 저장된 운동 기록이에요/.test(document.querySelector('main')?.innerText ?? '')`
 
+/**
+ * 새로고침하고 새 문서가 실제로 그려질 때까지 기다린다(고정 대기 대신 완료 조건 확인).
+ * 새로고침 전에 창에 표식을 심어, 표식이 사라지면 새 문서로 바뀐 것으로 본다. 그다음 문서가 완료 상태이고
+ * 본문(main)에 글이 생기며 "불러오는·확인하는 중이에요" 같은 로딩 문구가 없을 때까지("준비 중이에요"는 로딩이 아니라 정상 안내다) 기다린다. 끝내 안정되지 않으면 예외를 던진다.
+ */
+export async function reloadSettled(h, n = 150) {
+  await h.ev(`window.__reloadMark = 1`)
+  await h.ev(`location.reload()`)
+  await mustUntil(
+    h,
+    `window.__reloadMark === undefined && document.readyState === 'complete' && ((document.querySelector('main')?.innerText ?? '').trim().length > 0) && !/(불러오는|확인하는|읽는|계산하는) 중이에요/.test(document.querySelector('main')?.innerText ?? '')`,
+    n,
+  )
+}
+
 /** 경로가 정규식에 맞을 때까지 기다린다. 끝내 맞지 않으면 예외를 던진다. */
 export const waitPath = (h, re, n = 80) =>
   mustUntil(h, `new RegExp(${q(re)}).test(location.pathname)`, n)

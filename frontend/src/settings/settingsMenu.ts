@@ -16,6 +16,11 @@ export interface SettingsMenuItem {
    * 상위 화면(handle.parent)이 설정이 아닌 화면(예: 알림 목록의 홈)일 때 쓴다. 생략하면 지금까지처럼 상위 화면으로 돌아간다.
    */
   returnHere?: boolean
+  /**
+   * 'pin'이면 이동 경로와 보조 문구를 2차 비밀번호 등록 여부로 정한다(미등록 → P11, 등록됨 → P12).
+   * 등록 여부를 확인하기 전·확인하지 못한 때·운영 빌드(서버 연결 전)에는 어디로도 이동하지 않는다. `to`는 쓰지 않는다.
+   */
+  dynamic?: 'pin'
 }
 
 /** 상세 설정(P09)의 경로. 메뉴 항목이 진입 화면으로 알려 주는 값이다(router.tsx의 `settings` 경로와 같다). */
@@ -46,7 +51,13 @@ export const SETTINGS_MENU_GROUPS: readonly SettingsMenuGroup[] = [
         to: '/favorites',
         returnHere: true,
       },
-      { screenId: 'D03', label: '식단 리스트', to: null },
+      // D03 식단 리스트(`/records/meal/list`). "이전"은 설정으로 돌아온다.
+      {
+        screenId: 'D03',
+        label: '식단 리스트',
+        to: '/records/meal/list',
+        returnHere: true,
+      },
       // W06 내 운동 루틴(`/records/exercise/routines`). "이전"은 설정으로 돌아온다.
       {
         screenId: 'W06',
@@ -54,26 +65,63 @@ export const SETTINGS_MENU_GROUPS: readonly SettingsMenuGroup[] = [
         to: '/records/exercise/routines',
         returnHere: true,
       },
-      { screenId: 'P04', label: '내 요청 내역', to: null },
-      { screenId: 'P13', label: '내 문의', to: null },
+      // P04 내 요청 내역(`/mypage/requests`). "이전"은 설정으로 돌아온다.
+      {
+        screenId: 'P04',
+        label: '내 요청 내역',
+        to: '/mypage/requests',
+        returnHere: true,
+      },
+      // P13 내 문의(`/mypage/inquiries`). "이전"은 설정으로 돌아온다.
+      {
+        screenId: 'P13',
+        label: '내 문의',
+        to: '/mypage/inquiries',
+        returnHere: true,
+      },
     ],
   },
   {
     id: 'account',
     title: '계정 · 설정',
     items: [
-      { screenId: 'P02', label: '프로필·개인정보', to: null },
-      { screenId: 'P06', label: '키·몸무게', to: null },
-      // 명세: 2차 비밀번호가 미설정이면 "등록"(P11), 설정됨이면 "변경"(P12). 등록 여부를 알 수 있는 데이터가 없어
-      // 메뉴 이름을 정하지 않고 중립적인 이름으로 둔다.
-      { screenId: 'P11·P12', label: '2차 비밀번호', to: null },
+      // P02 프로필과 개인정보 설정(`/settings/profile`). "이전"은 설정으로 돌아온다.
+      {
+        screenId: 'P02',
+        label: '프로필·개인정보',
+        to: '/settings/profile',
+        returnHere: true,
+      },
+      // P06 키·몸무게 입력(`/settings/body`). "이전"은 설정으로 돌아온다.
+      {
+        screenId: 'P06',
+        label: '키·몸무게',
+        to: '/settings/body',
+        returnHere: true,
+      },
+      // P10 건강 목표 상세 설정(`/settings/health-goal`). 명세 P09의 메뉴 목록에는 없지만 사용자 지시로 계정·설정에 둔다. "이전"은 설정으로 돌아온다.
+      {
+        screenId: 'P10',
+        label: '건강 목표',
+        to: '/settings/health-goal',
+        returnHere: true,
+      },
+      // 명세: 2차 비밀번호가 미설정이면 "등록"(P11), 설정됨이면 "변경"(P12). 메뉴 이름은 "2차 비밀번호"로 두고
+      // 등록 여부(미등록·등록됨·확인 중·연결 전)를 보조 문구로 알린다. 이동은 SettingsGroup의 PinMenuRow가 정한다.
+      { screenId: 'P11·P12', label: '2차 비밀번호', to: null, dynamic: 'pin' },
     ],
   },
   {
     id: 'membership',
     title: '멤버십 · 결제',
     items: [
-      { screenId: 'P03', label: '멤버십 관리', to: null },
+      // P03 멤버십과 결제 관리(`/settings/membership`). "이전"은 설정으로 돌아온다.
+      {
+        screenId: 'P03',
+        label: '멤버십 관리',
+        to: '/settings/membership',
+        returnHere: true,
+      },
       { screenId: null, label: '결제 내역', to: null },
     ],
   },
@@ -83,7 +131,13 @@ export const SETTINGS_MENU_GROUPS: readonly SettingsMenuGroup[] = [
     items: [
       { screenId: 'S01', label: '공지사항', to: '/support', returnHere: true },
       { screenId: 'S04', label: 'FAQ', to: '/support/faq', returnHere: true },
-      { screenId: 'S02', label: '문의', to: null },
+      // S02 문의 작성(`/support/inquiry`). "이전"은 설정으로 돌아온다.
+      {
+        screenId: 'S02',
+        label: '문의',
+        to: '/support/inquiry',
+        returnHere: true,
+      },
       { screenId: null, label: '약관·개인정보처리방침', to: null },
     ],
   },

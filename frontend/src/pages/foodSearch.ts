@@ -7,7 +7,7 @@
  * - 상세 필터: 100g당 열량 최소·최대(kcal), 단백질 최소(g). 빈 값은 "제한 없음"이며 0과 다르다.
  * 식품 구분 이름은 명세 JSON에 "음식요리", 스토리보드 코드에 "음식·요리"로 달라 코드 쪽 표기를 썼다(확인 필요).
  *
- * 음식 검색 API(GET /api/v1/foods)는 명세서에 경로만 있고 요청·응답 구조가 정의되지 않았다(frontend/docs/api-status.md).
+ * 음식 검색 API(GET /api/v1/foods)는 명세서에 경로만 있고 요청·응답 구조가 정의되지 않았다(README의 API 인수인계).
  * 아래 값은 화면을 그리기 위한 것이며 API 코드값이 아니다. 백엔드와 확정되면 맞춘다.
  */
 import { createFoodRepository } from '../food/foodSource.ts'

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { ENTITLEMENT_LABEL } from '../../auth/entitlements.ts'
 import type { Entitlement } from '../../auth/authTypes.ts'
-import { MY_DESTINATIONS } from '../../mypage/destinations.ts'
+import { MY_DESTINATIONS, MY_PAGE_PATH } from '../../mypage/destinations.ts'
 import Icon from '../icons/Icon.tsx'
 import { focusRing } from './myStyles.ts'
 
@@ -35,7 +35,13 @@ export default function ProfileHeader({
       aria-label="프로필"
       className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
     >
-      <div className="flex min-w-0 flex-1 basis-40 items-center gap-3">
+      {/* 프로필(아바타·이름)은 P02 프로필과 개인정보 설정으로 가는 링크다. 설정 버튼(P09)은 그대로 오른쪽에 있다. 진입한 곳(P01)으로 돌아오게 알린다. */}
+      <Link
+        to={MY_DESTINATIONS.profile.to}
+        state={{ from: MY_PAGE_PATH }}
+        data-profile-link=""
+        className={`flex min-h-12 min-w-0 flex-1 basis-40 items-center gap-3 rounded-control ${focusRing}`}
+      >
         <span
           role="img"
           aria-label="기본 프로필 이미지"
@@ -57,7 +63,9 @@ export default function ProfileHeader({
             <span className="sr-only">, </span>기록과 목표를 한곳에서
           </p>
         </div>
-      </div>
+        <Icon name="chevron-right" size={18} className="shrink-0 text-muted" />
+        <span className="sr-only">프로필과 개인정보 설정</span>
+      </Link>
       <div className="flex shrink-0 items-center">
         {actions}
         <Link

@@ -20,9 +20,9 @@ import {
 import BottomSheet from '../layout/BottomSheet.tsx'
 import Icon from '../icons/Icon.tsx'
 
-type Variant = 'home' | 'mypage'
+type Variant = 'home' | 'mypage' | 'page'
 
-/** 화면 문구. home은 사용자가 정한 안내 문구이고, mypage는 같은 입력을 마이페이지에서 다시 열 때의 문구다. */
+/** 화면 문구. home은 사용자가 정한 안내 문구이고, mypage는 같은 입력을 마이페이지에서 다시 열 때의 문구, page는 P06 화면(시트가 아닌 전체 화면)의 문구다. */
 const TEXT: Record<Variant, { title: string; submit: string; later: string }> =
   {
     home: {
@@ -34,6 +34,11 @@ const TEXT: Record<Variant, { title: string; submit: string; later: string }> =
       title: '신체 정보를 입력해 주세요',
       submit: '저장하기',
       later: '닫기',
+    },
+    page: {
+      title: '키·몸무게 입력',
+      submit: '저장하기',
+      later: '취소',
     },
   }
 
@@ -96,7 +101,7 @@ interface BodyInfoSheetProps {
  * 신체 정보(키·몸무게) 입력 바텀시트. 기존 BottomSheet를 재사용한다(포커스 이동·복귀, 배경 inert, 스크롤 잠금, Esc는 그쪽이 맡는다).
  *
  * - 누락된 항목만 입력받는다. 이미 등록된 항목은 값을 읽지 않고 `***`로 가려 "등록됨"만 보여 준다. 수치를 미리 채우면 PIN 없이
- *   실제 값이 노출되므로(api-policy.md §3-3) 미리 채우지 않는다.
+ *   실제 값이 노출되므로(API 정책 문서 §3-3) 미리 채우지 않는다.
  * - 검증은 명세 P06의 규약(소수점 첫째 자리, 키 1~300cm, 몸무게 1~500kg)이고 오류는 필드 가까이에 보인다. 저장 전에는 어떤 값도
  *   회원 정보에 반영하지 않는다.
  * - 저장 중에는 버튼을 막아 중복 제출을 방지한다. 실패하면 입력값을 유지하고 오류를 보여 준다. 성공하면 닫는다.
@@ -124,15 +129,25 @@ export default function BodyInfoSheet({
   )
 }
 
-function BodyInfoForm({
+/**
+ * 입력 폼 본체. 시트(BodyInfoSheet)와 P06 화면(variant "page")이 같이 쓴다.
+ * - `editable`: 이미 등록된 항목 중 다시 입력할 수 있는 것(P06이 정한다). 등록된 값은 읽지 않고 가려 두며, "다시 입력"을 눌러야 빈 입력칸이 열리고
+ *   저장하면 새 값으로 바뀐다(이전 값을 보여 주거나 채워 넣지 않는다). 시트에서는 쓰지 않는다.
+ * - `onSaved`: 있으면 저장 성공 뒤 닫지 않고 알린다(화면에 머무는 P06). 없으면 기존처럼 `close()`로 닫는다.
+ */
+export function BodyInfoForm({
   variant,
   status,
   save,
   close,
   closing,
+  editable = [],
+  onSaved,
 }: Omit<BodyInfoSheetProps, 'onClose'> & {
   close: () => void
   closing: boolean
+  editable?: readonly ('height' | 'weight')[]
+  onSaved?: () => void
 }) {
   const text = TEXT[variant]
   const formId = useId()
@@ -142,9 +157,29 @@ function BodyInfoForm({
   >({})
   const [saving, setSaving] = useState(false)
   const [saveFailed, setSaveFailed] = useState(false)
+  const [reentering, setReentering] = useState<
+    Record<'height' | 'weight', boolean>
+  >({ height: false, weight: false })
   const submitting = useRef(false)
-  const missing = FIELDS.filter((f) => !status[f.id])
-  const firstMissing = missing[0]?.id
+  // 입력을 받는 항목: 등록되지 않은 항목, 그리고 "다시 입력"을 연 등록 항목.
+  const missing = FIELDS.filter(
+    (f) => !status[f.id] || (editable.includes(f.id) && reentering[f.id]),
+  )
+  const firstMissing = FIELDS.find((f) => !status[f.id])?.id
+
+  function toggleReenter(id: 'height' | 'weight', on: boolean) {
+    setReentering((prev) => ({ ...prev, [id]: on }))
+    if (!on) {
+      // 그대로 두기: 입력과 오류를 버린다.
+      setValues((prev) => ({ ...prev, [id]: '' }))
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+    }
+    setSaveFailed(false)
+  }
 
   function validate(id: 'height' | 'weight', value: string) {
     const field = FIELDS.find((f) => f.id === id)!
@@ -161,7 +196,7 @@ function BodyInfoForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     // 중복 제출 방지: 처리 중이거나 닫히는 중에는 다시 보내지 않는다.
-    if (submitting.current || closing) return
+    if (submitting.current || closing || missing.length === 0) return
 
     const input: BodyMeasurementInput = {}
     let firstInvalid: string | null = null
@@ -185,7 +220,16 @@ function BodyInfoForm({
     setSaveFailed(false)
     try {
       await save(input)
-      close()
+      if (onSaved) {
+        // 화면에 머무는 경우: 입력을 비우고 다시 입력 상태를 닫는다(저장한 값은 읽지 않는다).
+        setValues({ height: '', weight: '' })
+        setReentering({ height: false, weight: false })
+        setSaving(false)
+        submitting.current = false
+        onSaved()
+      } else {
+        close()
+      }
     } catch {
       // 실패하면 입력값을 그대로 두고 다시 시도할 수 있게 한다.
       setSaveFailed(true)
@@ -214,8 +258,8 @@ function BodyInfoForm({
           const inputId = `${formId}-${field.id}`
           const errorId = `${inputId}-error`
           const hintId = `${inputId}-hint`
-          if (status[field.id]) {
-            // 이미 등록된 항목: 값을 읽지 않고 가려서 보여 준다(수정은 이 안내의 범위가 아니다).
+          if (status[field.id] && !reentering[field.id]) {
+            // 이미 등록된 항목: 값을 읽지 않고 가려서 보여 준다. 다시 입력은 `editable`인 항목만 열 수 있다.
             return (
               <div key={field.id}>
                 <span className={labelClass}>{field.label}</span>
@@ -226,6 +270,17 @@ function BodyInfoForm({
                   </span>
                   <span className="font-semibold text-content">등록됨</span>
                 </div>
+                {editable.includes(field.id) ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleReenter(field.id, true)}
+                    disabled={saving || closing}
+                    data-body-reenter={field.id}
+                    className="mt-1 -ml-1 inline-flex min-h-11 cursor-pointer items-center px-1 text-body leading-snug font-semibold text-brand hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed"
+                  >
+                    {field.label} 다시 입력
+                  </button>
+                ) : null}
               </div>
             )
           }
@@ -292,6 +347,17 @@ function BodyInfoForm({
                   {errorMessage(field, error)}
                 </p>
               ) : null}
+              {status[field.id] ? (
+                <button
+                  type="button"
+                  onClick={() => toggleReenter(field.id, false)}
+                  disabled={saving || closing}
+                  data-body-keep={field.id}
+                  className="mt-1 -ml-1 inline-flex min-h-11 cursor-pointer items-center px-1 text-body leading-snug font-normal text-muted hover:text-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed"
+                >
+                  그대로 두기
+                </button>
+              ) : null}
             </div>
           )
         })}
@@ -310,7 +376,7 @@ function BodyInfoForm({
       <div className="mt-5 flex flex-col gap-2">
         <button
           type="submit"
-          disabled={saving || closing}
+          disabled={saving || closing || missing.length === 0}
           className={`${primaryButtonClass} ${primaryDisabledClass}`}
         >
           {saving ? '저장하는 중…' : text.submit}
