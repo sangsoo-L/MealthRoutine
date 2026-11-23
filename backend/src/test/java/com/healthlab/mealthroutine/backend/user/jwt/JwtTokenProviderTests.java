@@ -25,6 +25,7 @@ class JwtTokenProviderTests {
 
     private static final Instant ISSUED = Instant.parse("2026-11-19T03:00:00Z");
     private static final Duration ACCESS_TTL = Duration.ofMinutes(30);
+    private static final Duration PIN_TTL = Duration.ofMinutes(10);
     private static final Instant EXPIRES = ISSUED.plus(ACCESS_TTL);
     private static final byte[] KEY_BYTES = randomBytes(32);
     private static final SecretKey KEY = Keys.hmacShaKeyFor(KEY_BYTES);
@@ -47,6 +48,48 @@ class JwtTokenProviderTests {
         // jjwt alone would still accept this one (it only rejects now.after(exp)).
         assertThat(statusAt(EXPIRES, token)).isEqualTo(Status.EXPIRED);
         assertThat(statusAt(EXPIRES.plusSeconds(1), token)).isEqualTo(Status.EXPIRED);
+    }
+
+    // ---------- PIN token (PIN7-5) ----------
+
+    @Test
+    void pinTokenIsValidForItsUserUntilExactlyTenMinutes() {
+        String token = providerAt(ISSUED).createPinToken(7L, ISSUED);
+
+        AccessTokenResult result = providerAt(ISSUED).parsePinToken(token);
+        assertThat(result.status()).isEqualTo(Status.VALID);
+        assertThat(result.userId()).isEqualTo(7L);
+        Instant pinExpires = ISSUED.plus(PIN_TTL);
+        assertThat(providerAt(pinExpires.minusSeconds(1)).parsePinToken(token).status()).isEqualTo(Status.VALID);
+        assertThat(providerAt(pinExpires).parsePinToken(token).status()).isEqualTo(Status.EXPIRED);
+    }
+
+    @Test
+    void pinAndAccessTokensAreNeverAcceptedInEachOthersPlace() {
+        String pin = providerAt(ISSUED).createPinToken(7L, ISSUED);
+        String access = providerAt(ISSUED).createAccessToken(7L, UserRole.USER, ISSUED);
+
+        assertThat(providerAt(ISSUED).parseAccessToken(pin).status()).isEqualTo(Status.INVALID);
+        assertThat(providerAt(ISSUED).parsePinToken(access).status()).isEqualTo(Status.INVALID);
+        // An expired token of the other type is INVALID, not EXPIRED (no refresh hint for a wrong token).
+        Instant late = ISSUED.plus(Duration.ofHours(1));
+        assertThat(providerAt(late).parseAccessToken(pin).status()).isEqualTo(Status.INVALID);
+        assertThat(providerAt(late).parsePinToken(access).status()).isEqualTo(Status.INVALID);
+    }
+
+    @Test
+    void pinTokenWithAnotherKeyOrAlgorithmIsInvalid() {
+        byte[] otherKey = randomBytes(32);
+        String otherSigned = Jwts.builder().subject("7").claim("token_type", "pin").issuedAt(Date.from(ISSUED))
+                .expiration(Date.from(ISSUED.plus(PIN_TTL))).signWith(Keys.hmacShaKeyFor(otherKey), Jwts.SIG.HS256)
+                .compact();
+        String hs384 = Jwts.builder().subject("7").claim("token_type", "pin").issuedAt(Date.from(ISSUED))
+                .expiration(Date.from(ISSUED.plus(PIN_TTL))).signWith(Keys.hmacShaKeyFor(randomBytes(48)), Jwts.SIG.HS384)
+                .compact();
+
+        assertThat(providerAt(ISSUED).parsePinToken(otherSigned).status()).isEqualTo(Status.INVALID);
+        assertThat(providerAt(ISSUED).parsePinToken(hs384).status()).isEqualTo(Status.INVALID);
+        assertThat(providerAt(ISSUED).parsePinToken("not-a-jwt").status()).isEqualTo(Status.INVALID);
     }
 
     @Test
@@ -113,7 +156,7 @@ class JwtTokenProviderTests {
         byte[] longKeyBytes = randomBytes(64);
         SecretKey longKey = Keys.hmacShaKeyFor(longKeyBytes);
         JwtTokenProvider provider = new JwtTokenProvider(new JwtProperties(
-                Base64.getEncoder().encodeToString(longKeyBytes), ACCESS_TTL, Duration.ofDays(14)),
+                Base64.getEncoder().encodeToString(longKeyBytes), ACCESS_TTL, Duration.ofDays(14), PIN_TTL),
                 Clock.fixed(ISSUED, ZoneOffset.UTC));
 
         String hs256 = withExp(accessClaims("7")).signWith(longKey, Jwts.SIG.HS256).compact();
@@ -137,7 +180,7 @@ class JwtTokenProviderTests {
 
     private static JwtTokenProvider providerAt(Instant now) {
         JwtProperties properties = new JwtProperties(
-                Base64.getEncoder().encodeToString(KEY_BYTES), ACCESS_TTL, Duration.ofDays(14));
+                Base64.getEncoder().encodeToString(KEY_BYTES), ACCESS_TTL, Duration.ofDays(14), PIN_TTL);
         return new JwtTokenProvider(properties, Clock.fixed(now, ZoneOffset.UTC));
     }
 

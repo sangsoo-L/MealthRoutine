@@ -15,7 +15,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
 
 /**
- * Attempt limits for account lookup (per IP) and password change (per user): 5 per minute each (ACCT6-4, PWCHG6-1).
+ * Attempt limits for account lookup (per IP), password change (per user) and PIN change (per user, its own key):
+ * 5 per minute each (ACCT6-4, PWCHG6-1, PIN7-8). The PIN change limit slows guessing the login password through
+ * currentPassword; with the separate key, both paths together allow at most 10 password guesses per minute.
  * <p>
  * Runs in preHandle: after the security filters, before Spring reads the JSON body. So broken JSON or a number
  * where text is expected still counts as an attempt, and a blocked request never reaches the controller,
@@ -28,6 +30,7 @@ public class AttemptLimitInterceptor implements HandlerInterceptor {
 
     public static final String ACCOUNT_LOOKUP_PATH = "/api/v1/auth/account-lookup";
     public static final String PASSWORD_PATH = "/api/v1/users/me/password";
+    public static final String PIN_PATH = "/api/v1/users/me/pin";
     static final int MAX_ATTEMPTS = 5;
     static final Duration WINDOW = Duration.ofMinutes(1);
 
@@ -64,6 +67,11 @@ public class AttemptLimitInterceptor implements HandlerInterceptor {
         if ("PATCH".equals(request.getMethod()) && PASSWORD_PATH.equals(path)) {
             Long userId = currentUserId();
             return userId == null ? null : "password:user:" + userId;
+        }
+        // Only PATCH (change/recovery). PUT on the same path sets the first PIN and is not limited.
+        if ("PATCH".equals(request.getMethod()) && PIN_PATH.equals(path)) {
+            Long userId = currentUserId();
+            return userId == null ? null : "pin:user:" + userId;
         }
         return null;
     }

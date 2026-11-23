@@ -16,4 +16,9 @@ public record ApiResponse<T>(boolean success, String message, T data, String err
     public static ApiResponse<Void> fail(ErrorCode errorCode) {
         return new ApiResponse<>(false, errorCode.getMessage(), null, errorCode.name());
     }
+
+    /** A failure with details in {@code data} (PIN7-3). With null data it is the same as {@link #fail(ErrorCode)}. */
+    public static ApiResponse<Object> fail(ErrorCode errorCode, Object data) {
+        return new ApiResponse<>(false, errorCode.getMessage(), data, errorCode.name());
+    }
 }
