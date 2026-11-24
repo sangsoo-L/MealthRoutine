@@ -24,5 +24,7 @@ export default function AuthOrExperienceGate() {
   useEffect(() => flushSignupExperienceEnd, [])
 
   if (status === 'authenticated' || experienceActive) return <Outlet />
+  // 인증 확인 중(loading)에는 로그인 안내를 잠깐 보이지 않게 아무것도 그리지 않는다(GuestNoticeGate와 같은 처리).
+  if (status === 'loading') return null
   return <LoginRequiredNotice />
 }

@@ -25,8 +25,10 @@ const FORM_MESSAGES = {
   passwordTooShort: '체험용 비밀번호는 8자 이상 입력해 주세요.',
   // 입력이 개발용 계정과 맞지 않을 때. 어느 입력이 틀렸는지 알려 주지 않는다.
   authFailed: '로그인하지 못했어요. 입력한 이메일과 비밀번호를 확인해 주세요.',
-  // 로그인을 처리할 수 없는 빌드(실제 인증 API 미연결)의 안내. 인증 성공이나 화면 이동으로 처리하지 않는다.
-  apiNotConnected: '로그인 흐름 체험입니다. 실제 인증은 하지 않습니다.',
+  // 서버에 연결할 수 없을 때(F1-MESSAGE-1). 로그인 실패나 앱 시작 확인의 연결 실패(F1-D7)에 함께 쓴다.
+  connectionFailed: '서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.',
+  // 정지 계정인데 서버 문구가 없을 때만 쓰는 대체 문구(F1-D4). 보통은 서버 문구를 그대로 보여 준다.
+  suspendedFallback: '정지된 계정입니다. 고객센터에 문의해 주세요.',
   // 처리 중 안내(스토리보드 문구 아님). role="status" 영역으로 알린다.
   submitting: '로그인하고 있어요.',
 } as const
@@ -118,10 +120,12 @@ function LoginForm() {
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [errorKey, setErrorKey] = useState<FieldErrorKey | null>(null)
   const [noticeVisible, setNoticeVisible] = useState(false)
+  // 정지 계정 안내(서버 문구). 입력을 고치면 지운다.
+  const [suspendedMessage, setSuspendedMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   // 연속 제출 이벤트가 같은 렌더 안에서 들어와도 login이 한 번만 호출되도록 ref로 막는다.
   const submittingRef = useRef(false)
-  const { login } = useAuth()
+  const { login, connectionNotice } = useAuth()
   const passwordRef = useRef<HTMLInputElement>(null)
   const baseId = useId()
   const emailId = `${baseId}-email`
@@ -133,12 +137,14 @@ function LoginForm() {
   // 제출 결과 안내는 어느 입력을 고쳐도 지우고, 오류는 연결된 필드를 고칠 때만 지운다.
   function handleEmailChange() {
     setNoticeVisible(false)
+    setSuspendedMessage(null)
     setErrorKey((current) => (current === 'authFailed' ? null : current))
   }
 
   function handlePasswordChange() {
     setErrorKey(null)
     setNoticeVisible(false)
+    setSuspendedMessage(null)
   }
 
   // 빈 값과 이메일 형식은 원본과 같이 브라우저 기본 검증이 처리한다. 통과해야 이 핸들러가 실행된다.
@@ -158,6 +164,7 @@ function LoginForm() {
     }
     setErrorKey(null)
     setNoticeVisible(false)
+    setSuspendedMessage(null)
     submittingRef.current = true
     setSubmitting(true)
     const result = await login(email, password)
@@ -168,6 +175,8 @@ function LoginForm() {
     if (result.reason === 'invalid') {
       setErrorKey('authFailed')
       passwordRef.current?.focus()
+    } else if (result.reason === 'suspended') {
+      setSuspendedMessage(result.message ?? FORM_MESSAGES.suspendedFallback)
     } else {
       setNoticeVisible(true)
     }
@@ -215,13 +224,18 @@ function LoginForm() {
             {FORM_MESSAGES[errorKey]}
           </p>
         ) : null}
+        {suspendedMessage ? (
+          <p className={errorClass}>{suspendedMessage}</p>
+        ) : null}
       </div>
       <div role="status">
         {submitting ? (
           <p className={noticeClass}>{FORM_MESSAGES.submitting}</p>
         ) : null}
-        {noticeVisible ? (
-          <p className={noticeClass}>{FORM_MESSAGES.apiNotConnected}</p>
+        {/* 제출 결과의 연결 실패, 또는 앱 시작 확인이 서버에 닿지 못한 경우(F1-D7). 같은 문구를 한 번만 보여 준다. */}
+        {noticeVisible ||
+        (connectionNotice && !submitting && !errorKey && !suspendedMessage) ? (
+          <p className={noticeClass}>{FORM_MESSAGES.connectionFailed}</p>
         ) : null}
       </div>
 
@@ -243,7 +257,8 @@ function LoginForm() {
  * 회원가입(A03)은 `/signup` 라우트로 연결한다.
  * 비밀번호 재설정(A04)은 `/password/reset` 라우트로 연결한다.
  *
- * 로그인은 UI 개발용이며 실제 인증(POST /api/v1/auth/login)이 아니다. 처리는 useAuth().login에 맡긴다.
+ * 로그인 처리는 useAuth().login에 맡긴다(기본은 실제 서버 POST /api/v1/auth/login, `VITE_DEV_AUTH=true`면 개발용 계정).
+ * 앱 시작 확인 중(loading)에도 폼을 그대로 보여 주며, 직접 로그인하면 시작 확인 결과는 버려진다.
  * 이미 로그인한 사용자는 /home으로 보낸다. 로그인에 성공해도 같은 경로로 이동한다.
  * 단, 로그인 안내(LoginRequiredNotice)에서 들어와 history state에 안전한 앱 내부 경로(returnTo, safeReturnTo로 검증)가 있으면 그 화면으로 돌아간다.
  */
