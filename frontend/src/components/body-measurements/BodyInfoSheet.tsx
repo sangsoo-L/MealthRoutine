@@ -195,6 +195,18 @@ export function BodyInfoForm({
     setSaveError(null)
   }
 
+  function clearError(id: 'height' | 'weight') {
+    setErrors((prev) => {
+      if (!(id in prev)) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+
+  /** 선택 입력(protected)에서 비워 둔 칸인지. 빈 칸은 "입력해 주세요" 오류 대상이 아니다(PR #37 리뷰). */
+  const optionalEmpty = (value: string) => optional && value.trim() === ''
+
   function validate(id: 'height' | 'weight', value: string) {
     const field = FIELDS.find((f) => f.id === id)!
     const result = parseMeasurement(value, field.range)
@@ -218,6 +230,10 @@ export function BodyInfoForm({
     const targets = optional
       ? missing.filter((field) => values[field.id].trim() !== '')
       : missing
+    // 비워 둔 선택 칸에 남아 있던 오류는 지운다(보내지 않는 칸이다).
+    if (optional)
+      for (const field of missing)
+        if (!targets.includes(field)) clearError(field.id)
     if (optional && targets.length === 0) {
       setSaveError('needOne')
       document
@@ -259,6 +275,7 @@ export function BodyInfoForm({
       if (onSaved) {
         // 화면에 머무는 경우: 입력을 비우고 다시 입력 상태를 닫는다(저장한 값은 읽지 않는다).
         setValues({ height: '', weight: '' })
+        setErrors({})
         setReentering({ height: false, weight: false })
         setSaving(false)
         submitting.current = false
@@ -348,10 +365,12 @@ export function BodyInfoForm({
                       [field.id]: e.target.value,
                     }))
                     setSaveError(null)
-                    if (error) validate(field.id, e.target.value)
+                    if (optionalEmpty(e.target.value)) clearError(field.id)
+                    else if (error) validate(field.id, e.target.value)
                   }}
                   onBlur={(e) => {
-                    if (e.target.value !== '')
+                    if (optionalEmpty(e.target.value)) clearError(field.id)
+                    else if (e.target.value !== '')
                       validate(field.id, e.target.value)
                   }}
                   onFocus={(e) =>

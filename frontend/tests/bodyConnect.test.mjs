@@ -1235,6 +1235,39 @@ test('P05 문구: 실제 모드는 "모의 기능" 안내가 없고, 모의 모�
   assert.match(mock, /모의 기능/)
 })
 
+// ── PR #37 리뷰: 선택 입력에서 비운 칸의 오류(F5 P06) ──
+
+test('PR #37 정적: 선택 입력에서 비운 칸은 검사 대신 오류를 지우고(입력·포커스 이동), 제출 때 보내지 않는 칸의 오류도 지우며, 저장 성공 뒤 오류를 비운다', () => {
+  const form = readFileSync(
+    'src/components/body-measurements/BodyInfoSheet.tsx',
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')
+  assert.match(
+    form,
+    /const optionalEmpty = \(value: string\) => optional && value\.trim\(\) === ''/,
+  )
+  // onChange: 비운 선택 칸이면 clearError가 validate보다 먼저
+  assert.match(
+    form,
+    /if \(optionalEmpty\(e\.target\.value\)\) clearError\(field\.id\)\s*else if \(error\) validate\(field\.id, e\.target\.value\)/,
+  )
+  // onBlur도 같은 규칙
+  assert.match(
+    form,
+    /onBlur=\{\(e\) => \{\s*if \(optionalEmpty\(e\.target\.value\)\) clearError\(field\.id\)/,
+  )
+  // 제출: 보내지 않는 선택 칸의 오류 정리
+  assert.match(
+    form,
+    /if \(!targets\.includes\(field\)\) clearError\(field\.id\)/,
+  )
+  // 저장 성공(화면에 머무는 경우): 입력과 오류를 함께 비움
+  assert.match(
+    form,
+    /setValues\(\{ height: '', weight: '' \}\)\s*setErrors\(\{\}\)/,
+  )
+})
+
 // ── 정적: 연결 규칙 ──
 
 const strip = (text) => text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')
