@@ -12,6 +12,7 @@ import type {
   RecentRecordsView,
   WeeklyExerciseView,
 } from './exerciseDashboardTypes.ts'
+import { requestRecordUpload } from './recordUploadSource.ts'
 import { isWorkoutStoreError } from './workoutRepositories.ts'
 import { createWorkoutRecordRepository } from './workoutSource.ts'
 import type { LocalDate } from './workoutTypes.ts'
@@ -49,6 +50,7 @@ function failureSlot(error: unknown): { status: 'unavailable' | 'error' } {
  * - 저장소가 없으면(계정 없음) unavailable(준비 중). 조회 중 loading, 실패 error(reload로 다시 시도). 실패했을 때 예시 값으로 채우지 않는다.
  * - 계정·날짜가 바뀌면 지난 값을 버리고 다시 조회한다. 저장소는 계정 id로만 만들고, 다른 계정의 기록은 순수 함수가 한 번 더 걸러 낸다.
  * - enabled가 false이면(개발용 예시를 쓰는 중) 조회하지 않는다. 예시와 실제 기록을 섞지 않는다.
+ * - 대시보드를 열면 아직 서버에 올리지 못한 완료 기록을 올리도록 요청한다(운영 빌드만, recordUploadSource.ts). 화면은 계속 로컬 기록을 읽는다.
  */
 export function useDashboardRecords(
   userId: string | null,
@@ -67,6 +69,10 @@ export function useDashboardRecords(
     [userId],
   )
   const key = `${userId ?? ''}#${today}#${attempt}`
+
+  useEffect(() => {
+    if (enabled && userId) requestRecordUpload(userId)
+  }, [enabled, userId])
 
   useEffect(() => {
     if (!enabled || !repository || !userId) return
