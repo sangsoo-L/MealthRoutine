@@ -689,7 +689,7 @@ test('비회원 랜딩 전체: Hero·가입 CTA·로그인 링크가 그대로�
 })
 
 // ── 운영 환경 ────────────────────────────────────────────────────────────
-test('운영 환경(NODE_ENV=production)에서는 기록 저장소가 없어 모든 영역이 연결 전이다', () => {
+test('운영 환경(NODE_ENV=production)에서는 운동 기록은 로컬 저장소를 쓰고 식단 기록 저장소는 없다. 저장소가 없는 영역은 연결 전이다', () => {
   const script = `
     import { createServer } from 'vite'
     const server = await createServer({
@@ -701,7 +701,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록 저장소가 없어 모
     const meal = await server.ssrLoadModule('/src/food/mealSource.ts')
     console.log(JSON.stringify({
       env: process.env.NODE_ENV,
-      workout: workout.createWorkoutRecordRepository('u'),
+      workout: workout.createWorkoutRecordRepository('u') !== null,
       meal: meal.createMealRecordRepository('u'),
     }))
     await server.close()
@@ -717,7 +717,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록 저장소가 없어 모
   )
   assert.deepEqual(JSON.parse(out.trim().split('\n').at(-1)), {
     env: 'production',
-    workout: null,
+    workout: true,
     meal: null,
   })
   // 저장소가 없으면 훅은 두 영역을 unavailable로 만들고 화면은 0일·기록 없음 대신 연결 전 안내를 보인다.

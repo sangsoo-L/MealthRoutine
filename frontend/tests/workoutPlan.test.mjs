@@ -763,10 +763,10 @@ test('분리: 계획 저장소는 운동 목록·세션·기록·루틴·식단 
   )
 })
 
-test('운영 빌드 안전장치와 DB v5 단계(현재 DB는 v6): 계획 소스는 DEV일 때만 불러오고 업그레이드는 저장소만 추가하며 날짜별 1개는 유일 인덱스가 보장한다', () => {
-  assert.match(
+test('계획 소스는 운영 빌드에서도 로컬 저장소를 쓰고, DB v5 단계(현재 DB는 v6) 업그레이드는 저장소만 추가하며 날짜별 1개는 유일 인덱스가 보장한다', () => {
+  assert.doesNotMatch(
     code('../src/exercise/workoutPlanSource.ts'),
-    /import\.meta\.env\.DEV\s*\?/,
+    /import\.meta\.env\.DEV/,
   )
   const db = read('../src/exercise/local/exerciseDb.ts')
   assert.match(db, /EXERCISE_DB_VERSION = 6/)

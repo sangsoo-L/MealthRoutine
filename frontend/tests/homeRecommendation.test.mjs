@@ -453,7 +453,7 @@ test('추천 조회 훅은 PIN 보호 데이터·검증·열람 권한 API를 �
   assert.match(source, /\.getSummary\(\)/)
   assert.match(source, /loadExerciseGoalContext/)
 })
-test('운영 환경(NODE_ENV=production)에서는 기록·목표 저장소가 없어 모든 사실이 연결 전이다', () => {
+test('운영 환경(NODE_ENV=production)에서는 운동 기록만 로컬 저장소가 있고 식단 기록·목표 저장소는 없다. 저장소가 없는 사실은 연결 전이다', () => {
   const script = `
     import { createServer } from 'vite'
     const server = await createServer({
@@ -466,7 +466,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록·목표 저장소가 �
     const goal = await server.ssrLoadModule('/src/exercise-goal/exerciseGoalSource.ts')
     console.log(JSON.stringify({
       env: process.env.NODE_ENV,
-      workout: workout.createWorkoutRecordRepository('u'),
+      workout: workout.createWorkoutRecordRepository('u') !== null,
       meal: meal.createMealRecordRepository('u'),
       goal: goal.createExerciseGoalRepository('u'),
     }))
@@ -484,7 +484,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록·목표 저장소가 �
   const result = JSON.parse(out.trim().split('\n').at(-1))
   assert.deepEqual(result, {
     env: 'production',
-    workout: null,
+    workout: true,
     meal: null,
     goal: null,
   })

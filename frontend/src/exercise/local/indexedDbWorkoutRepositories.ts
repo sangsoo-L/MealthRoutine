@@ -42,6 +42,7 @@ import {
 } from '../workoutRoutineModel.ts'
 import {
   DEV_CATALOG_VERSION,
+  SERVER_CATALOG_VERSION,
   type LocalDate,
   type SessionProgressInput,
   type WorkoutList,
@@ -60,7 +61,8 @@ import {
 } from './exerciseDb.ts'
 
 /**
- * [개발 전용] 운동 목록·수행 세션·완료 기록의 IndexedDB 저장소(로컬 MVP). 개발 서버에서만 불러온다(exercise/workoutSource.ts).
+ * 운동 목록·수행 세션·완료 기록·루틴의 IndexedDB 저장소. 목록·세션·기록은 개발 서버와 운영 빌드 모두 쓰고,
+ * 루틴은 개발 서버에서만 쓴다(exercise/workoutSource.ts).
  *
  * 계정 격리: 저장소는 계정 id로 만들고, 모든 조회는 ownerId로 시작하는 인덱스 범위만 쓴다. id로 읽은 값도 ownerId가 다르면
  * 없는 것으로 본다(존재 여부도 드러내지 않는다). 모든 쓰기는 같은 트랜잭션 안에서 소유자와 상태를 다시 확인한다.
@@ -76,6 +78,14 @@ export interface LocalRepositoryOptions {
   /** 레코드 id 생성(테스트에서 고정할 수 있다). */
   newId?: () => string
 }
+
+/**
+ * 새로 저장하는 목록·계획에 찍는 운동 카탈로그 식별자. 개발 서버는 운동 JSON 시드를, 운영 빌드는 서버 운동 카탈로그를 쓴다.
+ * import.meta.env.DEV는 빌드 때 상수로 바뀐다.
+ */
+export const CURRENT_CATALOG_VERSION = import.meta.env.DEV
+  ? DEV_CATALOG_VERSION
+  : SERVER_CATALOG_VERSION
 
 const DEFAULT_RECENT_LIMIT = 20
 const MAX_RECENT_LIMIT = 100
@@ -250,7 +260,7 @@ export function createIndexedDbWorkoutListRepository(
         draft: input.draft,
         knownExerciseIds: input.knownExerciseIds,
         allowedRecordTypes: input.allowedRecordTypes,
-        catalogVersion: DEV_CATALOG_VERSION,
+        catalogVersion: CURRENT_CATALOG_VERSION,
         now: now(),
       })
       if (!candidate) {
