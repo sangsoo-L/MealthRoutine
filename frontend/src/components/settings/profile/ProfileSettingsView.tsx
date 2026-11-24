@@ -15,10 +15,13 @@ import {
   PATH_PROFILE,
   isProfileEmpty,
   profileFieldView,
+  readNicknameToApply,
   saveNickname,
   saveOutcomePatch,
+  syncNicknameBaseline,
   validateNickname,
   type FieldView,
+  type NicknameEditor,
   type NicknameSaveGuard,
   type NicknameSavePhase,
   type ProfileRowKey,
@@ -119,13 +122,23 @@ const SAVE_TEXT = {
     '저장하지 못했어요. 입력한 내용은 그대로 남아 있으니 다시 시도해 주세요.',
   // 409 NICKNAME_ALREADY_EXISTS(가입 화면과 같은 문구)
   taken: '이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요.',
-  // 400: 서버는 필드별 정보를 주지 않는다
-  rejected: '저장하지 못했어요. 닉네임을 다시 확인해 주세요.',
+  // 400 INVALID_REQUEST: 닉네임 규칙 외의 형식 오류도 같은 코드라 닉네임 오류로 단정하지 않는다(PR #29 P3-1)
+  rejected:
+    '요청을 처리하지 못했어요. 입력한 닉네임을 확인한 뒤 다시 시도해 주세요.',
+  // 응답이 계약과 다르거나 서버에 닿지 못함·5xx: 서버가 이미 저장했을 수 있다(PR #29 P2-02, 자동 재전송 없음)
+  uncertain:
+    '저장 결과를 확인하지 못했어요. 화면을 새로 열어 현재 닉네임을 확인해 주세요.',
   saved: '닉네임을 저장했어요.',
 } as const
 
 /** 저장 결과 안내(포커스를 옮겨 읽어 준다) */
-const RESULT_PHASES = ['failed', 'taken', 'rejected', 'saved'] as const
+const RESULT_PHASES = [
+  'failed',
+  'taken',
+  'rejected',
+  'uncertain',
+  'saved',
+] as const
 type ResultPhase = (typeof RESULT_PHASES)[number]
 const isResultPhase = (phase: NicknameSavePhase): phase is ResultPhase =>
   (RESULT_PHASES as readonly string[]).includes(phase)
@@ -150,6 +163,8 @@ export default function ProfileSettingsView({
   source,
   cancelTo,
   beginSave,
+  loginEpoch = 0,
+  onSaved,
   initial,
 }: {
   account: { nickname: string; email: string }
@@ -162,21 +177,30 @@ export default function ProfileSettingsView({
    * 넘기지 않으면(시험용 화면) 로그인 정보 반영 없이 서버 결과만 보인다.
    */
   beginSave?: () => NicknameSaveGuard | null
+  /**
+   * 같은 계정의 새 로그인 작업 번호(페이지가 로그인 작업 표식으로 센다, PR #29 P2-03). 바뀌면 편집기 저장 기준을 지금 로그인 정보의
+   * 닉네임으로 맞춘다(같은 문자열이어도). 미저장 입력은 보존한다.
+   */
+  loginEpoch?: number
+  /** 저장 성공을 화면에 반영했을 때 알린다. 페이지는 그 전에 시작한 조회를 오래된 값으로 보고 버린다. */
+  onSaved?: () => void
   initial?: {
     nickname?: string
     phase?: NicknameSavePhase
     shown?: boolean
   }
 }) {
-  const [nickname, setNickname] = useState(
-    initial?.nickname ?? account.nickname,
-  )
+  // input: 입력칸. saved: 서버가 가진 것으로 아는 닉네임(변경 여부 dirty의 기준). 처음에는 로그인 계정의 값이다.
+  const [editor, setEditor] = useState<NicknameEditor>(() => ({
+    input: initial?.nickname ?? account.nickname,
+    saved: account.nickname,
+  }))
+  const nickname = editor.input
+  const savedNickname = editor.saved
   const [shown, setShown] = useState(initial?.shown ?? false)
   const [phase, setPhase] = useState<NicknameSavePhase>(
     initial?.phase ?? 'idle',
   )
-  // 서버가 저장한 닉네임. 저장하기 전에는 로그인 계정의 값이고, 변경 여부(dirty)의 기준이다.
-  const [savedNickname, setSavedNickname] = useState(account.nickname)
   const savingRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -188,6 +212,27 @@ export default function ProfileSettingsView({
   const nicknameErrorId = `${baseId}-nickname-error`
   const connected = source !== null
   const busy = phase === 'saving'
+
+  // PR #29 P2-03: 새 서버 값이 들어오면 저장 기준을 맞춘다(렌더 중 조정 — 이전에 본 값을 기억해 바뀐 때만).
+  // ① 최신 조회 결과의 닉네임(페이지가 오래된 조회는 이미 버렸다) ② 같은 계정 재로그인 뒤 로그인 정보의 닉네임.
+  // 미저장 입력·저장 중 입력은 보존한다. 로그인 정보(전역 닉네임)는 여기서 바꾸지 않는다(PATCH 200에서만, F3-D3).
+  // 같은 턴 경합(Codex 재검토): 저장 성공 반영과 예전 조회 반영이 같은 렌더에 들어와도, 조회 시작 때의 저장 버전이
+  // 지금 저장 버전과 다르면 적용하지 않는다(readNicknameToApply). 저장 버전은 저장 성공 반영과 같은 갱신에서 올린다.
+  const [saveVersion, setSaveVersion] = useState(0)
+  const readyData = state.status === 'ready' ? state.data : null
+  const [seenData, setSeenData] = useState<typeof readyData>(null)
+  if (seenData !== readyData) {
+    setSeenData(readyData)
+    const incoming = readNicknameToApply(state, saveVersion)
+    if (incoming !== null)
+      setEditor((e) => syncNicknameBaseline(e, incoming, busy))
+  }
+  const [seenEpoch, setSeenEpoch] = useState(loginEpoch)
+  if (seenEpoch !== loginEpoch) {
+    setSeenEpoch(loginEpoch)
+    setEditor((e) => syncNicknameBaseline(e, account.nickname, busy))
+  }
+
   const checked = validateNickname(nickname)
   const nicknameError =
     shown && !checked.ok ? NICKNAME_ERROR_MESSAGE.invalid : null
@@ -203,8 +248,11 @@ export default function ProfileSettingsView({
   }, [phase])
 
   function handleNickname(event: ChangeEvent<HTMLInputElement>) {
-    setNickname(event.target.value)
-    if (!savingRef.current) setPhase('idle')
+    // PR #29 P2-01: 저장 중에는 입력을 받지 않는다(readOnly와 함께, 붙여넣기·IME 조합 끝 입력도 막는 동기 확인).
+    // 응답이 제출한 값에 대한 결과라 화면의 입력과 어긋나지 않는다.
+    if (savingRef.current) return
+    setEditor((e) => ({ ...e, input: event.target.value }))
+    setPhase('idle')
   }
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
@@ -238,8 +286,11 @@ export default function ProfileSettingsView({
     // 저장됐으면 기준값은 서버가 저장한 닉네임이다(입력값이 아니다).
     const patch = saveOutcomePatch(outcome)
     if (patch.saved !== undefined) {
-      setSavedNickname(patch.saved)
-      setNickname(patch.saved)
+      const saved = patch.saved
+      setEditor({ input: saved, saved })
+      setSaveVersion((v) => v + 1)
+      // 이 저장 전에 시작한 조회는 오래된 값일 수 있다(페이지가 버리고 다시 읽는다).
+      onSaved?.()
     }
     setPhase(patch.phase)
   }
@@ -353,6 +404,7 @@ export default function ProfileSettingsView({
               type="text"
               autoComplete="nickname"
               value={nickname}
+              readOnly={busy}
               onChange={handleNickname}
               onBlur={() => setShown(true)}
               aria-required="true"

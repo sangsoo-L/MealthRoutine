@@ -414,8 +414,20 @@ test('P02 저장 중·실패·완료: 중복 제출을 막고 실패는 입력 �
     initial: { ...props.initial, phase: 'rejected' },
   })
   assert.match(rejected, /data-profile-save="rejected"/)
-  assert.match(rejected, /닉네임을 다시 확인해 주세요/)
-  for (const html of [taken, rejected, failed])
+  assert.match(rejected, /요청을 처리하지 못했어요/)
+  const uncertain = view({
+    ...props,
+    initial: { ...props.initial, phase: 'uncertain' },
+  })
+  assert.match(uncertain, /data-profile-save="uncertain"/)
+  assert.match(uncertain, /저장 결과를 확인하지 못했어요/)
+  assert.doesNotMatch(uncertain, /저장하지 못했어요/)
+  // 저장 중에는 닉네임 입력이 읽기 전용이다(PR #29 P2-01)
+  const nicknameInput = (html) =>
+    html.match(/<input[^>]*name="profileNickname"[^>]*>/)?.[0] ?? ''
+  assert.match(nicknameInput(saving), /readOnly=""/i)
+  assert.doesNotMatch(nicknameInput(failed), /readOnly=""/i)
+  for (const html of [taken, rejected, failed, uncertain])
     assert.doesNotMatch(html, /닉네임을 저장했어요/)
   const saved = view({
     ...props,
