@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { after, before, test } from 'node:test'
 import { createServer } from 'vite'
 
@@ -139,4 +140,29 @@ test('다른 계정으로 바뀌거나 로그아웃하면 이전 계정 값을 �
   assert.equal(Hook.currentRewardSlots(prev, b), null)
   assert.equal(Hook.currentRewardSlots(prev, null), null)
   assert.equal(Hook.currentRewardSlots(null, a), null)
+})
+
+// PR #32 재검수: 새 조회가 끝나기 전(대기 중)에는 이전 성공 값을 보이지 않는다.
+test('대기 → 실패 → 같은 세션 복구: 새 조회 시작 시 이전 값을 지우고, 결과가 와야 다시 보인다', () => {
+  const s = { id: '2' }
+  const step = (prev, event) => Hook.nextRewardFetch(prev, event)
+  let r = step(null, { type: 'settled', session: s, slots: slots50 })
+  assert.equal(Hook.currentRewardSlots(r, s), slots50) // 50P 표시
+  r = step(r, { type: 'invalidate' }) // 예시 전환 등으로 이전 조회를 그만두고 새 조회 대기
+  assert.equal(Hook.currentRewardSlots(r, s), null) // 대기 중: 이전 50P를 다시 보이지 않음
+  r = step(r, { type: 'settled', session: s, slots: null }) // 새 조회 실패
+  assert.equal(Hook.currentRewardSlots(r, s), null)
+  r = step(r, { type: 'invalidate' })
+  r = step(r, { type: 'settled', session: s, slots: slots75 }) // 같은 세션에서 복구
+  assert.equal(Hook.currentRewardSlots(r, s), slots75)
+})
+
+test('훅은 조회를 그만둘 때(정리 함수) 결과를 무효화한다', () => {
+  const src = readFileSync(
+    new URL('../src/mypage/useMyPageSummary.ts', import.meta.url),
+    'utf8',
+  )
+  const cleanup = src.slice(src.indexOf('return () => {'))
+  assert.match(cleanup, /alive = false/)
+  assert.match(cleanup, /type: 'invalidate'/)
 })
