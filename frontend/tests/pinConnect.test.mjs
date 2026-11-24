@@ -850,6 +850,52 @@ test('서버 모드 잠금: "최대 10분" 안내, 저장 버튼 활성(서버�
   assert.doesNotMatch(html, /개발 서버 전용 모의 기능/)
 })
 
+test('PR #35 리뷰: 변경 요청 처리 중에는 "잠금 상태 다시 확인"이 비활성, 처리가 끝나면 다시 활성', () => {
+  const recheck = (html) =>
+    html.match(
+      /<button type="button"([^>]*)data-pin-lock-recheck-button=""/,
+    )?.[1] ??
+    html.match(
+      /<button type="button"[^>]*data-pin-lock-recheck-button=""[^>]*>/,
+    )?.[0]
+  const props = {
+    mode: 'change',
+    status: ready(true, true),
+    locked: true,
+    connection: 'server',
+  }
+  const busy = render({ ...props, submitting: true })
+  const idle = render({ ...props, submitting: false })
+  assert.ok(recheck(busy), '재확인 버튼')
+  assert.match(
+    busy.match(/<button[^>]*data-pin-lock-recheck-button=""[^>]*>/)[0],
+    /\sdisabled=""/,
+  )
+  assert.doesNotMatch(
+    idle.match(/<button[^>]*data-pin-lock-recheck-button=""[^>]*>/)[0],
+    /\sdisabled=""/,
+  )
+})
+
+test('PR #35 리뷰 정적: 화면의 재확인(reload)은 제출 처리 중이면 무시하고, 제출 결과의 등록 상태 재조회는 내부 refresh로 한다', () => {
+  const hook = strip(readFileSync('src/pin-settings/usePinSettings.ts', 'utf8'))
+  assert.match(
+    hook,
+    /const reload = useCallback\(\(\) => \{\s*if \(submitting\.current\) return\s*refresh\(\)/,
+  )
+  assert.match(hook, /error\.code === 'pinMissing'\)\s*refresh\(\)/)
+  assert.match(hook, /setPending\(true\)/)
+  assert.match(
+    hook,
+    /finally \{\s*submitting\.current = false\s*setPending\(false\)/,
+  )
+  const view = strip(
+    readFileSync('src/components/pin-settings/PinSettingsView.tsx', 'utf8'),
+  )
+  assert.match(view, /disabled=\{submitting\}/)
+  assert.match(view, /submitting=\{submitting\}/)
+})
+
 test('서버 모드 잠금 아님: 안내·재조회 버튼 없이 폼만, 개발용 모의 안내 없음', () => {
   const html = render({
     mode: 'change',

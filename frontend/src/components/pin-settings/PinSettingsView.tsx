@@ -132,6 +132,7 @@ export function PinSettingsBody({
   reload,
   returnTo = null,
   connection = 'mock',
+  submitting = false,
 }: {
   mode: PinSettingsMode
   status: PinStatus
@@ -142,6 +143,8 @@ export function PinSettingsBody({
   returnTo?: PinReturn | null
   /** 기본 mock(기존 동작). server면 잠금을 안내만 하고 제출을 막지 않으며 "잠금 상태 다시 확인"을 보인다(F4-D4·D7). */
   connection?: PinConnection
+  /** 등록·변경 요청을 처리하는 중이면 "잠금 상태 다시 확인"을 막는다(재조회로 폼이 바뀌면 결과 안내가 사라진다). */
+  submitting?: boolean
 }) {
   const doneHeading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
@@ -331,7 +334,9 @@ export function PinSettingsBody({
             <button
               type="button"
               onClick={reload}
-              className={secondaryButtonClass}
+              disabled={submitting}
+              data-pin-lock-recheck-button=""
+              className={`${secondaryButtonClass} disabled:cursor-not-allowed disabled:border-line disabled:text-muted disabled:hover:bg-surface`}
             >
               잠금 상태 다시 확인
             </button>
@@ -380,10 +385,8 @@ export default function PinSettingsView({
   mode: PinSettingsMode
   returnTo?: PinReturn | null
 }) {
-  const { status, done, locked, submit, reload, connection } = usePinSettings(
-    ownerId,
-    mode,
-  )
+  const { status, done, locked, submit, reload, connection, submitting } =
+    usePinSettings(ownerId, mode)
   return (
     <PinSettingsBody
       mode={mode}
@@ -394,6 +397,7 @@ export default function PinSettingsView({
       reload={reload}
       returnTo={returnTo}
       connection={connection}
+      submitting={submitting}
     />
   )
 }
