@@ -4,6 +4,7 @@ import {
   type BodyMeasurementInput,
   type BodyMeasurementState,
   type BodyMeasurementStatus,
+  type BodySaveOutcome,
 } from '../../body-measurements/bodyTypes.ts'
 import BodyInfoSheet from './BodyInfoSheet.tsx'
 
@@ -28,7 +29,7 @@ export default function BodyInfoPrompt({
   save,
 }: {
   state: BodyMeasurementState
-  save: (input: BodyMeasurementInput) => Promise<void>
+  save: (input: BodyMeasurementInput) => Promise<BodySaveOutcome>
 }) {
   // 이 홈 화면에서 닫았는지. 저장하지 않는다(화면이 다시 마운트되면 처음 상태로 돌아간다).
   const [dismissed, setDismissed] = useState(false)

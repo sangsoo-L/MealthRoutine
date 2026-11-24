@@ -1,9 +1,6 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import {
-  ExerciseGoalError,
-  type GoalAuthorization,
-} from '../../exercise-goal/exerciseGoalTypes.ts'
+import { ExerciseGoalError } from '../../exercise-goal/exerciseGoalTypes.ts'
 import {
   PIN_LOCKED_MESSAGE,
   pinSettingsMessage,
@@ -27,12 +24,17 @@ interface PinVerifyFormProps {
   /** 5분 잠금 중인지. 잠금 중에는 확인할 수 없고 안내가 보인다. */
   locked: boolean
   submit: (pin: string) => Promise<PinVerifyResult | null>
-  /** 확인에 성공했을 때. 열람 권한을 넘겨 준다. */
-  onVerified: (access: GoalAuthorization) => void
+  /**
+   * 확인에 성공했을 때. 열람 표지를 만드는 `commit`을 넘겨 준다(F5 계획 8.8.2). 받는 쪽은 이동하기 바로 앞에서 `commit()`을 부르고
+   * true일 때만 이동한다(그 사이 로그인·PIN 토큰이 바뀌었으면 false).
+   */
+  onVerified: (commit: () => boolean) => void
   /** 5회 불일치로 잠겼을 때(P01로 돌아간다). */
   onLocked: () => void
   /** "취소"가 이동할 곳. */
   cancelTo: string
+  /** 잠금 안내 문구. 기본은 모의 모드(5분) 문구이고, 서버 모드는 "최대 10분" 문구를 넘긴다(F5-D6). */
+  lockedMessage?: string
 }
 
 /**
@@ -48,6 +50,7 @@ export default function PinVerifyForm({
   onVerified,
   onLocked,
   cancelTo,
+  lockedMessage = PIN_LOCKED_MESSAGE,
 }: PinVerifyFormProps) {
   const [pin, setPin] = useState('')
   const [visible, setVisible] = useState(false)
@@ -60,9 +63,8 @@ export default function PinVerifyForm({
   const helpId = `${base}-help`
 
   // 잠금이 풀리면 잠금 안내를 거둔다.
-  const shown =
-    error && !(error === PIN_LOCKED_MESSAGE && !locked) ? error : null
-  const message = shown ?? (locked ? PIN_LOCKED_MESSAGE : null)
+  const shown = error && !(error === lockedMessage && !locked) ? error : null
+  const message = shown ?? (locked ? lockedMessage : null)
 
   function focusInput() {
     document.getElementById(inputId)?.focus()
@@ -72,7 +74,7 @@ export default function PinVerifyForm({
     event.preventDefault()
     if (pending.current || disabled) return
     if (locked) {
-      setError(PIN_LOCKED_MESSAGE)
+      setError(lockedMessage)
       focusInput()
       return
     }
@@ -90,16 +92,18 @@ export default function PinVerifyForm({
     try {
       const result = await submit(pin)
       if (!result) return
+      // 실패도 반영 바로 앞에서 다시 확인한다(F5-C1): 그 사이 로그인·화면이 바뀌었으면 문구·포커스·잠금 이동을 하지 않는다.
+      if (!result.ok && !result.isCurrent()) return
       setPin('')
       if (result.ok) {
-        onVerified(result.access)
+        onVerified(result.commit)
         return
       }
       if (
         result.error instanceof ExerciseGoalError &&
         result.error.code === 'locked'
       ) {
-        setError(PIN_LOCKED_MESSAGE)
+        setError(lockedMessage)
         onLocked()
         return
       }
@@ -127,7 +131,7 @@ export default function PinVerifyForm({
         onChange={(value) => {
           setPin(sanitizePinInput(value))
           // 입력을 고치기 시작하면 일반 오류는 거두되, 잠금 안내는 잠금이 풀릴 때까지 둔다.
-          setError((e) => (e === PIN_LOCKED_MESSAGE ? e : null))
+          setError((e) => (e === lockedMessage ? e : null))
         }}
         visible={visible}
         onToggleVisible={() => setVisible((v) => !v)}

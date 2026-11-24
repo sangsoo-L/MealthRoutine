@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { PIN_LOCKED_STATE } from '../../body-access/bodyAccessNotice.ts'
-import { grantBodyAccess } from '../../body-access/bodyAccessStore.ts'
-import type { GoalAuthorization } from '../../exercise-goal/exerciseGoalTypes.ts'
+import { PIN_SERVER_LOCKED_MESSAGE } from '../../pin-settings/pinSettingsMessages.ts'
 import {
   BODY_UNLOCK_PATH,
   BODY_UNLOCK_RETURN_PATH,
@@ -21,6 +20,10 @@ import {
 import { Heading } from './PinSettingsView.tsx'
 import PinVerifyForm from './PinVerifyForm.tsx'
 
+/** 모의 로그인 모드(F1-D3). 모의 안내 문구는 이 모드에서만 보인다(실제 개발 모드에서 "모의 기능"이라고 잘못 알리지 않는다). */
+const MOCK_AUTH =
+  import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH === 'true'
+
 function Guidance() {
   return (
     <section
@@ -36,8 +39,8 @@ function Guidance() {
       <p className="mt-1 text-support leading-relaxed font-normal text-muted">
         신체 정보는 1분 동안만 표시되며, 화면을 벗어나면 다시 가려져요.
       </p>
-      {/* 개발 서버에서만 보이는 안내. 운영 빌드에서는 코드째 제거된다. */}
-      {import.meta.env.DEV ? (
+      {/* 모의 모드(개발 서버 + VITE_DEV_AUTH=true)에서만 보이는 안내. 운영 빌드에서는 코드째 제거된다. */}
+      {MOCK_AUTH ? (
         <p className="mt-2 text-support leading-relaxed font-normal text-muted">
           개발 서버 전용 모의 기능이에요. 번호는 이 브라우저에 해시로만 남고
           실제 보안 수단이 아니에요.
@@ -61,15 +64,23 @@ export function PinVerifyBody({
   onLocked,
   reload,
   cancelTo,
+  connection = 'mock',
+  serverLocked = false,
 }: {
   status: PinStatus
   locked: boolean
   submit: (pin: string) => Promise<PinVerifyResult | null>
-  onVerified: (access: GoalAuthorization) => void
+  onVerified: (commit: () => boolean) => void
   onLocked: () => void
   reload: () => void
   cancelTo: string
+  /** 서버 모드면 잠금 문구가 "최대 10분"이다(F5-D6). */
+  connection?: 'mock' | 'server'
+  /** 서버 모드에서 조회가 알려 준 잠금. 안내만 하고 제출은 막지 않는다(F4-D4, 판정은 서버). */
+  serverLocked?: boolean
 }) {
+  const lockedMessage =
+    connection === 'server' ? PIN_SERVER_LOCKED_MESSAGE : undefined
   const form = (disabled: boolean) => (
     <PinVerifyForm
       disabled={disabled}
@@ -78,6 +89,7 @@ export function PinVerifyBody({
       onVerified={onVerified}
       onLocked={onLocked}
       cancelTo={cancelTo}
+      lockedMessage={lockedMessage}
     />
   )
 
@@ -137,6 +149,19 @@ export function PinVerifyBody({
         {form(true)}
       </>
     )
+  } else if (serverLocked) {
+    body = (
+      <>
+        <p
+          role="status"
+          data-pin-server-locked=""
+          className={`${noticeClass} mt-0`}
+        >
+          {PIN_SERVER_LOCKED_MESSAGE}
+        </p>
+        {form(false)}
+      </>
+    )
   } else {
     body = form(false)
   }
@@ -172,17 +197,20 @@ export default function PinVerifyView({
   cancelTo: string
 }) {
   const navigate = useNavigate()
-  const { status, locked, submit, reload } = usePinVerify(ownerId)
+  const { status, locked, serverLocked, connection, submit, reload } =
+    usePinVerify(ownerId)
   return (
     <PinVerifyBody
       status={status}
       locked={locked}
+      serverLocked={serverLocked}
+      connection={connection}
       submit={submit}
       reload={reload}
       cancelTo={cancelTo}
-      onVerified={(access) => {
-        grantBodyAccess(ownerId, access)
-        void navigate(BODY_UNLOCK_RETURN_PATH, { replace: true })
+      onVerified={(commit) => {
+        // 표지 발행과 이동을 같은 동기 구간에서 한다. 그 사이 로그인·PIN 토큰이 바뀌었으면 아무것도 하지 않는다(8.8.2).
+        if (commit()) void navigate(BODY_UNLOCK_RETURN_PATH, { replace: true })
       }}
       onLocked={() => {
         void navigate(BODY_UNLOCK_RETURN_PATH, {

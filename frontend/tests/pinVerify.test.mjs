@@ -317,7 +317,11 @@ test('열람 권한 메모리: 넣고, 읽고, 폐기하며 알림을 보낸다'
   const off = store.subscribeBodyAccess(() => (calls += 1))
   assert.equal(store.getBodyAccess(), null)
   store.grantBodyAccess(owner, access)
-  assert.deepEqual(store.getBodyAccess(), { ownerId: owner, access })
+  assert.deepEqual(store.getBodyAccess(), {
+    kind: 'mock',
+    ownerId: owner,
+    access,
+  })
   store.revokeBodyAccess()
   assert.equal(store.getBodyAccess(), null)
   store.revokeBodyAccess() // 없으면 아무 일도 하지 않는다

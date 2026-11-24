@@ -959,7 +959,7 @@ test('정적: PIN 연결·토큰 저장소는 storage·console·history·cookie�
   )
 })
 
-test('정적: 화면 훅은 범용 표식으로 제출하고, P05 훅은 서버 모드에서 조회하지 않으며 모의 저장소만 쓴다(F4-D1)', () => {
+test('정적: 화면 훅은 범용 표식으로 제출하고, P05 훅은 서버 모드에서 범용 표식으로 확인한 뒤 commit으로만 표지를 만든다(F5, 모의는 개발용 저장소)', () => {
   const settings = strip(
     readFileSync('src/pin-settings/usePinSettings.ts', 'utf8'),
   )
@@ -967,8 +967,12 @@ test('정적: 화면 훅은 범용 표식으로 제출하고, P05 훅은 서버 
   assert.match(settings, /submitPinSettings\(source, mode, values, guard\)/)
   assert.match(settings, /if \(outcome\.kind === 'stale'\) return null/)
   const verify = strip(readFileSync('src/pin-settings/usePinVerify.ts', 'utf8'))
-  assert.match(verify, /serverStatus: false/)
+  // F5: P05도 서버 상태를 읽고(serverStatus 옵션 없음), 범용 표식으로 확인한다. 표지는 commit 안에서만 만든다(8.8.2).
+  assert.doesNotMatch(verify, /serverStatus: false/)
   assert.match(verify, /source\?\.mockGoal \?\? null/)
+  assert.match(verify, /beginAccountWork\(\)/)
+  assert.match(verify, /source\.verify\(pin, guard, signal\)/)
+  assert.match(verify, /commit: \(\) =>\s*issueServerBodyAccess\(/)
   const view = strip(
     readFileSync('src/components/pin-settings/PinSettingsView.tsx', 'utf8'),
   )

@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import type {
   BodyMeasurementInput,
   BodyMeasurementState,
+  BodySaveOutcome,
 } from '../../../body-measurements/bodyTypes.ts'
 import { BODY_UNLOCK_PATH } from '../../../pin-settings/pinSettingsPolicy.ts'
 import { BodyInfoForm } from '../../body-measurements/BodyInfoSheet.tsx'
@@ -68,6 +69,8 @@ function StatusRow({
  *   등록된 몸무게는 이력이 있는 몸무게 기록(마이페이지)이 갱신을 맡아 여기서는 다시 입력하지 않는다(기록 이력과 현재값이 어긋나지 않게).
  * - 검증(소수점 첫째 자리, 키 1~300cm, 몸무게 1~500kg)과 저장은 기존 신체 정보 저장소(`save`)가 한다. 저장 완료 안내는 저장이 성공한 뒤에만 나온다.
  * - 조회 중·조회 실패(다시 시도)·연결 전(폼 없음, 저장 수단 없음)을 구분한다. BMI 미리보기는 등록된 값을 읽지 않으므로 두지 않는다.
+ * - 실제 모드(`protected`, F5-D1): 서버는 PIN 없이 등록 여부를 알려 주지 않으므로 상태 줄 대신 안내만 두고, 키·몸무게를 **선택 입력**한다.
+ *   저장할 때마다 새 측정으로 기록되고 서버는 가장 최근 값을 쓴다(F5-D4). 몸무게 기록(마이페이지)은 서버에 연결되지 않아 안내하지 않는다.
  */
 export default function BodySettingsView({
   body,
@@ -76,7 +79,7 @@ export default function BodySettingsView({
   onCancel,
 }: {
   body: BodyMeasurementState
-  save: (input: BodyMeasurementInput) => Promise<void>
+  save: (input: BodyMeasurementInput) => Promise<BodySaveOutcome>
   onRetry: () => void
   /** 취소·돌아가기. 저장하지 않고 이전 화면으로 간다. */
   onCancel: () => void
@@ -135,6 +138,55 @@ export default function BodySettingsView({
         </div>
       ) : null}
 
+      {body.status === 'protected' ? (
+        <>
+          <section
+            aria-labelledby="body-status-title"
+            data-body-state="protected"
+            className={cardClass}
+          >
+            <h2 id="body-status-title" className={sectionTitleClass}>
+              현재 등록 상태
+            </h2>
+            <p className="mt-3 text-body leading-relaxed font-normal text-muted">
+              등록 여부와 값은 이 화면에 보이지 않아요. 확인하려면 2차
+              비밀번호가 필요해요.
+            </p>
+            <Link
+              to={BODY_UNLOCK_PATH}
+              state={{ from: PATH_BODY_SETTINGS }}
+              data-body-unlock=""
+              className={linkClass}
+            >
+              2차 비밀번호로 신체 정보 보기
+              <Icon name="chevron-right" size={18} />
+            </Link>
+          </section>
+
+          <section aria-labelledby="body-form-title" className={cardClass}>
+            <h2 id="body-form-title" className={sectionTitleClass}>
+              키·몸무게 입력
+            </h2>
+            <p className="mt-1 text-support leading-relaxed font-normal text-muted">
+              새로 잰 값만 입력해도 돼요. 저장하면 가장 최근 값으로 쓰여요.
+            </p>
+            <div className="mt-3">
+              <BodyInfoForm
+                variant="page"
+                status="protected"
+                save={async (input) => {
+                  setSaved(false)
+                  return save(input)
+                }}
+                close={onCancel}
+                closing={false}
+                onSaved={() => setSaved(true)}
+              />
+            </div>
+          </section>
+        </>
+      ) : null}
+
       {status ? (
         <>
           <section aria-labelledby="body-status-title" className={cardClass}>
@@ -172,7 +224,7 @@ export default function BodySettingsView({
                 status={status}
                 save={async (input) => {
                   setSaved(false)
-                  await save(input)
+                  return save(input)
                 }}
                 close={onCancel}
                 closing={false}
@@ -214,7 +266,7 @@ export default function BodySettingsView({
         ) : null}
       </div>
 
-      {status === null ? (
+      {status === null && body.status !== 'protected' ? (
         <button
           type="button"
           data-body-back=""
