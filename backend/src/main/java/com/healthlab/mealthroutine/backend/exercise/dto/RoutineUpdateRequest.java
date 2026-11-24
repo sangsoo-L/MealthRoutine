@@ -3,14 +3,20 @@ package com.healthlab.mealthroutine.backend.exercise.dto;
 import com.healthlab.mealthroutine.backend.exercise.domain.Difficulty;
 import com.healthlab.mealthroutine.backend.exercise.domain.RoutineVisibility;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 
-/** Null fields stay unchanged. When items is present it replaces the whole list. */
+/**
+ * Null fields stay unchanged. When items is present it replaces the whole list. When expectedRevision is present and
+ * differs from the routine's revision the update is refused with 409 REVISION_MISMATCH (data.currentRevision).
+ */
 public record RoutineUpdateRequest(
         @Size(min = 1, max = 160) String routineName,
         String description,
         Difficulty difficulty,
         RoutineVisibility visibility,
-        @Size(min = 1, max = 100) List<@Valid RoutineItemRequest> items) {
+        @Size(min = 1, max = 100) List<@NotNull @Valid RoutineItemRequest> items,
+        @Min(1) Integer expectedRevision) {
 }

@@ -6,14 +6,20 @@ import com.healthlab.mealthroutine.backend.common.PageResponse;
 import com.healthlab.mealthroutine.backend.exercise.domain.ExerciseEntity;
 import com.healthlab.mealthroutine.backend.exercise.domain.ExerciseRoutineEntity;
 import com.healthlab.mealthroutine.backend.exercise.domain.ExerciseRoutineItemEntity;
+import com.healthlab.mealthroutine.backend.exercise.domain.RoutineVisibility;
+import com.healthlab.mealthroutine.backend.exercise.domain.SetTargetsJson;
+import com.healthlab.mealthroutine.backend.exercise.domain.WorkoutRecordType;
 import com.healthlab.mealthroutine.backend.exercise.dto.RoutineCreateRequest;
 import com.healthlab.mealthroutine.backend.exercise.dto.RoutineItemRequest;
 import com.healthlab.mealthroutine.backend.exercise.dto.RoutineResponse;
 import com.healthlab.mealthroutine.backend.exercise.dto.RoutineUpdateRequest;
+import com.healthlab.mealthroutine.backend.exercise.dto.SetTarget;
 import com.healthlab.mealthroutine.backend.exercise.repository.ExerciseRoutineRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -27,18 +33,39 @@ public class RoutineService {
     private final ExerciseRoutineRepository routineRepository;
     private final ExerciseService exerciseService;
 
+    /** Result of a create: the routine and whether this call made it (false = repeat of the same requestId). */
+    public record CreateResult(RoutineResponse routine, boolean created) {
+    }
+
     @Transactional
-    public RoutineResponse create(Long userId, RoutineCreateRequest request) {
+    public CreateResult create(Long userId, RoutineCreateRequest request) {
+        // Check the items first so a bad body is a 400 even when the requestId was used before.
+        List<ItemSpec> items = request.items().stream().map(RoutineService::toSpec).toList();
+        RoutineVisibility visibility =
+                request.visibility() == null ? RoutineVisibility.PRIVATE : request.visibility();
+
+        if (request.requestId() != null) {
+            Optional<ExerciseRoutineEntity> existing =
+                    routineRepository.findByOwnerUserIdAndRequestId(userId, request.requestId());
+            if (existing.isPresent()) {
+                if (!sameContent(existing.get(), request, visibility, items)) {
+                    throw new BusinessException(ErrorCode.REQUEST_CONFLICT);
+                }
+                return new CreateResult(RoutineResponse.detail(existing.get(), false), false);
+            }
+        }
+
         ExerciseRoutineEntity routine = new ExerciseRoutineEntity();
         routine.setOwnerUserId(userId);
         routine.setRoutineName(request.routineName());
         routine.setDescription(request.description());
         routine.setDifficulty(request.difficulty());
-        if (request.visibility() != null) {
-            routine.setVisibility(request.visibility());
-        }
-        replaceItems(routine, request.items());
-        return RoutineResponse.detail(routineRepository.save(routine));
+        routine.setVisibility(visibility);
+        routine.setRequestId(request.requestId());
+        replaceItems(routine, items);
+        // Two requests with the same new requestId at the same moment: the UNIQUE key stops the second one with
+        // 409 DATA_CONFLICT, and the client's next retry finds the first routine through the lookup above.
+        return new CreateResult(RoutineResponse.detail(routineRepository.save(routine), true), true);
     }
 
     public PageResponse<RoutineResponse> getVisible(Long userId, int page, int size) {
@@ -52,7 +79,10 @@ public class RoutineService {
 
     @Transactional
     public RoutineResponse update(Long userId, Long routineId, RoutineUpdateRequest request) {
-        ExerciseRoutineEntity routine = findOwned(userId, routineId);
+        List<ItemSpec> items =
+                request.items() == null ? null : request.items().stream().map(RoutineService::toSpec).toList();
+        ExerciseRoutineEntity routine = findOwnedForUpdate(userId, routineId);
+        checkRevision(routine, request.expectedRevision());
         if (request.routineName() != null) {
             routine.setRoutineName(request.routineName());
         }
@@ -65,16 +95,19 @@ public class RoutineService {
         if (request.visibility() != null) {
             routine.setVisibility(request.visibility());
         }
-        if (request.items() != null) {
-            replaceItems(routine, request.items());
+        if (items != null) {
+            replaceItems(routine, items);
         }
+        routine.setRevision(routine.getRevision() + 1);
         routine.setUpdatedAt(LocalDateTime.now());
         return RoutineResponse.detail(routine);
     }
 
     @Transactional
-    public void delete(Long userId, Long routineId) {
-        routineRepository.delete(findOwned(userId, routineId));
+    public void delete(Long userId, Long routineId, Integer expectedRevision) {
+        ExerciseRoutineEntity routine = findOwnedForUpdate(userId, routineId);
+        checkRevision(routine, expectedRevision);
+        routineRepository.delete(routine);
     }
 
     /** Guests get 401 so the frontend can send them to login; members without access get 403. */
@@ -86,8 +119,9 @@ public class RoutineService {
         return routine;
     }
 
-    private ExerciseRoutineEntity findOwned(Long userId, Long routineId) {
-        ExerciseRoutineEntity routine = find(routineId);
+    private ExerciseRoutineEntity findOwnedForUpdate(Long userId, Long routineId) {
+        ExerciseRoutineEntity routine = routineRepository.findForUpdate(routineId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ROUTINE_NOT_FOUND));
         if (!routine.isOwnedBy(userId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
@@ -99,24 +133,77 @@ public class RoutineService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROUTINE_NOT_FOUND));
     }
 
-    private void replaceItems(ExerciseRoutineEntity routine, List<RoutineItemRequest> requests) {
+    private static void checkRevision(ExerciseRoutineEntity routine, Integer expectedRevision) {
+        if (expectedRevision != null && expectedRevision != routine.getRevision()) {
+            throw new BusinessException(ErrorCode.REVISION_MISMATCH,
+                    Map.of("currentRevision", routine.getRevision()));
+        }
+    }
+
+    /**
+     * One item as it will be stored. Built from a request (after validation) or from a saved item, so a repeated
+     * create can be compared with what was saved by plain equality. Weights are normalized (no trailing zeros) on
+     * both sides, so 40 and 40.00 compare equal.
+     */
+    private record ItemSpec(Long exerciseId, Short targetSets, Short targetReps, Integer targetDurationSeconds,
+            Integer restSeconds, WorkoutRecordType recordType, List<SetTarget> sets) {
+
+        static ItemSpec of(ExerciseRoutineItemEntity item) {
+            return new ItemSpec(item.getExercise().getExerciseId(), item.getTargetSets(), item.getTargetReps(),
+                    item.getTargetDurationSeconds(), item.getRestSeconds(), item.getRecordType(),
+                    SetTargetsJson.read(item.getSetTargets()));
+        }
+    }
+
+    /** Checks which of the two item shapes was sent (see RoutineItemRequest) and fills the target_* columns. */
+    private static ItemSpec toSpec(RoutineItemRequest request) {
+        if (request.recordType() != null || request.sets() != null) {
+            if (request.targetSets() != null || request.targetReps() != null
+                    || request.targetDurationSeconds() != null) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST);
+            }
+            List<SetTarget> sets = SetTargetValidator.validate(request.recordType(), request.sets());
+            SetTarget first = sets.get(0);
+            return new ItemSpec(request.exerciseId(), (short) sets.size(),
+                    first.reps() == null ? null : first.reps().shortValue(), first.targetSeconds(),
+                    request.restSeconds(), request.recordType(), sets);
+        }
+        if (request.targetSets() == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+        return new ItemSpec(request.exerciseId(), request.targetSets(), request.targetReps(),
+                request.targetDurationSeconds(), request.restSeconds(), null, null);
+    }
+
+    private static boolean sameContent(ExerciseRoutineEntity routine, RoutineCreateRequest request,
+            RoutineVisibility visibility, List<ItemSpec> items) {
+        return routine.getRoutineName().equals(request.routineName())
+                && Objects.equals(routine.getDescription(), request.description())
+                && routine.getDifficulty() == request.difficulty()
+                && routine.getVisibility() == visibility
+                && routine.getItems().stream().map(ItemSpec::of).toList().equals(items);
+    }
+
+    private void replaceItems(ExerciseRoutineEntity routine, List<ItemSpec> specs) {
         Map<Long, ExerciseEntity> exercises =
-                exerciseService.findAll(requests.stream().map(RoutineItemRequest::exerciseId).toList());
+                exerciseService.findAll(specs.stream().map(ItemSpec::exerciseId).toList());
         routine.getItems().clear();
         // Hibernate inserts before it deletes, so flush the removals first or the (routine, sequence) UNIQUE fails.
         if (routine.getRoutineId() != null) {
             routineRepository.flush();
         }
         short sequence = 1;
-        for (RoutineItemRequest request : requests) {
+        for (ItemSpec spec : specs) {
             ExerciseRoutineItemEntity item = new ExerciseRoutineItemEntity();
             item.setRoutine(routine);
-            item.setExercise(exercises.get(request.exerciseId()));
+            item.setExercise(exercises.get(spec.exerciseId()));
             item.setSequenceNumber(sequence++);
-            item.setTargetSets(request.targetSets());
-            item.setTargetReps(request.targetReps());
-            item.setTargetDurationSeconds(request.targetDurationSeconds());
-            item.setRestSeconds(request.restSeconds());
+            item.setTargetSets(spec.targetSets());
+            item.setTargetReps(spec.targetReps());
+            item.setTargetDurationSeconds(spec.targetDurationSeconds());
+            item.setRestSeconds(spec.restSeconds());
+            item.setRecordType(spec.recordType());
+            item.setSetTargets(SetTargetsJson.write(spec.sets()));
             routine.getItems().add(item);
         }
     }
