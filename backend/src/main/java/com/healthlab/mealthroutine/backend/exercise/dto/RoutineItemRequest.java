@@ -3,7 +3,9 @@ package com.healthlab.mealthroutine.backend.exercise.dto;
 import com.healthlab.mealthroutine.backend.exercise.domain.WorkoutRecordType;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * One routine item, in one of two shapes (RoutineService checks which):
@@ -22,5 +24,6 @@ public record RoutineItemRequest(
         @Min(0) Integer targetDurationSeconds,
         @Min(0) Integer restSeconds,
         WorkoutRecordType recordType,
+        @JsonDeserialize(using = BoundedListDeserializer.SetTargets.class) @Size(max = 200)
         List<SetTargetRequest> sets) {
 }

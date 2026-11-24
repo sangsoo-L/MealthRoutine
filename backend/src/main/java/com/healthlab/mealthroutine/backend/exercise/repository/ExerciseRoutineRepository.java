@@ -20,9 +20,19 @@ public interface ExerciseRoutineRepository extends JpaRepository<ExerciseRoutine
             """)
     Page<ExerciseRoutineEntity> findVisible(@Param("userId") Long userId, Pageable pageable);
 
+    /** Plain (non-locking) existence check, so a request for an id that does not exist never takes a lock. */
+    @Query("select count(r) > 0 from ExerciseRoutineEntity r where r.routineId = :routineId")
+    boolean routineExists(@Param("routineId") Long routineId);
+
+    /** Plain (non-locking) ownership check, so another member's request never locks this routine's row. */
+    @Query("select count(r) > 0 from ExerciseRoutineEntity r"
+            + " where r.routineId = :routineId and r.ownerUserId = :userId")
+    boolean isOwnedBy(@Param("routineId") Long routineId, @Param("userId") Long userId);
+
     /**
      * Reads the routine with a row lock (SELECT ... FOR UPDATE) so that two updates of the same routine run one after
      * the other: the second one sees the first one's revision and its expectedRevision check fails as it should.
+     * Call it only after routineExists and isOwnedBy passed, so only the owner ever locks the row.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from ExerciseRoutineEntity r where r.routineId = :routineId")

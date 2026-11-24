@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * {@code requestId} is optional. When sent, repeating the same request returns the routine it created (200,
@@ -19,6 +20,7 @@ public record RoutineCreateRequest(
         String description,
         Difficulty difficulty,
         RoutineVisibility visibility,
+        @JsonDeserialize(using = BoundedListDeserializer.RoutineItems.class)
         @NotEmpty @Size(max = 100) List<@NotNull @Valid RoutineItemRequest> items,
         @Pattern(regexp = "^[0-9A-Za-z_-]{1,100}$") String requestId) {
 }

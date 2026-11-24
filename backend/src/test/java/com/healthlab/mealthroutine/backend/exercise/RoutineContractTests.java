@@ -397,6 +397,61 @@ class RoutineContractTests {
     }
 
     @Test
+    void revisionAndRequestIdAreShownOnlyToTheOwner() throws Exception {
+        String id = routineId(send(post(ROUTINES), ME,
+                routine("공개 루틴", PER_SET_ITEMS, "rt-private-key").replace("{\"routineName\"",
+                        "{\"visibility\":\"public\",\"routineName\"")));
+
+        for (String viewer : new String[] {null, OTHER}) {
+            perform(get(ROUTINES + "/" + id), viewer)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.routineName").value("공개 루틴"))
+                    .andExpect(jsonPath("$.data.items[0].sets.length()").value(3))
+                    .andExpect(jsonPath("$.data.revision").doesNotExist())
+                    .andExpect(jsonPath("$.data.requestId").doesNotExist());
+            perform(get(ROUTINES), viewer)
+                    .andExpect(jsonPath("$.data.content[0].routineId").value(Long.valueOf(id)))
+                    .andExpect(jsonPath("$.data.content[0].revision").doesNotExist())
+                    .andExpect(jsonPath("$.data.content[0].requestId").doesNotExist());
+        }
+
+        perform(get(ROUTINES + "/" + id), ME)
+                .andExpect(jsonPath("$.data.revision").value(1))
+                .andExpect(jsonPath("$.data.requestId").value("rt-private-key"));
+        perform(get(ROUTINES), ME)
+                .andExpect(jsonPath("$.data.content[0].revision").value(1))
+                .andExpect(jsonPath("$.data.content[0].requestId").value("rt-private-key"));
+    }
+
+    @Test
+    void oversizedListsAreRejectedWhileReading() throws Exception {
+        // Far past the limits: the list reader stops at 201 sets / 101 items instead of building everything.
+        String manySets = String.join(",", java.util.Collections.nCopies(100_000, "{}"));
+        send(post(ROUTINES), ME, routine("세트 폭탄",
+                "[{\"exerciseId\":2001,\"recordType\":\"reps\",\"sets\":[" + manySets + "]}]", null))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath(ERROR_CODE).value(INVALID_REQUEST));
+
+        String item = "{\"exerciseId\":2001,\"targetSets\":1}";
+        send(post(ROUTINES), ME, routine("항목 101개",
+                "[" + String.join(",", java.util.Collections.nCopies(101, item)) + "]", null))
+                .andExpect(status().isBadRequest());
+        // Exactly at the limits is fine.
+        send(post(ROUTINES), ME, routine("항목 100개",
+                "[" + String.join(",", java.util.Collections.nCopies(100, item)) + "]", null))
+                .andExpect(status().isCreated());
+        String sets200 = String.join(",", java.util.Collections.nCopies(200, "{\"reps\":1}"));
+        send(post(ROUTINES), ME, routine("세트 200개",
+                "[{\"exerciseId\":2001,\"recordType\":\"reps\",\"sets\":[" + sets200 + "]}]", null))
+                .andExpect(status().isCreated());
+        // The list reader keeps a null element so the usual check reports it.
+        send(post(ROUTINES), ME, routine("null 항목", "[null]", null)).andExpect(status().isBadRequest());
+        send(post(ROUTINES), ME, routine("배열 아님",
+                "[{\"exerciseId\":2001,\"recordType\":\"reps\",\"sets\":{\"reps\":1}}]", null))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void oldItemsHaveNoRecordTypeOrSets() throws Exception {
         String id = routineId(send(post(ROUTINES), ME, """
                 {"routineName":"예전 루틴","items":[{"exerciseId":2001,"targetSets":3,"targetReps":10}]}""")

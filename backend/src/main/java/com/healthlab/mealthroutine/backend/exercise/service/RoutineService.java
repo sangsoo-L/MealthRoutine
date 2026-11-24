@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -57,7 +58,7 @@ public class RoutineService {
                 if (!sameContent(existing.get(), request, visibility, items)) {
                     throw new BusinessException(ErrorCode.REQUEST_CONFLICT);
                 }
-                return new CreateResult(RoutineResponse.detail(existing.get(), false), false);
+                return new CreateResult(RoutineResponse.detail(existing.get(), userId, false), false);
             }
         }
 
@@ -69,19 +70,24 @@ public class RoutineService {
         routine.setVisibility(visibility);
         routine.setRequestId(request.requestId());
         replaceItems(routine, items);
-        return new CreateResult(RoutineResponse.detail(routineRepository.save(routine), true), true);
+        return new CreateResult(RoutineResponse.detail(routineRepository.save(routine), userId, true), true);
     }
 
     public PageResponse<RoutineResponse> getVisible(Long userId, int page, int size) {
         return PageResponse.from(routineRepository.findVisible(userId, PageRequest.of(page, size))
-                .map(RoutineResponse::summary));
+                .map(routine -> RoutineResponse.summary(routine, userId)));
     }
 
     public RoutineResponse get(Long userId, Long routineId) {
-        return RoutineResponse.detail(findReadable(userId, routineId));
+        return RoutineResponse.detail(findReadable(userId, routineId), userId);
     }
 
-    @Transactional
+    /**
+     * READ COMMITTED (see findOwnedForUpdate): after waiting for the row lock, the items read below must be the ones
+     * the previous update committed, not a snapshot from before the wait. When this joins an outer transaction (a
+     * test), Spring keeps the outer isolation; the single-threaded behavior is the same.
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public RoutineResponse update(Long userId, Long routineId, RoutineUpdateRequest request) {
         List<ItemSpec> items =
                 request.items() == null ? null : request.items().stream().map(RoutineService::toSpec).toList();
@@ -107,10 +113,10 @@ public class RoutineService {
         }
         routine.setRevision(routine.getRevision() + 1);
         routine.setUpdatedAt(LocalDateTime.now());
-        return RoutineResponse.detail(routine);
+        return RoutineResponse.detail(routine, userId);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void delete(Long userId, Long routineId, Integer expectedRevision) {
         ExerciseRoutineEntity routine = findOwnedForUpdate(userId, routineId);
         checkRevision(routine, expectedRevision);
@@ -126,7 +132,21 @@ public class RoutineService {
         return routine;
     }
 
+    /**
+     * Checks existence and ownership with plain reads first and locks the row only for its owner (security review):
+     * another member's PATCH/DELETE never holds a lock on someone else's routine, and an id that does not exist never
+     * reaches SELECT ... FOR UPDATE, which under REPEATABLE READ would gap-lock the end of the table and block every
+     * member's routine create. The callers run at READ COMMITTED, where InnoDB takes no gap locks for such searches
+     * and each read sees the latest commit, so reading before the lock does not leave a stale snapshot behind.
+     * After the lock both checks are repeated: the routine may have been deleted while this request waited.
+     */
     private ExerciseRoutineEntity findOwnedForUpdate(Long userId, Long routineId) {
+        if (!routineRepository.routineExists(routineId)) {
+            throw new BusinessException(ErrorCode.ROUTINE_NOT_FOUND);
+        }
+        if (!routineRepository.isOwnedBy(routineId, userId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
         ExerciseRoutineEntity routine = routineRepository.findForUpdate(routineId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROUTINE_NOT_FOUND));
         if (!routine.isOwnedBy(userId)) {
