@@ -74,34 +74,58 @@ export function getMyPageSummary(
 /** GET /api/v1/users/me/rewards 응답 */
 interface MyRewardResponse {
   level: number
-  levelName: string
   totalXp: number
   nextLevelXp: number | null // 최고 레벨이면 null
   balance: number
 }
 
-/** 레벨·포인트 구역을 서버 값으로 채운다. 실패하면 null(호출한 쪽이 연결 전 상태를 유지) */
+const isCount = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
+
+/**
+ * 응답 검증: 화면에 쓰는 필드만 타입과 범위를 확인한다. 계약과 다르면 null(레벨·포인트는 "연결 전" 유지).
+ * level은 1 이상 정수, totalXp·balance는 0 이상 정수(정산 전 0은 정상 값), nextLevelXp는 0 이상 정수 또는 최고 레벨의 null.
+ */
+export function parseRewardResponse(raw: unknown): MyRewardResponse | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const r = raw as Record<string, unknown>
+  if (!isCount(r.level) || r.level < 1) return null
+  if (!isCount(r.totalXp) || !isCount(r.balance)) return null
+  if (r.nextLevelXp !== null && !isCount(r.nextLevelXp)) return null
+  return {
+    level: r.level,
+    totalXp: r.totalXp,
+    nextLevelXp: r.nextLevelXp,
+    balance: r.balance,
+  }
+}
+
+/** 레벨·포인트 구역을 서버 값으로 채운다. 요청 실패나 계약과 다른 응답이면 null(호출한 쪽이 연결 전 상태로 둔다) */
 export async function fetchServerRewardSlots(): Promise<Pick<
   MyPageSummary,
   'level' | 'points'
 > | null> {
+  let r: MyRewardResponse | null
   try {
-    const r = await apiRequest<MyRewardResponse>('GET', '/users/me/rewards')
-    return {
-      level: {
-        state: 'ready',
-        data: {
-          level: r.level,
-          progress:
-            r.nextLevelXp === null
-              ? null // 최고 레벨이면 진행바 없음
-              : { experience: r.totalXp, nextLevelExperience: r.nextLevelXp },
-        },
-      },
-      points: { state: 'ready', data: { balance: r.balance } },
-    }
+    r = parseRewardResponse(
+      await apiRequest<unknown>('GET', '/users/me/rewards'),
+    )
   } catch {
     return null
+  }
+  if (!r) return null
+  return {
+    level: {
+      state: 'ready',
+      data: {
+        level: r.level,
+        progress:
+          r.nextLevelXp === null
+            ? null // 최고 레벨이면 진행바 없음
+            : { experience: r.totalXp, nextLevelExperience: r.nextLevelXp },
+      },
+    },
+    points: { state: 'ready', data: { balance: r.balance } },
   }
 }
 
