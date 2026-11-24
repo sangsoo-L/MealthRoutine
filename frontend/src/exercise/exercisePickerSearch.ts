@@ -8,7 +8,7 @@ import type { Exercise } from './exerciseTypes.ts'
  * 하나라도 포함되면 일치한다(화면명세 v5.0·스토리보드 W13의 "운동명·부위·도구 검색"). 필드를 이어 붙인 문자열에서 찾지 않고 각 값을 따로 비교하므로
  * 서로 다른 필드가 이어져 생기는 우연한 일치가 없다. 대소문자·공백은 무시한다(운동 탐색 E01의 이름 검색과 같은 규칙).
  * 검색어가 비어 있으면 모든 운동이 일치한다(스토리보드의 includes('') 동작).
- * 운동 검색 API(GET /api/v1/exercises)의 keyword 의미와 부위 필드는 미확정이라, 이 규칙은 이미 불러온 데이터에 대한 화면 규칙이며 API 계약이 아니다.
+ * 이 규칙은 이미 불러온 데이터에 대한 화면 규칙이며 API 계약이 아니다(운동 API의 keyword 검색은 쓰지 않고 받아 둔 전체 운동에서 찾는다).
  */
 const normalize = (text: string) => text.replace(/\s+/g, '').toLowerCase()
 

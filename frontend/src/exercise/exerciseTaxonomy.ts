@@ -1,9 +1,8 @@
 /**
  * 운동 분류(난이도·운동 도구·운동 부위). 운동 탐색(E01)의 필터와 운동 데이터(Exercise)가 같은 값을 쓴다.
  *
- * 값은 화면명세 v5.0 E01(스토리보드 v5.0)의 필터를 따른다. 운동 검색 API(GET /api/v1/exercises)는 명세서에 경로만 있고 요청·응답
- * 구조가 정의되지 않았으므로(README의 API 인수인계) 아래 값은 화면과 개발용 Mock이 맞춰 쓰는 것이며 API 코드값이 아니다.
- * 백엔드와 확정되면 맞춘다.
+ * 값은 화면명세 v5.0 E01(스토리보드 v5.0)의 필터를 따른다. 아래 값은 화면이 쓰는 것이며 API 코드값이 아니다.
+ * 운동 API(GET /api/v1/exercises) 응답의 난이도·부위·도구 값은 운동 저장소(seed/seedCatalog.ts, api/apiExerciseRepository.ts)가 이 값으로 바꾼다.
  */
 
 export const DIFFICULTIES = ['초급', '중급', '고급'] as const

@@ -44,7 +44,7 @@ export interface Exercise {
  * 운동 검색 결과 한 건(목록 카드·통합검색 행용 요약). 운동 부위·도구는 운동 데이터(Exercise)의 배열을 그대로 담는다.
  * 화면에 보이는 문자열("가슴·어깨·팔")은 표시하는 쪽이 만든다. 문자열로 합쳐 넘기지 않으므로 다시 나눌 필요가 없고,
  * 운동 선택 화면(루틴·기록)이나 즐겨찾기 목록 같은 곳이 부위·도구를 따로 쓸 수 있다.
- * 운동 검색 API(GET /api/v1/exercises)의 응답 구조는 미확정이라 이 타입은 화면을 그리기 위한 임시 형태이지 API 계약이 아니다.
+ * 이 타입은 화면을 그리기 위한 형태이지 API 계약이 아니다(운동 API 응답은 docs/api_exercise_v1.0.md, 변환은 api/apiExerciseRepository.ts).
  * 페이지(pages/)와 컴포넌트(components/)가 모두 이 도메인 타입을 참조한다(페이지 모듈은 import하지 않는다).
  */
 export interface ExerciseResult {
