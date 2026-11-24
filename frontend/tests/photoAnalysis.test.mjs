@@ -399,8 +399,8 @@ test('I04-1 결과 없음·실패·연결 전·시작 전: 각각 다른 안내�
   )
 })
 
-test('연결 경계: 서버 연결은 아직 없고(null), 개발 검증 상태는 예시 표지를 단다', async () => {
-  assert.equal(contract.createPhotoAnalysisSource(), null)
+test('연결 경계: 개발 환경에서는 실제 분석 소스를 만들고 예시 표지도 지원한다', async () => {
+  assert.equal(typeof contract.createPhotoAnalysisSource()?.analyze, 'function')
   assert.equal(dev.parseDevAnalysisPreview('?devAnalysis=result'), 'result')
   assert.equal(dev.parseDevAnalysisPreview('?devAnalysis=nope'), null)
   assert.equal(dev.parseDevAnalysisPreview(''), null)

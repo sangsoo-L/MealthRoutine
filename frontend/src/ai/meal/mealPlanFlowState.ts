@@ -7,8 +7,10 @@ import {
   setFoodType,
   toggleAllMeals,
   toggleExcluded,
+  toggleExcludedGroup,
   toggleKind,
   toggleMeal,
+  type ExcludedFoodGroup,
   type FoodTypeChoice,
   type MealPlanSelection,
   type PlanStep,
@@ -60,6 +62,7 @@ export type FlowAction =
   | { type: 'setFoodType'; value: FoodTypeChoice }
   | { type: 'toggleKind'; kind: string }
   | { type: 'toggleExcluded'; foodId: string }
+  | { type: 'toggleExcludedGroup'; group: ExcludedFoodGroup }
   | { type: 'resetConditions' }
   | { type: 'syncGoal'; stamp: string }
   | { type: 'syncDate'; date: LocalDate }
@@ -110,7 +113,8 @@ function sameSelection(a: MealPlanSelection, b: MealPlanSelection): boolean {
     sameList(a.meals, b.meals) &&
     a.conditions.type === b.conditions.type &&
     sameList(a.conditions.kinds, b.conditions.kinds) &&
-    sameList(a.conditions.excludedFoodIds, b.conditions.excludedFoodIds)
+    sameList(a.conditions.excludedFoodIds, b.conditions.excludedFoodIds) &&
+    sameList(a.conditions.excludedFoodGroups ?? [], b.conditions.excludedFoodGroups ?? [])
   )
 }
 
@@ -161,6 +165,11 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
       return withSelection(state, {
         ...state.selection,
         conditions: toggleExcluded(state.selection.conditions, action.foodId),
+      })
+    case 'toggleExcludedGroup':
+      return withSelection(state, {
+        ...state.selection,
+        conditions: toggleExcludedGroup(state.selection.conditions, action.group),
       })
     case 'resetConditions':
       return hasAnyCondition(state.selection.conditions)

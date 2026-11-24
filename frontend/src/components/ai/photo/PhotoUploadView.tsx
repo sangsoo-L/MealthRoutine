@@ -53,7 +53,7 @@ export interface PhotoUploadViewProps {
 
 /**
  * I04 사진 음식 분석과 확인. 식단 사진을 고르고 미리 본 뒤 분석을 시작하는 화면이다.
- * 사진은 이 기기에서 미리보기만 하고 서버로 보내지 않는다(분석 서버 연결 전). 분석이 성공한 것처럼 보이는 표현은 쓰지 않는다.
+ * 분석 시작 전에 사진을 미리 보고, 사용자가 분석을 시작하면 연결된 AI 서버에 전송한다. 분석이 성공한 것처럼 보이는 표현은 쓰지 않는다.
  *
  * - 파일 선택은 버튼이 숨은 파일 입력을 열어 준다(키보드로 누를 수 있다). 형식·용량 검사는 `validatePhotoFile`이 하고, 거부 이유는 role="alert"로 알린다.
  * - 이미지는 비율을 유지한 채(object-contain) 잘리지 않게 보인다. 파일명은 길면 줄바꿈한다.
@@ -278,8 +278,8 @@ export default function PhotoUploadView({
               사진 사용 안내
             </h2>
             <p className="mt-1 text-support leading-relaxed font-normal text-muted">
-              올린 사진은 음식 분석에만 사용해요. 지금은 이 기기에서 미리보기만
-              하고 서버로 보내지 않아요.
+              올린 사진은 음식 분석에만 사용해요. 분석 시작을 누르면 AI 서버로 전송되며,
+          분석 요청 전에는 이 기기에서만 미리봅니다.
             </p>
           </section>
 

@@ -1,4 +1,5 @@
 import type { LocalDate } from '../../exercise/workoutTypes.ts'
+import { createLocalMealPlanSource } from './mealPlanApi.ts'
 import type { MealType } from '../../food/mealModel.ts'
 
 /**
@@ -20,14 +21,18 @@ export interface MealPlanNutrients {
   fatG: NutrientAmount
 }
 
-/** 추천 요청. 목표 수치는 담지 않는다(서버가 저장된 목표를 쓴다). goalUpdatedAt은 화면이 본 목표 시점이다. */
+/** 추천 요청. AI 목표 열량은 끼니당 값이며 각 끼니별로 별도 호출한다. goalUpdatedAt은 화면이 본 저장된 목표 시점이다. */
 export interface MealPlanRequest {
   targetDate: LocalDate
   meals: readonly MealType[]
   foodType: string | null
   foodKinds: readonly string[]
   excludedFoodIds: readonly string[]
+  /** 기호상 피하고 싶은 넓은 음식 범주(메뉴명 기준, 알레르기 검증 아님). */
+  excludedFoodGroups?: readonly string[]
   goalUpdatedAt: string
+  /** 끼니당 목표 열량. 선택한 각 끼니의 별도 AI 요청에 동일하게 적용됩니다. */
+  targetCaloriesKcal?: number
 }
 
 /** 끼니별 목표량과 후보 수를 물을 때 쓰는 입력(요청에서 음식 조건만 뺀 것). */
@@ -35,6 +40,8 @@ export interface MealPlanTargetsQuery {
   targetDate: LocalDate
   meals: readonly MealType[]
   goalUpdatedAt: string
+  /** 끼니당 목표 열량. */
+  targetCaloriesKcal?: number
 }
 
 /** I03-1: 끼니별 목표량(서버 계산 값). */
@@ -44,7 +51,7 @@ export interface MealPlanTargets {
 
 /** I03-2: 조건에 맞는 계산 가능한 후보 수(서버 계산 값). */
 export interface MealPlanCandidateCount {
-  count: number
+  count: number | null
 }
 
 export interface MealPlanItem {
@@ -94,11 +101,11 @@ export interface MealPlanSource {
 }
 
 /**
- * 연결된 서버 구현. 식단 추천 API가 확정되기 전이라 항상 null이다(연결 전).
+ * 로컬 개발에서는 FastAPI 직접 연결을 사용하고 운영 빌드에서는 Spring 중계 작업 전까지 null이다.
  * null이면 모든 단계 화면이 서버 값 대신 "연결 대기"를 보이고 추천 요청은 "연결 전" 상태가 된다. 가짜 결과를 만들지 않는다.
  */
 export function createMealPlanSource(): MealPlanSource | null {
-  return null
+  return import.meta.env.DEV ? createLocalMealPlanSource() : null
 }
 
 /**

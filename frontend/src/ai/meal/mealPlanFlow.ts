@@ -9,7 +9,7 @@ import {
 } from './mealPlanPaths.ts'
 
 /**
- * AI 식단 플랜(I03~I03-3)의 단계 입력 모델(순수 함수). 영양 계산·끼니 배분·후보 수 계산·추천은 하지 않는다(서버 담당).
+ * AI 식단 플랜(I03~I03-3)의 단계 입력 모델(순수 함수). 영양 계산·실제 끼니별 목표 산정·후보 수 계산·추천은 하지 않는다(서버 담당).
  * 이 파일은 사용자가 고른 값(끼니·음식 조건)과 그 값을 다루는 규칙만 가진다.
  * 식품 구분·음식 종류의 값은 F01(`pages/foodSearch.ts`)과 같은 것을 쓴다(명세 I03-2: F01과 동일).
  */
@@ -38,6 +38,20 @@ export const STEP_PATH: Record<PlanStep, string> = {
   plan: PATH_AI_MEAL_PLAN,
 }
 
+/** 메뉴명으로 찾을 수 있는 폭넓은 기호상 제외 그룹. 알레르기 안전 검사와 다릅니다. */
+export const EXCLUDED_FOOD_GROUPS = [
+  { id: 'chicken', label: '닭고기류' },
+  { id: 'beef', label: '소고기류' },
+  { id: 'pork', label: '돼지고기류' },
+  { id: 'fish', label: '생선류' },
+  { id: 'seafood', label: '해산물류' },
+  { id: 'egg', label: '달걀 요리' },
+  { id: 'dairy', label: '유제품류' },
+  { id: 'coffee', label: '커피 음료' },
+  { id: 'mushroom', label: '버섯류' },
+] as const
+export type ExcludedFoodGroup = (typeof EXCLUDED_FOOD_GROUPS)[number]['id']
+
 /** 식품 구분 선택. null은 "전체"(조건 없음)다. */
 export type FoodTypeChoice = (typeof FOOD_TYPES)[number] | null
 
@@ -48,12 +62,15 @@ export interface MealPlanConditions {
   kinds: readonly string[]
   /** 추천에서 뺄 음식 id(여러 개). */
   excludedFoodIds: readonly string[]
+  /** 기호상 제외할 음식 범주(메뉴명 기준, 알레르기 판별 아님). */
+  excludedFoodGroups: readonly ExcludedFoodGroup[]
 }
 
 export const INITIAL_CONDITIONS: MealPlanConditions = {
   type: null,
   kinds: [],
   excludedFoodIds: [],
+  excludedFoodGroups: [],
 }
 
 export interface MealPlanSelection {
@@ -149,11 +166,23 @@ export function toggleExcluded(
   return { ...conditions, excludedFoodIds }
 }
 
+export function toggleExcludedGroup(
+  conditions: MealPlanConditions,
+  group: ExcludedFoodGroup,
+): MealPlanConditions {
+  const groups = conditions.excludedFoodGroups ?? []
+  const excludedFoodGroups = groups.includes(group)
+    ? groups.filter((id) => id !== group)
+    : [...groups, group]
+  return { ...conditions, excludedFoodGroups }
+}
+
 export function hasAnyCondition(conditions: MealPlanConditions): boolean {
   return (
     conditions.type !== null ||
     conditions.kinds.length > 0 ||
-    conditions.excludedFoodIds.length > 0
+    conditions.excludedFoodIds.length > 0 ||
+    (conditions.excludedFoodGroups?.length ?? 0) > 0
   )
 }
 
@@ -193,12 +222,27 @@ export function describeConditions(
   conditions: MealPlanConditions,
   foodNameOf: (id: string) => string | null = () => null,
 ): { type: string; kinds: string; excluded: string } {
-  const names = conditions.excludedFoodIds.map(
-    (id) => foodNameOf(id) ?? '선택한 음식',
-  )
+  const names = [
+    ...(conditions.excludedFoodGroups ?? []).map(
+      (id) => EXCLUDED_FOOD_GROUPS.find((group) => group.id === id)?.label ?? id,
+    ),
+    ...conditions.excludedFoodIds.map(
+      (id) => foodNameOf(id) ?? '선택한 음식',
+    ),
+  ]
   return {
     type: conditions.type ?? '전체',
     kinds: conditions.kinds.length > 0 ? conditions.kinds.join(' · ') : '전체',
     excluded: names.length > 0 ? names.join(' · ') : '없음',
   }
+}
+
+/**
+ * 로컬 시연용 끼니당 기본 열량: 하루 목표를 3끼로 나눈 뒤 100kcal 단위로 반올림.
+ * 예: 하루 2,000kcal → 끼니당 700kcal. 선택한 끼니 수와 무관합니다.
+ * 서버 공식 목표가 아닌 제안값이며 사용자가 직접 수정할 수 있습니다.
+ */
+export function suggestedSelectedCalories(dailyGoalKcal: number, _selectedMealCount: number): number {
+  void _selectedMealCount
+  return Math.max(1, Math.min(8000, Math.round(dailyGoalKcal / 300) * 100))
 }

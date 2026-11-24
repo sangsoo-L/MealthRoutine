@@ -1,22 +1,19 @@
 import { useMemo } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import type { MealPlanRequest } from '../ai/meal/mealPlanContract.ts'
-import { redirectStep, STEP_PATH } from '../ai/meal/mealPlanFlow.ts'
+import { redirectStep, STEP_PATH, suggestedSelectedCalories } from '../ai/meal/mealPlanFlow.ts'
 import { useMealPlanFlow } from '../ai/meal/mealPlanFlowContext.ts'
 import { PATH_AI_MEAL_PLAN } from '../ai/meal/mealPlanPaths.ts'
 import { useFlowTomorrow } from '../ai/meal/useFlowTomorrow.ts'
 import { useCandidateCount } from '../ai/meal/useMealPlanInfo.ts'
 import MealPlanFoodsView from '../components/ai/meal/MealPlanFoodsView.tsx'
 import MealPlanGate from '../components/ai/meal/MealPlanGate.tsx'
-import { useFoods } from '../food/useFoods.ts'
 import type { MealGoal } from '../meal-goal/mealGoalTypes.ts'
 
 function FoodsStep({ goal, devSearch }: { goal: MealGoal; devSearch: string }) {
   const flow = useMealPlanFlow()
   const navigate = useNavigate()
   useFlowTomorrow()
-  // 제외할 음식을 고르는 목록만 F01과 같은 음식 조회에서 읽는다(읽기 전용). 후보 수 계산에는 쓰지 않는다.
-  const { state: foods, reload } = useFoods()
   const { selection } = flow
   const goalUpdatedAt = goal.updatedAt
   const request = useMemo<MealPlanRequest | null>(
@@ -29,11 +26,12 @@ function FoodsStep({ goal, devSearch }: { goal: MealGoal; devSearch: string }) {
             foodType: selection.conditions.type,
             foodKinds: selection.conditions.kinds,
             excludedFoodIds: selection.conditions.excludedFoodIds,
+            excludedFoodGroups: selection.conditions.excludedFoodGroups,
             goalUpdatedAt,
           },
     [selection, goalUpdatedAt],
   )
-  // 후보 수는 서버가 계산할 값이다(연결 전이면 "연결 대기").
+  // 현재 FastAPI에는 후보 수 별도 조회 API가 없으므로 미제공 상태로 표시한다.
   const candidates = useCandidateCount(request)
 
   const back = redirectStep('foods', selection)
@@ -42,19 +40,19 @@ function FoodsStep({ goal, devSearch }: { goal: MealGoal; devSearch: string }) {
   }
   return (
     <MealPlanFoodsView
+      targetCalories={flow.targetCalories ?? String(suggestedSelectedCalories(goal.kcal, selection.meals.length))}
+      onTargetCaloriesChange={flow.setTargetCalories}
       selection={selection}
-      foods={foods}
       candidates={candidates}
       notice={flow.notice}
       devSearch={devSearch}
       onSetType={flow.setFoodType}
       onToggleKind={flow.toggleKind}
-      onToggleExcluded={flow.toggleExcluded}
+      onToggleExcludedGroup={flow.toggleExcludedGroup}
       onReset={flow.resetConditions}
-      onRetryFoods={reload}
       onDismissNotice={flow.dismissNotice}
       onNext={() => {
-        flow.startRequest(goalUpdatedAt)
+        flow.startRequest(goalUpdatedAt, goal.kcal)
         navigate(`${PATH_AI_MEAL_PLAN}${devSearch}`)
       }}
     />

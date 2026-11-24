@@ -12,6 +12,7 @@ let server
 let Flow
 let State
 let Contract
+let Api
 let Paths
 let Dev
 let GoalView
@@ -35,6 +36,7 @@ before(async () => {
   Flow = await load('/src/ai/meal/mealPlanFlow.ts')
   State = await load('/src/ai/meal/mealPlanFlowState.ts')
   Contract = await load('/src/ai/meal/mealPlanContract.ts')
+  Api = await load('/src/ai/meal/mealPlanApi.ts')
   Paths = await load('/src/ai/meal/mealPlanPaths.ts')
   Dev = await load('/src/ai/meal/devGoalPreview.ts')
   GoalView = (await load('/src/components/ai/meal/MealPlanGoalView.tsx'))
@@ -83,6 +85,15 @@ const goalFixture = (over = {}) => ({
 })
 
 // ── 단계 입력 모델 ────────────────────────────────────────────────────────────
+
+test('AI 추천 기본 열량: 하루 2000kcal에서 선택 끼니 수와 무관하게 끼니당 700kcal', () => {
+  assert.equal(Flow.suggestedSelectedCalories(2000, 1), 700)
+  assert.equal(Flow.suggestedSelectedCalories(2000, 2), 700)
+  assert.equal(Flow.suggestedSelectedCalories(2000, 3), 700)
+  assert.equal(Flow.suggestedSelectedCalories(2100, 1), 700)
+  assert.equal(Flow.suggestedSelectedCalories(2100, 3), 700)
+  assert.equal(Flow.suggestedSelectedCalories(1500, 3), 500)
+})
 test('끼니 선택: 항상 아침·점심·저녁 순서이고 처음 고를 때 날짜가 정해진다', () => {
   let s = Flow.toggleMeal(Flow.EMPTY_SELECTION, 'dinner', DATE)
   s = Flow.toggleMeal(s, 'breakfast', '2099-01-01')
@@ -124,6 +135,18 @@ test('식품 구분을 바꾸면 맞지 않는 음식 종류가 풀리고 어떤
     Flow.isConditionsValid({ ...c, type: '가공식품', kinds: ['곡류'] }),
     false,
   )
+})
+
+test('넓은 음식 범주를 토글하고 초기화하면 제외 조건도 해제된다', () => {
+  let c = Flow.toggleExcludedGroup(Flow.INITIAL_CONDITIONS, 'chicken')
+  c = Flow.toggleExcludedGroup(c, 'coffee')
+  assert.deepEqual(c.excludedFoodGroups, ['chicken', 'coffee'])
+  assert.equal(Flow.hasAnyCondition(c), true)
+  assert.equal(Flow.describeConditions(c).excluded, '닭고기류 · 커피 음료')
+  c = Flow.toggleExcludedGroup(c, 'chicken')
+  assert.deepEqual(c.excludedFoodGroups, ['coffee'])
+  c = Flow.toggleExcludedGroup(c, 'coffee')
+  assert.equal(Flow.hasAnyCondition(c), false)
 })
 
 test('제외 음식 선택·초기화 판정', () => {
@@ -392,11 +415,137 @@ const resultFixture = {
   ],
 }
 
-test('서버 연결은 아직 없다: 연결이 없으면 요청하지 않고 연결 전 상태다', async () => {
-  assert.equal(Contract.createMealPlanSource(), null)
+test('개발 환경에서는 추천 소스를 만들고, 연결이 없을 때는 요청하지 않는다', async () => {
+  assert.equal(typeof Contract.createMealPlanSource()?.requestPlan, 'function')
   assert.deepEqual(await Contract.runPlanRequest(null, request, signal), {
     status: 'unavailable',
   })
+})
+
+test('AI 추천 직접 호출: 세 끼는 각각 700kcal로 POST 3회, 탭별 결과는 구분', async () => {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body)
+    calls.push(body)
+    const meal = body.meal_types[0]
+    return {
+      ok: true,
+      json: async () => ({
+        status: 'generated',
+        meals: [{
+          meal_type: meal,
+          estimated_calories_kcal: 700,
+          reason: '끼니별 식단',
+          foods: [{
+            food_id: 123,
+            food_name: `${meal} 테스트 음식`,
+            quantity: 1,
+            nutrients: { calories_kcal: 700 },
+          }],
+        }],
+      }),
+    }
+  }
+  try {
+    const result = await Api.createLocalMealPlanSource().requestPlan({
+      ...request,
+      meals: ['breakfast', 'lunch', 'dinner'],
+      targetCaloriesKcal: 700,
+    }, new AbortController().signal)
+    assert.equal(calls.length, 3)
+    assert.deepEqual(calls.map((body) => body.meal_types), [
+      ['breakfast'], ['lunch'], ['dinner'],
+    ])
+    assert.deepEqual(calls.map((body) => body.target_calories_kcal), [700, 700, 700])
+    assert.deepEqual(result.meals.map((item) => item.meal), [
+      'breakfast', 'lunch', 'dinner',
+    ])
+    assert.deepEqual(result.meals.map((item) => item.totals.kcal), [700, 700, 700])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('AI 추천 직접 호출: 개발용 ID를 무시하고 넓은 제외 범주를 FastAPI로 보낸다', async () => {
+  const previous = globalThis.fetch
+  let payload = null
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body)
+    return { ok: true, json: async () => ({
+      status: 'generated',
+      meals: [{
+        meal_type: 'lunch',
+        estimated_calories_kcal: 701,
+        foods: [{ food_id: 42, food_name: '현미밥', quantity: 1 }],
+      }],
+    }) }
+  }
+  try {
+    await Api.createLocalMealPlanSource().requestPlan({
+      ...request,
+      targetCaloriesKcal: 700,
+      excludedFoodIds: ['dev-food-2', '31'],
+      excludedFoodGroups: ['chicken', 'coffee'],
+    }, new AbortController().signal)
+    assert.deepEqual(payload.excluded_food_groups, ['chicken', 'coffee'])
+    assert.deepEqual(payload.excluded_food_ids, [31])
+  } finally {
+    globalThis.fetch = previous
+  }
+})
+
+test('음식 종류 선택: 면류와 식품 구분이 API 본문에 독립된 조건으로 전달된다', async () => {
+  const originalFetch = globalThis.fetch
+  let payload = null
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body)
+    return { ok: true, json: async () => ({
+      status: 'generated',
+      meals: [{ meal_type: 'lunch', estimated_calories_kcal: 700,
+        foods: [{ food_id: 100, food_name: '우동_일식', quantity: 1 }] }],
+    }) }
+  }
+  try {
+    await Api.createLocalMealPlanSource().requestPlan({
+      ...request, meals: ['lunch'], targetCaloriesKcal: 700,
+      foodType: '음식·요리', foodKinds: ['면류'], excludedFoodGroups: ['dairy'],
+    }, new AbortController().signal)
+    assert.equal(payload.food_type, '음식·요리')
+    assert.deepEqual(payload.food_kinds, ['면류'])
+    assert.deepEqual(payload.excluded_food_groups, ['dairy'])
+    assert.deepEqual(payload.meal_types, ['lunch'])
+    assert.equal(payload.target_calories_kcal, 700)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('AI 추천 직접 호출: 점심 하나 선택 시 700kcal로 POST 1회', async () => {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(options.body))
+    return { ok: true, json: async () => ({
+      status: 'generated',
+      meals: [{
+        meal_type: 'lunch',
+        estimated_calories_kcal: 700,
+        foods: [{ food_id: 100, food_name: '점심 식단', quantity: 1 }],
+      }],
+    }) }
+  }
+  try {
+    const result = await Api.createLocalMealPlanSource().requestPlan({
+      ...request, meals: ['lunch'], targetCaloriesKcal: 700,
+    }, new AbortController().signal)
+    assert.equal(calls.length, 1)
+    assert.deepEqual(calls[0].meal_types, ['lunch'])
+    assert.equal(calls[0].target_calories_kcal, 700)
+    assert.equal(result.meals[0].meal, 'lunch')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('요청 실행: 결과·결과 없음·오류를 구분하고 예외를 결과 없음으로 바꾸지 않는다', async () => {
@@ -608,9 +757,8 @@ const foodsProps = (over = {}) => ({
   notice: null,
   onSetType: noop,
   onToggleKind: noop,
-  onToggleExcluded: noop,
+  onToggleExcludedGroup: noop,
   onReset: noop,
-  onRetryFoods: noop,
   onDismissNotice: noop,
   onNext: noop,
   ...over,
@@ -682,48 +830,22 @@ test('I03-2: 서버가 후보 0개라고 알려 준 경우에만 추천 생성�
   }
 })
 
-test('I03-2: 제외 음식은 조회 상태별로 알리고 음식 목록은 읽기 전용으로만 쓴다', () => {
-  const state = (foods) =>
-    text(html(createElement(FoodsView, foodsProps({ foods }))))
-  assert.match(
-    state({ status: 'unavailable' }),
-    /음식 데이터가 연결되기 전이라/,
+test('I03-2: 메뉴명 기준 넓은 제외 범주를 선택하고, 알레르기 안전과 구분한다', () => {
+  const conditions = Flow.toggleExcludedGroup(
+    Flow.toggleExcludedGroup(picked.conditions, 'chicken'),
+    'coffee',
   )
-  assert.match(state({ status: 'loading' }), /음식 목록을 불러오는 중/)
-  assert.match(state({ status: 'error' }), /음식 목록을 불러오지 못했어요/)
-  assert.match(
-    state({ status: 'ready', foods: [] }),
-    /고를 수 있는 음식이 없어요/,
-  )
-  const foods = {
-    status: 'ready',
-    foods: [
-      {
-        id: 'dev-food-1',
-        name: '현미밥',
-        category: '한식',
-        per100g: { kcal: 1, protein: 1, fat: 1, carb: 1 },
-        allergyNote: null,
-        source: { kind: 'dev-sample', label: '개발용 예시 데이터' },
-      },
-    ],
-  }
-  const out = html(
-    createElement(
-      FoodsView,
-      foodsProps({
-        foods,
-        selection: {
-          ...picked,
-          conditions: Flow.toggleExcluded(picked.conditions, 'dev-food-1'),
-        },
-      }),
-    ),
-  )
-  assert.match(text(out), /현미밥/)
-  assert.match(text(out), /개발용 예시 데이터/)
-  assert.match(text(out), /1개 선택/)
-  assert.match(text(out), /제외 음식 현미밥/)
+  const out = html(createElement(FoodsView, foodsProps({
+    selection: { ...picked, conditions },
+  })))
+  const visible = text(out)
+  assert.match(visible, /닭고기류/)
+  assert.match(visible, /커피 음료/)
+  assert.match(visible, /2개 선택/)
+  assert.match(visible, /메뉴 이름 기반 기호 필터/)
+  assert.match(visible, /알레르기 안전성을 보장하지 않습니다/)
+  assert.doesNotMatch(out, /dev-food-1|개발용 예시 데이터/)
+  assert.match(visible, /제외 음식 닭고기류 · 커피 음료/)
 })
 
 test('I03-2: 조건이 없으면 초기화가 막히고 전체 추천 안내가 나온다. 이전은 I03-1', () => {
@@ -973,7 +1095,7 @@ function sourceFiles(dir) {
     .map((entry) => `${dir}${entry.name}`)
 }
 
-test('범위 준수: 이 흐름은 계산·추천·저장·네트워크 코드를 쓰지 않는다', () => {
+test('범위 준수: API 어댑터 이외의 AI 화면은 저장·네트워크 코드를 쓰지 않는다', () => {
   const files = [
     ...sourceFiles('../src/ai/meal/'),
     ...sourceFiles('../src/components/ai/meal/'),
@@ -992,11 +1114,16 @@ test('범위 준수: 이 흐름은 계산·추천·저장·네트워크 코드�
       `${file}: 계산·추천 코드 연결`,
     )
     // 저장·네트워크·체험 횟수·권한을 다루지 않는다
-    assert.doesNotMatch(
-      body,
-      /localStorage|sessionStorage|indexedDB|fetch\(|axios|XMLHttpRequest/,
-      `${file}: 저장·네트워크`,
-    )
+    // 직전 AI 직접 연결 패치의 mealPlanApi.ts만 실제 HTTP 요청을 담당한다.
+    if (file.endsWith('/mealPlanApi.ts')) {
+      assert.match(body, /fetch\(/)
+    } else {
+      assert.doesNotMatch(
+        body,
+        /localStorage|sessionStorage|indexedDB|fetch\(|axios|XMLHttpRequest/,
+        `${file}: 저장·네트워크`,
+      )
+    }
     assert.doesNotMatch(
       body,
       /MealPlanRepository|mealPlanSource|mealGoalSource|saveGoal|saveFromDraft|entitlement|aiTrial/,
