@@ -41,6 +41,16 @@ const mockEmptyPlan = (h) =>
   };
 })()`)
 
+// 실제 서버의 후보 없음 422 응답과 동일한 형식으로 모의 처리한다.
+const mockNoCandidates = (h) =>
+  h.ev(`(()=>{
+  const original = window.fetch.bind(window);
+  window.fetch = (url, options) => {
+    if (!String(url).endsWith('/internal/ai/diet-recommendations')) return original(url, options);
+    return Promise.resolve(new Response(JSON.stringify({detail:'선택한 음식 종류와 제외 조건에 맞는 추천 후보가 없습니다. 조건을 변경해 주세요.'}), {status:422, headers:{'Content-Type':'application/json'}}));
+  };
+})()`)
+
 const mainText = (h) => h.ev(`document.querySelector('main').innerText`)
 const attr = (h, sel, name) =>
   h.ev(
@@ -188,6 +198,29 @@ await scenario('C-dev-goal-states', async (h) => {
   )
   check(h, 'C9. 계산 기준 검증 전 표시', /계산 기준 검증 전/.test(t))
   check(h, 'C10. 남은 체험 횟수를 표시하지 않는다', !/남은 .*회|회 남/.test(t))
+})
+
+await scenario('no-candidates-422', async (h) => {
+  await h.login('free')
+  await toMeals(h)
+  await h.ev(`document.querySelector('[data-plan-meal-all]').click()`)
+  await h.ev(`document.querySelector('[data-plan-next]').click()`)
+  await waitPath(h, '^/ai/meal/foods$')
+  await mockNoCandidates(h)
+  await h.ev(`document.querySelector('[data-plan-next]').click()`)
+  await waitPath(h, '^/ai/meal/plan$')
+  await mustUntil(h, `!!document.querySelector('[data-plan-state=empty]')`, 80)
+  check(
+    h,
+    '422. 추천 후보 없음은 음식 종류 및 제외 조건 변경을 안내한다',
+    /음식 종류를 넓히거나 제외 음식 조건을 조정/.test(await mainText(h)) &&
+      (await h.ev(
+        `!!document.querySelector('[data-plan-change]') && !document.querySelector('[data-plan-result],[data-plan-state=error]')`,
+      )),
+  )
+  await mustClick(h, '조건 변경하기')
+  await waitPath(h, '^/ai/meal/foods$')
+  check(h, '422. 조건 변경 화면으로 이동할 수 있다', true)
 })
 
 // ── D. 끼니 선택 → 음식 조건 → 추천 결과(연결 전), 단계 간 상태 유지 ──────────

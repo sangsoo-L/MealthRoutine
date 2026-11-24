@@ -596,6 +596,52 @@ test('AI 추천 직접 호출: 점심 하나 선택 시 700kcal로 POST 1회', a
   }
 })
 
+test('AI 추천 422: 후보 없음만 빈 결과로 처리하고 나머지 오류를 구분한다', async () => {
+  const originalFetch = globalThis.fetch
+  const noCandidates =
+    '선택한 음식 종류와 제외 조건에 맞는 추천 후보가 없습니다. 조건을 변경해 주세요.'
+  const cases = [
+    [422, { detail: noCandidates }, 'empty'],
+    [
+      422,
+      { detail: '식품 구분과 음식 종류 선택이 일치하지 않습니다.' },
+      'error',
+    ],
+    [422, { detail: [{ loc: ['body', 'target_calories_kcal'] }] }, 'error'],
+    [
+      422,
+      { detail: '알레르겐 원재료 정보가 검증된 추천 가능 음식이 없습니다.' },
+      'error',
+    ],
+    [502, { detail: noCandidates }, 'error'],
+    [422, null, 'error'],
+  ]
+  try {
+    for (const [status, body, expected] of cases) {
+      let calls = 0
+      globalThis.fetch = async () => {
+        calls += 1
+        return new Response(body === null ? 'not JSON' : JSON.stringify(body), {
+          status,
+        })
+      }
+      const result = await Contract.runPlanRequest(
+        Api.createLocalMealPlanSource(),
+        {
+          ...request,
+          meals: ['breakfast', 'lunch', 'dinner'],
+          targetCaloriesKcal: 700,
+        },
+        new AbortController().signal,
+      )
+      assert.deepEqual(result, { status: expected })
+      assert.equal(calls, 1)
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('요청 실행: 결과·결과 없음·오류를 구분하고 예외를 결과 없음으로 바꾸지 않는다', async () => {
   const run = (requestPlan) =>
     Contract.runPlanRequest({ requestPlan }, request, signal)
@@ -976,6 +1022,8 @@ test('I03-3: 요청 전·준비·분석 중·결과 없음·오류가 서로 다
   const empty = state('empty')
   assert.match(empty, /data-plan-retry=/)
   assert.match(text(empty), /이번 요청은 이용 횟수를 쓰지 않았어요/)
+  assert.match(text(empty), /음식 종류를 넓히거나 제외 음식 조건을 조정/)
+  assert.match(empty, /data-plan-change=/)
   const error = state('error')
   assert.match(error, /role="alert"/)
   assert.match(error, /data-plan-retry=/)

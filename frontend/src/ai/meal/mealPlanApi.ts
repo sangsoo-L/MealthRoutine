@@ -158,8 +158,23 @@ export function createLocalMealPlanSource(): MealPlanSource {
           }),
           signal,
         })
-        if (!response.ok)
+        if (!response.ok) {
+          // FastAPI의 후보 없음 응답만 빈 결과로 처리한다. 입력 검증 실패 등
+          // 다른 422 응답이나 서버 장애는 일반 오류로 유지한다.
+          if (response.status === 422) {
+            const body: unknown = await response.json().catch(() => null)
+            if (
+              body !== null &&
+              typeof body === 'object' &&
+              'detail' in body &&
+              body.detail ===
+                '선택한 음식 종류와 제외 조건에 맞는 추천 후보가 없습니다. 조건을 변경해 주세요.'
+            ) {
+              return null
+            }
+          }
           throw new Error(`${meal} 식단 추천 요청 실패 (${response.status})`)
+        }
         const parsed = parseDietRecommendation(
           (await response.json()) as unknown,
           {
