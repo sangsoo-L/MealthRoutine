@@ -3,7 +3,14 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { webcrypto } from 'node:crypto'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { after, before, test } from 'node:test'
 import { createElement } from 'react'
@@ -11,6 +18,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import { createServer } from 'vite'
 
+// 모드(F4): 이 파일은 개발용 저장소·화면 본문(props)을 직접 불러와 모드와 무관하다. 그래도 개인 .env.development.local의
+// VITE_DEV_AUTH 값이 결과를 바꾸지 않도록 빈 envDir과 VITE_DEV_AUTH 미설정(= 실제 모드)으로 서버를 만든다.
+const envDir = mkdtempSync(join(tmpdir(), 'pin-settings-env-'))
 let server,
   policy,
   messages,
@@ -24,7 +34,9 @@ let server,
 const T0 = Date.parse('2026-11-19T00:00:00.000Z')
 
 before(async () => {
+  delete process.env.VITE_DEV_AUTH
   server = await createServer({
+    envDir,
     server: { middlewareMode: true, watch: null, hmr: false, ws: false },
     appType: 'custom',
     logLevel: 'error',
@@ -51,6 +63,7 @@ before(async () => {
 })
 after(async () => {
   await server?.close()
+  rmSync(envDir, { recursive: true, force: true })
 })
 
 /** 메모리 저장소와 시계. failWriteAt은 지금부터 N번째 쓰기를 실패시킨다. */
@@ -116,7 +129,7 @@ test('등록 폼 검증: 빈 입력·숫자 아님·자릿수·확인 불일치'
   })
   assert.equal(v('123456', '123456'), null)
 })
-test('변경 폼 검증: 현재 번호 먼저, 현재와 같은 새 번호 거부', () => {
+test('변경 폼 검증: 현재 번호 먼저, 현재와 같은 새 번호 거부(모의 모드 기본, 서버 모드 허용은 pinConnect.test.mjs)', () => {
   const v = (current, next, confirm) =>
     policy.validatePinForm('change', { current, next, confirm })
   assert.equal(v('', '123456', '123456').field, 'current')
@@ -633,21 +646,24 @@ test('개발용 PIN 저장소 모듈은 DEV 분기의 exerciseGoalSource만 불�
     /import\.meta\.env\.DEV\s*\?\s*await import\('\.\/local\/localExerciseGoalRepository\.ts'\)/,
   )
 })
-test('운영 환경(NODE_ENV=production)에서는 개발용 PIN 저장소가 만들어지지 않고 연결 전 화면이 된다', () => {
+test('운영 환경(NODE_ENV=production)에서는 개발용 PIN 저장소가 만들어지지 않고 PIN은 서버 연결을 쓴다(F4)', () => {
   const script = `
     import { createServer } from 'vite'
     const server = await createServer({
+      envDir: process.env.PIN_TEST_ENV_DIR,
       server: { middlewareMode: true, watch: null, hmr: false, ws: false },
       appType: 'custom',
       logLevel: 'error',
     })
     const source = await server.ssrLoadModule('/src/exercise-goal/exerciseGoalSource.ts')
+    const pinSource = await server.ssrLoadModule('/src/pin-settings/pinSource.ts')
     await server.ssrLoadModule('/src/pin-settings/usePinStatus.ts')
     await server.ssrLoadModule('/src/pin-settings/usePinSettings.ts')
     // 정적 분석으로 모듈 그래프에 이름이 올라가도, 실제로 실행(평가)되지 않았으면 ssrModule이 비어 있다.
     const local = server.moduleGraph.urlToModuleMap.get('/src/exercise-goal/local/localExerciseGoalRepository.ts')
     console.log(JSON.stringify({
       repository: source.createExerciseGoalRepository('prod-user'),
+      pinMode: pinSource.createPinSource('prod-user')?.mode ?? null,
       localLoaded: Boolean(local?.ssrModule),
       env: process.env.NODE_ENV,
     }))
@@ -658,7 +674,13 @@ test('운영 환경(NODE_ENV=production)에서는 개발용 PIN 저장소가 만
     ['--input-type=module', '-e', script],
     {
       cwd: process.cwd(),
-      env: { ...process.env, NODE_ENV: 'production' },
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        // 운영은 VITE_DEV_AUTH와 상관없이 서버 연결이어야 한다(값을 켜 둔 채로 확인).
+        VITE_DEV_AUTH: 'true',
+        PIN_TEST_ENV_DIR: envDir,
+      },
       encoding: 'utf8',
     },
   )
@@ -666,4 +688,5 @@ test('운영 환경(NODE_ENV=production)에서는 개발용 PIN 저장소가 만
   assert.equal(result.env, 'production')
   assert.equal(result.repository, null)
   assert.equal(result.localLoaded, false)
+  assert.equal(result.pinMode, 'server')
 })

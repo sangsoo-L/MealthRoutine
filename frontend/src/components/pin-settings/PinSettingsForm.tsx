@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import type { PinSubmitResult } from '../../pin-settings/usePinSettings.ts'
 import {
   PIN_LOCKED_MESSAGE,
+  isPinLockedError,
   pinErrorField,
   pinSettingsMessage,
 } from '../../pin-settings/pinSettingsMessages.ts'
@@ -33,8 +34,16 @@ interface PinSettingsFormProps {
   mode: PinSettingsMode
   /** true이면 입력과 저장을 모두 막는다(연결 전·미등록 변경 등). 입력값은 처리하지 않는다. */
   disabled: boolean
-  /** 현재 번호 확인이 5회 실패로 잠겼는지(변경만). 잠금 중에는 저장할 수 없다. */
+  /** 현재 번호 확인이 5회 실패로 잠겼는지(변경만). 기본(`blockWhenLocked`)은 잠금 중 저장할 수 없다. */
   locked: boolean
+  /** 잠금 안내 문구. 기본은 모의 모드의 5분 문구(`PIN_LOCKED_MESSAGE`). 서버 모드는 "최대 10분" 문구를 넘긴다(F4-D4). */
+  lockMessage?: string
+  /**
+   * 잠금 중 제출을 막는지. 기본 true(모의 모드·가입 PIN의 기존 동작). 서버 모드는 false — 안내만 하고 판정은 서버(403)에 맡긴다(F4-D4).
+   */
+  blockWhenLocked?: boolean
+  /** 현재와 같은 새 번호를 허용하는지. 기본 false(모의 모드). 서버 모드는 true(F4-D7, PIN7-9). */
+  allowSamePin?: boolean
   submit: (values: PinFormValues) => Promise<PinSubmitResult | null>
   /** 허용된 진입 화면(P05 등)에서 들어왔을 때의 복귀 지점. "취소"가 그곳으로 돌아간다. 없으면 상세 설정이다. */
   returnTo?: PinReturn | null
@@ -61,6 +70,9 @@ export default function PinSettingsForm({
   mode,
   disabled,
   locked,
+  lockMessage = PIN_LOCKED_MESSAGE,
+  blockWhenLocked = true,
+  allowSamePin = false,
   submit,
   returnTo = null,
   texts,
@@ -79,8 +91,8 @@ export default function PinSettingsForm({
 
   // 잠금이 풀리면 잠금 안내를 거둔다.
   const shown =
-    error && !(error.message === PIN_LOCKED_MESSAGE && !locked) ? error : null
-  const message = shown?.message ?? (locked ? PIN_LOCKED_MESSAGE : null)
+    error && !(error.message === lockMessage && !locked) ? error : null
+  const message = shown?.message ?? (locked ? lockMessage : null)
   const invalidField: PinFieldName | null =
     shown?.field ?? (locked ? 'current' : null)
 
@@ -94,12 +106,12 @@ export default function PinSettingsForm({
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (pending.current || disabled) return
-    if (locked) {
-      setError({ field: 'current', message: PIN_LOCKED_MESSAGE })
+    if (locked && blockWhenLocked) {
+      setError({ field: 'current', message: lockMessage })
       focusField('current')
       return
     }
-    const issue = validatePinForm(mode, values)
+    const issue = validatePinForm(mode, values, { allowSame: allowSamePin })
     if (issue) {
       setError(issue)
       focusField(issue.field)
@@ -118,7 +130,12 @@ export default function PinSettingsForm({
         return
       }
       const field = pinErrorField(result.error)
-      setError({ field, message: pinSettingsMessage(result.error) })
+      setError({
+        field,
+        message: isPinLockedError(result.error)
+          ? lockMessage
+          : pinSettingsMessage(result.error),
+      })
       // 현재 번호 오류는 그 칸을 비운다. 새 번호·확인은 유지한다.
       if (field === 'current') setValues((v) => ({ ...v, current: '' }))
       focusField(field)
@@ -131,7 +148,7 @@ export default function PinSettingsForm({
   function setValue(key: keyof PinFormValues, value: string) {
     setValues((v) => ({ ...v, [key]: sanitizePinInput(value) }))
     // 입력을 고치기 시작하면 그 칸을 가리키던 일반 오류는 거두되, 잠금 안내는 잠금이 풀릴 때까지 둔다.
-    setError((e) => (e?.message === PIN_LOCKED_MESSAGE ? e : null))
+    setError((e) => (e?.message === lockMessage ? e : null))
   }
   function toggle(field: PinFieldName) {
     setVisible((v) => ({ ...v, [field]: !v[field] }))
@@ -194,7 +211,7 @@ export default function PinSettingsForm({
       </div>
       <button
         type="submit"
-        disabled={busy || disabled || locked}
+        disabled={busy || disabled || (locked && blockWhenLocked)}
         className={`${primaryButtonClass} ${primaryDisabledClass}`}
       >
         {busy

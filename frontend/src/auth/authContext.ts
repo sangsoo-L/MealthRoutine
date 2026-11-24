@@ -12,6 +12,17 @@ export interface NicknameSaveGuard {
   commit(nickname: string): boolean
 }
 
+/**
+ * 로그인 작업 표식(범용, F4-R1). 로그인 수명에 묶인 작업(PIN 토큰 저장 등)이 시작할 때 `beginAccountWork()`로 받고,
+ * 응답을 반영하기 직전에 `isCurrent()`로 확인한다. 반영 동작은 없고 판정만 한다(닉네임 저장의 commit과 다름).
+ * - userId: 시작 때 로그인한 회원
+ * - isCurrent: 시작 때의 로그인 작업이 아직 유효한지(그 사이 로그인 시작·로그인/시작 확인 완료·로그아웃·세션 종료가 없었는지)
+ */
+export interface AccountWorkGuard {
+  readonly userId: string
+  isCurrent(): boolean
+}
+
 export interface AuthContextValue {
   /**
    * 'loading'은 실제 서버 인증에서 앱 시작 확인이 끝나기 전이다(guards/RequireAuth의 AuthStatus와 호환).
@@ -30,6 +41,8 @@ export interface AuthContextValue {
   logout(): void
   /** 닉네임 저장을 시작할 때 지금 로그인 작업에 묶인 표식을 받는다(F3-D3·R1). 로그인 상태가 아니면 null. */
   beginNicknameSave(): NicknameSaveGuard | null
+  /** 로그인 수명에 묶인 작업을 시작할 때 지금 로그인 작업의 표식을 받는다(F4-R1). 로그인 상태가 아니면 null. */
+  beginAccountWork(): AccountWorkGuard | null
 }
 
 /** 로그인 작업 표식의 React 밖 판단(테스트용으로 분리). commit은 반영할 새 user를 돌려주고, 무효면 null이다. */
@@ -47,6 +60,8 @@ export interface LoginWork {
   startLogin(): void
   /** 지금 로그인 작업에 묶인 표식. 로그인 상태가 아니면 null */
   beginNicknameSave(): LoginWorkGuard | null
+  /** 지금 로그인 작업의 범용 표식(판정만). 로그인 상태가 아니면 null. 번호를 올리지 않는다(F4: PIN 폐기와 독립) */
+  beginAccountWork(): AccountWorkGuard | null
 }
 
 /**
@@ -82,6 +97,16 @@ export function createLoginWork(initial: AuthUser | null): LoginWork {
           if (user.nickname !== nickname) user = { ...user, nickname }
           return user
         },
+      }
+    },
+    beginAccountWork() {
+      const started = user
+      if (started === null) return null
+      const myWork = work
+      return {
+        userId: started.id,
+        isCurrent: () =>
+          work === myWork && user !== null && user.id === started.id,
       }
     },
   }
