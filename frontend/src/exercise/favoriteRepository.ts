@@ -18,10 +18,9 @@ export class FavoriteSaveError extends Error {
  * 운동 객체를 복사해 두지 않고 운동 id(Exercise.id)만 다룬다. 운동의 이름·부위 같은 값은 운동 저장소(ExerciseRepository.getById)가 맡는다.
  * 그래서 즐겨찾기 저장소와 운동 저장소의 책임이 겹치지 않고, 운동 정보가 바뀌어도 즐겨찾기에 낡은 사본이 남지 않는다.
  *
- * 실제 API(GET·PUT·DELETE /api/v1/users/me/favorite-exercises[/{exerciseId}])는 아직 없고, 목록 응답이 운동 객체 목록이라는 점 외에
- * 요청·응답 구조가 명세서에 정의되지 않았다(운동 영역 API 초안, README의 API 인수인계). 연동할 때는 이 인터페이스를 구현한
- * 객체가 응답에서 id만 뽑아 돌려주면 화면은 그대로 쓴다. 명세는 PUT·DELETE를 멱등으로 둔다(이미 등록돼 있어도, 등록돼 있지 않아도 성공).
- * 개발 환경의 Mock 구현(mock/mockFavoriteRepository.ts)과 나중에 만들 API 구현을 이 인터페이스로 교체한다.
+ * 운영 빌드는 즐겨찾기 API(GET·PUT·DELETE /api/v1/users/me/favorite-exercises[/{exerciseId}]) 구현(api/apiFavoriteRepository.ts)을 쓰며,
+ * 목록 응답(운동 객체 목록)에서 id만 뽑아 돌려준다. 서버도 PUT·DELETE를 멱등으로 둔다(이미 등록돼 있어도, 등록돼 있지 않아도 성공).
+ * 개발 서버는 Mock 구현(mock/mockFavoriteRepository.ts)을 쓴다.
  */
 export interface ExerciseFavoriteRepository {
   /** 'mock'이면 개발용 저장소이며 개발 서버에서만 쓴다. */

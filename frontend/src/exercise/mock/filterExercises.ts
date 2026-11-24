@@ -2,7 +2,8 @@ import { BODY_PART_GROUPS } from '../exerciseTaxonomy.ts'
 import type { Exercise, ExerciseQuery } from '../exerciseTypes.ts'
 
 /**
- * [개발 전용] 운동 목록 필터링. 실제 API에서는 서버가 맡을 일을 Mock이 흉내 낸다. 조건은 서로 독립(AND)이다.
+ * 운동 목록 필터링. 개발용 시드 저장소와 운영 빌드의 API 저장소(api/apiExerciseRepository.ts)가 함께 쓴다. API 저장소는 카탈로그 전체를
+ * 받아 두고 여기서 거르므로 두 환경의 검색 결과가 같다. 조건은 서로 독립(AND)이다.
  *
  * - 이름: 부분 일치, 대소문자·공백 무시.
  * - 난이도·도구: 값이 같아야 한다. 도구는 필요한 도구 중 하나라도 같으면 일치다.
