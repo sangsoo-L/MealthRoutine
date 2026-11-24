@@ -1,3 +1,4 @@
+import { apiRequest } from '../api/http.ts'
 import type { DevAccountId } from '../auth/dev/devAccounts.ts'
 import type {
   KnowledgeLevels,
@@ -68,6 +69,40 @@ export function getMyPageSummary(
     }
   }
   return UNAVAILABLE_SUMMARY
+}
+
+/** GET /api/v1/users/me/rewards 응답 */
+interface MyRewardResponse {
+  level: number
+  levelName: string
+  totalXp: number
+  nextLevelXp: number | null // 최고 레벨이면 null
+  balance: number
+}
+
+/** 레벨·포인트 구역을 서버 값으로 채운다. 실패하면 null(호출한 쪽이 연결 전 상태를 유지) */
+export async function fetchServerRewardSlots(): Promise<Pick<
+  MyPageSummary,
+  'level' | 'points'
+> | null> {
+  try {
+    const r = await apiRequest<MyRewardResponse>('GET', '/users/me/rewards')
+    return {
+      level: {
+        state: 'ready',
+        data: {
+          level: r.level,
+          progress:
+            r.nextLevelXp === null
+              ? null // 최고 레벨이면 진행바 없음
+              : { experience: r.totalXp, nextLevelExperience: r.nextLevelXp },
+        },
+      },
+      points: { state: 'ready', data: { balance: r.balance } },
+    }
+  } catch {
+    return null
+  }
 }
 
 /**
