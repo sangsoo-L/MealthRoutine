@@ -18,11 +18,15 @@ export { EXPERIENCE_SUBJECT_ID } from './subject.ts'
  *
  * 실제 가입 API가 연결되면: 가입 성공 응답으로 인증 상태를 만드는 정식 흐름으로 바꾸고, 이 모듈과 dev/ 폴더, 게이트의 체험 분기를 지운다.
  */
-const devModule = import.meta.env.DEV
-  ? await import('./dev/devSignupExperience.ts')
-  : null
+// [F2-D8] 체험은 개발용 계정 모드(`VITE_DEV_AUTH=true`, auth/authBackend.ts·pages/SignupPage.tsx와 같은 식)에서만 켠다.
+// 기본 개발 서버(실제 서버 인증)에서는 운영 빌드와 같이 꺼져, sessionStorage에 남은 체험 표지가 있어도 읽지 않는다.
+// 운영 번들에서 dev/ 코드가 확실히 빠지도록 식을 여기에 직접 쓴다.
+const devModule =
+  import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH === 'true'
+    ? await import('./dev/devSignupExperience.ts')
+    : null
 
-/** 이 빌드에서 가입 체험을 쓸 수 있는지. 운영 빌드에서는 항상 false다. */
+/** 이 빌드·모드에서 가입 체험을 쓸 수 있는지. 운영 빌드와 기본 개발 서버(실제 서버 인증)에서는 false다. */
 export const signupExperienceAvailable = devModule !== null
 
 export function isSignupExperienceActive(): boolean {

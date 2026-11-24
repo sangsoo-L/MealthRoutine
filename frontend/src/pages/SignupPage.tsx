@@ -1,4 +1,10 @@
-import { useNavigate } from 'react-router'
+import { Navigate, useNavigate } from 'react-router'
+import { useAuth } from '../auth/authContext.ts'
+import {
+  SIGNED_UP_STATE,
+  conflictStillApplies,
+  submitSignupOnce,
+} from '../auth/signupApi.ts'
 import Icon from '../components/icons/Icon.tsx'
 import { SIGNUP_PIN_PATH } from '../pin-settings/pinSettingsPolicy.ts'
 import {
@@ -47,48 +53,60 @@ import {
   type FieldKey,
   type Region,
   type SignupError,
+  type SignupMode,
   type SignupValues,
   type Verification,
 } from './signupValidation.ts'
 import {
   FIELD_STEP,
-  SIGNUP_STEPS,
   fieldBlurError,
   isStepInputValid,
+  signupStepsFor,
   validateStep,
   visibleFields,
   type SignupStep,
 } from './signupSteps.ts'
 
 /**
+ * 가입 모드(F2-D1). 기본은 실제 서버 가입(server)이고, 개발 서버에서 `VITE_DEV_AUTH=true`일 때만 모의(mock)다.
+ * 운영 빌드는 항상 server다. 로그인(auth/authBackend.ts)·가입 체험(signup-experience/signupExperience.ts)과 같은 식이다.
+ * 다른 모듈의 상수를 가져오지 않고 식을 여기에 직접 쓴다: 빌드가 이 값을 상수(false)로 접어야
+ * 아래 [임시·개발 전용] 인증번호·예시 주소 코드가 운영 번들에서 빠진다(verify:dist·signupConnect 테스트로 확인).
+ */
+const SIGNUP_MODE: SignupMode =
+  import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH === 'true'
+    ? 'mock'
+    : 'server'
+const STEPS = signupStepsFor(SIGNUP_MODE)
+
+/**
  * 휴대폰·이메일 인증 완료 여부의 초기값. 인증과 중복확인, 주소 검색은 서버·외부 서비스가 필요한데
- * API 명세에 해당 엔드포인트가 없어 연결하지 않았다. 연동하기 전에는 항상 false이며
- * 이 값이 false라서 1단계의 "다음" 버튼 영역이 나타나지 않고 가입 제출도 인증 단계에서 막힌다.
- * 가짜 인증 성공을 만들지 않는다.
+ * API 명세에 해당 엔드포인트가 없어 연결하지 않았다. 모의 모드에서는 아래 개발용 대체 절차만 이 값을 바꾼다.
+ * 실제 서버 가입(server 모드)은 인증을 확인하지 않고 해당 입력도 보이지 않는다(F2-D1). 가짜 인증 성공을 만들지 않는다.
  */
 const NOT_VERIFIED: Verification = { phone: false, email: false }
 
 /**
  * [임시·개발 전용] 백엔드 연결 전에 회원가입 흐름을 시험하기 위한 휴대폰 인증 대체 절차.
- * 개발 서버(`npm run dev`)에서만 켜지며 운영 빌드에서는 꺼져 있어(import.meta.env.DEV) 인증을 우회할 수 없다.
+ * 모의 모드(개발 서버 + `VITE_DEV_AUTH=true`)에서만 켜지며 운영 빌드·기본 개발 서버(실제 서버 가입)에서는 꺼져 인증을 우회할 수 없다.
  * 인증번호는 v5.0 스토리보드 시안의 고정값(654321)이다. 실제 문자 발송·본인확인은 하지 않는다.
  * 백엔드 인증 API가 연결되면 이 상수와 아래 "[임시·개발 전용]" 표시 코드를 모두 지운다.
  */
-const TEMP_DEV_IDENTITY = import.meta.env.DEV
+const TEMP_DEV_IDENTITY = SIGNUP_MODE === 'mock'
 const DEV_IDENTITY_CODE = '654321'
 
 /**
- * [임시·개발 전용] 주소 검색 API 연결 전에 STEP 02를 시험하기 위한 예시 주소 선택. 위와 같은 방식으로 운영 빌드에서는 꺼진다.
+ * [임시·개발 전용] 주소 검색 API 연결 전에 STEP 02를 시험하기 위한 예시 주소 선택. 위와 같은 방식으로 모의 모드에서만 켜진다.
  * 실제 사용자 주소가 아니라 개발용 예시 데이터다. 주소 검색이 연결되면 지운다.
  */
-const TEMP_DEV_ADDRESS = import.meta.env.DEV
+const TEMP_DEV_ADDRESS = SIGNUP_MODE === 'mock'
 
 /**
- * [임시·개발 전용] 이메일 인증 API 연결 전에 STEP 03을 시험하기 위한 이메일 인증 대체 절차. 위와 같은 방식으로 운영 빌드에서는 꺼진다.
+ * [임시·개발 전용] 이메일 인증 API 연결 전에 STEP 03을 시험하기 위한 이메일 인증 대체 절차. 위와 같은 방식으로 모의 모드에서만 켜진다.
  * 실제 메일을 보내지 않으며 실제 이메일 소유 확인이 아니다. 인증번호는 휴대폰 시안 번호(654321)와 다른 값이다.
  * 백엔드 인증 API가 연결되면 지운다.
  */
-const TEMP_DEV_EMAIL = import.meta.env.DEV
+const TEMP_DEV_EMAIL = SIGNUP_MODE === 'mock'
 const DEV_EMAIL_CODE = '123456'
 const DEV_ADDRESS = '대전광역시 서구 둔산로 100'
 
@@ -128,15 +146,21 @@ function RegionAlert({
 /**
  * A03 회원가입 화면. 기능·문구 기준은 v5.0 화면 명세과 v5.0 HTML 스토리보드다.
  *
- * 3단계(본인 확인 → 프로필 정보 → 계정 정보)의 순차 등장형 폼이다. 입력값(values)은 이 컴포넌트가 한곳에서 갖고
+ * 3단계 순차 등장형 폼이다. 입력값(values)은 이 컴포넌트가 한곳에서 갖고
  * 단계가 바뀌어도 유지된다. 단계 판정과 필드 노출은 signupSteps.ts의 순수 함수가 입력값에서 파생한다.
- * 검증 규칙은 signupValidation.ts 그대로이며, 오류는 "다음"·"본인인증"·"중복확인"·제출을 눌렀을 때와
+ * 검증 규칙은 signupValidation.ts(서버 가입 규칙과 같음)이며, 오류는 "다음"·"본인인증"·"이메일 인증"·제출을 눌렀을 때와
  * 입력창을 벗어날 때(blur)만 보인다. 한 글자 입력 같은 입력 도중에는 오류를 만들지 않는다.
  *
- * 현재 범위: 입력 상태·형식 검증·필드별 오류 처리까지. 실제 가입 요청(POST /api/v1/auth/signup)과
- * 휴대폰 본인인증, 이메일 중복확인·인증번호, 주소 검색은 연결하지 않는다.
- * 그래서 본인인증이 항상 미완료이고 주소를 채울 수 없어, 인증을 우회하지 않는 한 1단계에서 다음으로 갈 수 없다.
- * 운영 빌드에서는 가입을 끝낼 수 없다. 개발 서버에서는 아래 [임시·개발 전용] 인증 대체 절차로 마지막 단계까지 갈 수 있고,
+ * 실제 서버 가입(server 모드, 기본·운영 빌드, F2):
+ * - 단계: 기본 정보(이름) → 프로필 정보(닉네임) → 계정 정보(이메일·비밀번호·동의). 서버가 받지 않는 휴대폰·주소와
+ *   API가 없는 본인인증·이메일 인증은 보이지 않는다(F2-D1).
+ * - 제출하면 POST /api/v1/auth/signup(auth/signupApi.ts)을 한 번 보낸다. 중복 제출을 막고, 실패해도 자동으로 다시 보내지 않는다.
+ * - 성공하면 자동 로그인 없이 로그인 화면으로 가 가입 완료 안내를 보인다(F2-D3, router state `{ signedUp: true }`만 넘김).
+ * - 409 이메일·닉네임은 해당 입력에, 400·연결 실패는 공통 안내로 보인다.
+ * - 이미 로그인한 회원은 /home으로 보낸다(F2-D4). 앱 시작 확인 중(loading)에는 입력은 받되 제출은 확인이 끝날 때까지 막는다.
+ * - 제출 중 화면을 떠나면 늦게 온 응답은 무시한다(이미 보낸 가입은 서버에서 끝났을 수 있다).
+ *
+ * 모의 모드(개발 서버 + `VITE_DEV_AUTH=true`): 기존 개발용 흐름이다. 아래 [임시·개발 전용] 인증 대체 절차로 마지막 단계까지 갈 수 있고,
  * 제출하면 개발용 가입 체험(signup-experience)을 시작해 2차 비밀번호 설정(P05, /signup/pin)으로 이동하고, 거기서 운동·식단 이해도 확인(/onboarding/assessment)으로 이어진다.
  * 실제 계정은 만들지 않고 로그인 상태도 만들지 않으며, 정식 흐름의 2차 비밀번호 설정(P05)·초기설문(A02)은
  * 이 체험 흐름에서만 건너뛴다(A02는 삭제하지 않았고 /survey로 직접 열 수 있다).
@@ -144,10 +168,29 @@ function RegionAlert({
  */
 export default function SignupPage() {
   const navigate = useNavigate()
+  const { status, dismissConnectionNotice } = useAuth()
   const [values, setValues] = useState<SignupValues>(INITIAL_VALUES)
+  // 가입 응답이 왔을 때의 최신 입력. 제출 중에도 이전 단계로 가서 고칠 수 있으므로 늦은 409를 지금 값과 비교한다(PR #27 리뷰).
+  const latestValuesRef = useRef(values)
+  useEffect(() => {
+    latestValuesRef.current = values
+  }, [values])
   const [errors, setErrors] = useState<Errors>({})
   const [noticeVisible, setNoticeVisible] = useState(false)
   const [step, setStep] = useState<SignupStep>(1)
+  // 실제 서버 가입 진행 상태. 중복 제출은 ref로 막는다(빠른 두 번 클릭은 같은 렌더 안에서 일어날 수 있다).
+  const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
+  // 400·연결 실패처럼 특정 입력에 붙이지 않는 가입 실패 안내. 입력을 고치면 지운다.
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  // 화면을 떠난 뒤 늦게 온 가입 응답이 이동·오류 표시를 하지 않도록 마운트 여부를 기억한다(StrictMode 재실행에도 맞게 setup에서 true).
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
   // 인증 완료 여부. 인증 API를 연결하면 성공 응답에서 이 값을 true로 바꾼다(현재는 바꾸는 곳이 없어 항상 false).
   // 이름·휴대폰 번호를 바꾸면 휴대폰 인증을, 이메일을 바꾸면 이메일 인증을 무효로 돌린다(setValue). 입력값은 지우지 않는다.
   const [verified, setVerified] = useState<Verification>(NOT_VERIFIED)
@@ -225,10 +268,12 @@ export default function SignupPage() {
 
   const rules = passwordRules(values.password)
   const matchState = passwordMatchState(values.password, values.passwordConfirm)
-  const show = visibleFields(values, verified)
+  const show = visibleFields(values, verified, SIGNUP_MODE)
   const emailFormatOk = checkEmailInput(values.email) === null
-  const meta = SIGNUP_STEPS[step - 1]
-  const isLastStep = step === SIGNUP_STEPS.length
+  const meta = STEPS[step - 1]
+  const isLastStep = step === STEPS.length
+  // 앱 시작 확인 중에는 제출을 미룬다(확인 뒤 로그인 회원이면 /home으로 간다, F2-D4). 입력은 그대로 둔다.
+  const submitBlocked = submitting || status === 'loading'
 
   // 포커스 이동: 오류 입력이 있으면 그곳으로, 단계만 바뀌었으면 새 단계 제목으로 옮긴다(보조기기가 단계 변경을 알 수 있다).
   // 필드가 나타나기만 한 경우에는 포커스를 옮기지 않는다.
@@ -301,6 +346,7 @@ export default function SignupPage() {
       return next
     })
     setNoticeVisible(false)
+    setSubmitError(null)
   }
 
   const handleText =
@@ -463,16 +509,14 @@ export default function SignupPage() {
    * 인증(verified)이 미완료이면 통과할 수 없으며 우회하지 않는다.
    */
   function handleNext() {
-    const error = validateStep(step, values, verified)
+    const error = validateStep(step, values, verified, SIGNUP_MODE)
     if (error) {
       showError(error)
       return
     }
     setErrors({})
     setNoticeVisible(false)
-    setStep(
-      (current) => Math.min(current + 1, SIGNUP_STEPS.length) as SignupStep,
-    )
+    setStep((current) => Math.min(current + 1, STEPS.length) as SignupStep)
   }
 
   function handleBack() {
@@ -489,20 +533,22 @@ export default function SignupPage() {
       handleNext()
       return
     }
-    const error = validateSubmit(values, verified)
+    const error = validateSubmit(values, verified, SIGNUP_MODE)
     if (error) {
       showError(error)
       return
     }
     setErrors({})
-    // 개발 서버에서만: 검증을 통과했으면 개발용 가입 체험을 시작하고 2차 비밀번호 설정(P05)으로 이동한다(다음은 운동·식단 이해도 확인).
+    if (SIGNUP_MODE === 'server') {
+      void submitToServer()
+      return
+    }
+    // 모의 모드에서만: 검증을 통과했으면 개발용 가입 체험을 시작하고 2차 비밀번호 설정(P05)으로 이동한다(다음은 운동·식단 이해도 확인).
     // 초기설문(A02)은 거치지 않는다. 설문을 마친 것처럼 처리하거나 프로필 데이터를 만들지도 않는다(A02는 주소로 직접 열 수 있다).
     // - 실제 계정을 만들지 않고 로그인 상태도 만들지 않는다(인증 상태는 그대로 비로그인이다).
     // - 위 검증(인증 완료 포함)을 우회하지 않는다. 개발용 인증번호 대체 절차는 이 화면의 기존 [임시·개발 전용] 코드 그대로다.
     // - 체험 표지는 가입 폼의 입력값을 받지도 저장하지도 않는다(signup-experience/signupExperience.ts).
     // - [개발용 우회] 정식 흐름(A03 → P05 → A02 → 이해도 확인 → H01)의 A02(초기설문)는 이 체험 흐름에서만 건너뛴다. 삭제하거나 정책을 바꾼 것이 아니다.
-    // 운영 빌드에서는 체험을 쓸 수 없어(signupExperienceAvailable === false) 기존처럼 안내 문구만 보이고, 위 인증 검증이 제출을 먼저 막는다.
-    // 추후 구현: POST /api/v1/auth/signup 연동, 가입 후 2차 비밀번호 설정(P05)·초기설문(A02) 이동.
     if (signupExperienceAvailable) {
       startSignupExperience()
       navigate(SIGNUP_PIN_PATH)
@@ -511,16 +557,89 @@ export default function SignupPage() {
     setNoticeVisible(true)
   }
 
+  /**
+   * 실제 서버 가입(F2). 한 번만 보내고, 결과에 따라 로그인 화면 이동 또는 오류 표시를 한다.
+   * - 앱 시작 확인 중이거나 이미 로그인 상태면 보내지 않는다(로그인 회원은 렌더에서 /home으로 보낸다).
+   * - 실패해도 자동으로 다시 보내지 않는다. 비밀번호는 요청 본문에만 쓰고 state·URL·저장소에 남기지 않는다.
+   * - 응답 전에 화면을 떠났으면 결과를 반영하지 않는다(새 화면을 덮지 않음).
+   */
+  async function submitToServer() {
+    // 이 요청이 보낸 이메일·닉네임. 늦은 409가 아직 지금 입력에 해당하는지 비교한다. 비밀번호는 기억하지 않는다.
+    const submitted = { email: values.email, nickname: values.nickname }
+    const outcome = await submitSignupOnce(
+      {
+        name: values.name,
+        nickname: values.nickname,
+        email: values.email,
+        password: values.password,
+        consent: values.consent,
+      },
+      submittingRef,
+      {
+        status,
+        isMounted: () => mountedRef.current,
+        onStart: () => {
+          setSubmitting(true)
+          setSubmitError(null)
+          setNoticeVisible(false)
+        },
+      },
+    )
+    // blocked: 보내지 않음(중복 제출·비회원 아님) / stale: 화면을 떠남 → 아무것도 바꾸지 않는다.
+    if (outcome === 'blocked' || outcome === 'stale') return
+    setSubmitting(false)
+    switch (outcome) {
+      case 'success':
+        // 서버에 닿아 가입이 끝났으므로, 이 앱에서 그 전에 났던 시작 확인 연결 경고(F1-D7)는 지난 일이다. 이것만 지운다(PR #27 리뷰).
+        // 새로고침 뒤의 새 시작 확인 실패와 로그인 화면의 새 로그인 실패는 그대로 보인다.
+        dismissConnectionNotice()
+        navigate('/login', { replace: true, state: SIGNED_UP_STATE })
+        return
+      case 'emailUnavailable':
+      case 'nicknameTaken':
+        // 응답을 기다리는 동안 해당 값을 바꿨으면 이전 값의 결과다: 오류·단계·포커스를 바꾸지 않는다(PR #27 리뷰).
+        if (!conflictStillApplies(outcome, submitted, latestValuesRef.current))
+          return
+        if (outcome === 'nicknameTaken') {
+          showError({
+            region: 'nickname',
+            field: 'nickname',
+            message: SIGNUP_MESSAGES.nicknameTaken,
+          })
+          return
+        }
+        showError({
+          region: 'email',
+          field: 'email',
+          message: SIGNUP_MESSAGES.emailUnavailable,
+        })
+        return
+      case 'invalid':
+        setSubmitError(SIGNUP_MESSAGES.invalidRequest)
+        return
+      case 'unconfirmed':
+        // 가입 여부를 확정할 수 없다: 완료 이동·자동 재전송 없이 이 화면에서 안내한다.
+        setSubmitError(SIGNUP_MESSAGES.signupUnconfirmed)
+        return
+      default:
+        setSubmitError(SIGNUP_MESSAGES.connectionFailed)
+    }
+  }
+
   // 단계 버튼(다음·가입)을 그릴지. 기존 검증 함수를 그대로 쓴다.
-  // 1단계: 이름·휴대폰 형식 + 휴대폰 인증 완료. 형식이 맞는 것만으로는 나타나지 않는다.
-  // 2단계: 닉네임·기본 주소·상세 주소 입력 완료(인증은 이미 1단계에서 확인).
-  // 3단계: 가입에 필요한 모든 검증 통과(이메일 인증 포함). 인증 API가 없는 지금은 이메일 인증이 항상 미완료라 나타나지 않는다.
+  // 1단계: 모의 모드는 이름·휴대폰 형식 + 휴대폰 인증 완료(형식만으로는 나타나지 않음), server 모드는 이름 형식.
+  // 2단계: 모의 모드는 닉네임·기본 주소·상세 주소 입력 완료, server 모드는 닉네임 형식.
+  // 3단계: 가입에 필요한 모든 검증 통과(모의 모드는 이메일 인증 포함).
   const showNext =
     step === 1
-      ? isStepInputValid(1, values) && verified.phone
+      ? isStepInputValid(1, values, SIGNUP_MODE) &&
+        (SIGNUP_MODE === 'server' || verified.phone)
       : step === 2
-        ? isStepInputValid(2, values)
-        : validateSubmit(values, verified) === null
+        ? isStepInputValid(2, values, SIGNUP_MODE)
+        : validateSubmit(values, verified, SIGNUP_MODE) === null
+
+  // 이미 로그인한 회원은 가입 화면 대신 홈으로 보낸다(F2-D4, 로그인 화면과 같은 방식). 모든 훅을 부른 뒤에 판단한다.
+  if (status === 'authenticated') return <Navigate to="/home" replace />
 
   return (
     <AuthFrame>
@@ -536,7 +655,7 @@ export default function SignupPage() {
       />
 
       <AuthBody>
-        <StepProgress steps={SIGNUP_STEPS} current={step} />
+        <StepProgress steps={STEPS} current={step} />
 
         <section aria-labelledby={ids.cardTitle} className="mt-6">
           {/* 단계가 바뀌면 이 제목으로 포커스를 옮긴다(tabIndex -1: 탭 순서에는 들어가지 않는다). */}
@@ -581,7 +700,7 @@ export default function SignupPage() {
                     name="fullName"
                     type="text"
                     required
-                    maxLength={50}
+                    maxLength={30}
                     autoComplete="name"
                     spellCheck={false}
                     placeholder="이름을 입력해 주세요"
@@ -708,7 +827,7 @@ export default function SignupPage() {
                     type="text"
                     required
                     minLength={2}
-                    maxLength={20}
+                    maxLength={16}
                     autoComplete="nickname"
                     spellCheck={false}
                     placeholder="서비스에서 사용할 닉네임"
@@ -821,8 +940,8 @@ export default function SignupPage() {
                       aria-describedby={describedBy('email')}
                       className={inputWithActionClass}
                     />
-                    {/* 이메일 인증 버튼은 형식이 맞는 이메일이 입력되면 나타난다. */}
-                    {emailFormatOk ? (
+                    {/* 이메일 인증 버튼(모의 모드 전용)은 형식이 맞는 이메일이 입력되면 나타난다. 실제 서버 가입에는 이메일 인증 API가 없다. */}
+                    {SIGNUP_MODE === 'mock' && emailFormatOk ? (
                       <button
                         type="button"
                         onClick={handleEmailVerifyRequest}
@@ -1022,9 +1141,16 @@ export default function SignupPage() {
               </>
             ) : null}
 
+            {/* 특정 입력에 붙이지 않는 가입 실패(400·연결 실패). 보조기기가 알 수 있도록 알림 영역은 항상 렌더한다. */}
+            <div role="alert">
+              {submitError ? <p className={errorClass}>{submitError}</p> : null}
+            </div>
             <div role="status">
               {noticeVisible ? (
                 <p className={noticeClass}>{SIGNUP_MESSAGES.submitNotice}</p>
+              ) : null}
+              {submitting ? (
+                <p className={noticeClass}>회원가입하고 있어요.</p>
               ) : null}
             </div>
             {/*
@@ -1036,12 +1162,18 @@ export default function SignupPage() {
               <div className={`mt-8 ${revealArmed ? revealClass : ''}`}>
                 {/* 다음(button)과 가입(submit)은 같은 자리의 버튼이라 key를 달리해 React가 DOM 노드를 재사용하지 못하게 한다(type이 바뀌는 순간 오제출 방지). */}
                 {isLastStep ? (
+                  // disabled 속성은 포커스를 잃게 하므로 aria-disabled로 표시하고, 중복 제출은 submitToServer가 막는다(로그인 화면과 같은 방식).
                   <button
                     key="submit"
                     type="submit"
-                    className={primaryButtonClass}
+                    aria-disabled={submitBlocked || undefined}
+                    className={`aria-disabled:cursor-wait aria-disabled:opacity-70 ${primaryButtonClass}`}
                   >
-                    회원가입하고 시작하기
+                    {submitting
+                      ? '가입하는 중…'
+                      : status === 'loading'
+                        ? '로그인 상태 확인 중…'
+                        : '회원가입하고 시작하기'}
                   </button>
                 ) : (
                   <button
