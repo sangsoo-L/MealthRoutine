@@ -63,7 +63,13 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 | GET | /api/v1/exercises | `keyword`, `difficulty`, `exerciseType`, `equipment`, `page`, `size` | 운동 페이지 |
 | GET | /api/v1/exercises/{exerciseId} | | 운동 |
 
-운동: `exerciseId, name, instructions, difficulty, exerciseType, exerciseEquipment, description, cautions, sourceUrl`
+운동: `exerciseId, name, instructions, difficulty, exerciseType, exerciseEquipment, description, cautions, sourceUrl, defaultRecordMode, allowedRecordModes`
+
+운동 데이터는 `database/seed/001_insert_exercises.sql`이고, 이 파일은 프론트 시드 `frontend/src/exercise/seed/exercises.json`에서 `database/tools/gen_exercises.mjs`로 만든다. `exerciseId`는 프론트 시드와 같은 값이다. 기존 DB에 이 시드를 실행할 때 즐겨찾기·루틴·기록·추천이 참조하는 운동의 이름이 시드와 다르거나 시드에 없는 운동이 있으면, 참조가 다른 운동을 가리키지 않도록 아무것도 바꾸지 않고 멈춘다. 멈추면 출력된 운동 목록을 보고, 지킬 데이터가 없으면 `docker compose down -v`로 DB를 새로 만든다. 지킬 데이터가 있으면 시드 적용을 보류하고 운동 파트에 알린 뒤 검증된 별도 이관 절차를 거친다. 참조의 운동 id만 먼저 바꾸면, 적용 전에는 새 id에 아직 예전 운동이 들어 있어서 참조가 다른 운동을 가리키고 시드도 다시 막힌다(자세한 내용은 `database/migration/20261124_exercise_record_mode_columns.sql` 머리 주석). `exerciseType`은 운동 부위(등, 가슴, 어깨, 팔, 엉덩이, 허벅지, 종아리, 복부, 허리, 유산소, 스트레칭), `exerciseEquipment`는 도구 이름(맨몸, 덤벨, 밴드, 폼롤러, 마사지볼, 풀업바)이다.
+
+`defaultRecordMode`는 이 운동을 처음 담을 때의 기록 방식, `allowedRecordModes`는 고를 수 있는 기록 방식 목록이다. 값은 카탈로그 코드 `time`, `reps`, `weight_reps`, `time_reps`, `weight_time` 중 하나다. 중량+횟수는 여기서만 `weight_reps`이고 루틴·기록의 `recordType`에서는 `weight`다. 기록 방식 데이터가 없거나, 저장된 목록이 위 코드 문자열만으로 된 중복 없는 배열이 아니거나(숫자, 숫자 문자열, 대문자 코드가 섞인 경우 포함), 기본값이 목록에 없는 운동은 두 필드가 함께 `null`이다.
+
+`size`는 최대 100이라 운동 전체(105개)를 받으려면 페이지를 두 번 요청한다.
 
 ## 즐겨찾기 (회원)
 
@@ -91,9 +97,9 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
   "visibility": "private",
   "requestId": "rt-7f3a9c",
   "items": [
-    { "exerciseId": 1, "recordType": "weight", "restSeconds": 60,
+    { "exerciseId": 2, "recordType": "weight", "restSeconds": 60,
       "sets": [{ "reps": 12, "weightKg": 40 }, { "reps": 10, "weightKg": 50 }] },
-    { "exerciseId": 2, "targetSets": 3, "targetReps": 10, "targetDurationSeconds": null, "restSeconds": 60 }
+    { "exerciseId": 1, "targetSets": 3, "targetReps": 10, "targetDurationSeconds": null, "restSeconds": 60 }
   ]
 }
 ```
@@ -160,7 +166,7 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
   "startedAt": "2026-11-05T10:00:00",
   "exercises": [
     {
-      "exerciseId": 1,
+      "exerciseId": 2,
       "exerciseRoutineItemId": 1,
       "sets": [{ "reps": 10, "weightKg": 20, "durationSeconds": null, "distanceM": null, "restSeconds": 60 }]
     }
