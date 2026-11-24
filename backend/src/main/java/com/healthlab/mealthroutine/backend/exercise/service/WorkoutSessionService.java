@@ -66,6 +66,12 @@ public class WorkoutSessionService {
     @Transactional
     public SessionResponse update(Long userId, Long sessionId, SessionUpdateRequest request) {
         WorkoutSessionEntity session = findOwned(userId, sessionId);
+        // A record uploaded with a requestId keeps recordType, setTargets and the planned set numbers (skipped sets
+        // leave gaps). This PATCH body has none of them and renumbers sets from 1, so replacing the list would lose
+        // them and make a retry of the original upload a REQUEST_CONFLICT. Refuse before changing anything.
+        if (request.exercises() != null && session.getRequestId() != null) {
+            throw new BusinessException(ErrorCode.RECORD_EXERCISES_LOCKED);
+        }
         if (request.startedAt() != null) {
             session.setStartedAt(request.startedAt());
         }

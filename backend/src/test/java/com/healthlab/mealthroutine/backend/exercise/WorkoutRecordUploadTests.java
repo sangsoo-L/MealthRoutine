@@ -2,6 +2,7 @@ package com.healthlab.mealthroutine.backend.exercise;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -277,6 +278,72 @@ class WorkoutRecordUploadTests {
         send(post(RECORDS), ME, record("rec-empty", "2026-01-10T01:00:00Z", "2026-01-10T01:30:00Z", """
                 [{"exerciseId":2001,"recordType":"reps","setTargets":[{"reps":10}],"completedSets":[]}]"""))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void patchCannotReplaceTheExercisesOfAnUploadedRecord() throws Exception {
+        // PR review: only set 2 of 3 done. The old PATCH used to drop recordType/setTargets, renumber set 2 to 1,
+        // and then a retry of the same upload ended in 409 REQUEST_CONFLICT.
+        String onlySetTwo = """
+                [{"exerciseId":2001,"recordType":"weight",
+                  "setTargets":[{"reps":12,"weightKg":40},{"reps":10,"weightKg":50},{"reps":8,"weightKg":60}],
+                  "completedSets":[{"setNumber":2,"reps":10,"weightKg":50}]}]""";
+        String upload = record("rec-patch", "2026-01-10T01:00:00Z", "2026-01-10T01:30:00Z", onlySetTwo);
+        String id = sessionId(send(post(RECORDS), ME, upload).andExpect(status().isCreated()));
+
+        send(patch(SESSIONS + "/" + id), ME, """
+                {"exercises":[{"exerciseId":2001,"sets":[{"reps":10,"weightKg":50}]}]}""")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(ERROR_CODE).value("RECORD_EXERCISES_LOCKED"));
+        // Refused as a whole: the feedback sent together with the exercises is not saved either.
+        send(patch(SESSIONS + "/" + id), ME, """
+                {"feedbackNote":"같이 보낸 메모","exercises":[{"exerciseId":2002,"sets":[{"durationSeconds":30}]}]}""")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(ERROR_CODE).value("RECORD_EXERCISES_LOCKED"));
+
+        perform(get(SESSIONS + "/" + id), ME)
+                .andExpect(jsonPath("$.data.feedbackNote").doesNotExist())
+                .andExpect(jsonPath("$.data.exercises.length()").value(1))
+                .andExpect(jsonPath("$.data.exercises[0].recordType").value("weight"))
+                .andExpect(jsonPath("$.data.exercises[0].setTargets.length()").value(3))
+                .andExpect(jsonPath("$.data.exercises[0].sets.length()").value(1))
+                .andExpect(jsonPath("$.data.exercises[0].sets[0].setNumber").value(2));
+
+        // The rest of PATCH still works on an uploaded record, and the feedback is not part of the upload content.
+        send(patch(SESSIONS + "/" + id), ME, "{\"feedbackRating\":4,\"feedbackNote\":\"좋았음\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.feedbackRating").value(4));
+        String retried = sessionId(send(post(RECORDS), ME, upload)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.created").value(false))
+                .andExpect(jsonPath("$.data.exercises[0].sets[0].setNumber").value(2)));
+        assertThat(retried).isEqualTo(id);
+        assertThat(countSessions(ME)).isEqualTo(1);
+    }
+
+    @Test
+    void sessionsStartedTheOldWayCanStillReplaceTheirExercises() throws Exception {
+        String id = sessionId(send(post(SESSIONS), ME, "{\"startedAt\":\"2026-01-10T10:00:00\"}")
+                .andExpect(status().isCreated()));
+        send(patch(SESSIONS + "/" + id), ME, """
+                {"exercises":[{"exerciseId":2001,"sets":[{"reps":10,"weightKg":50}]}]}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.exercises[0].sets[0].setNumber").value(1));
+    }
+
+    @Test
+    void endBeforeStartWithinTheSameSecondIsRejected() throws Exception {
+        // Both become 10:00:00 once cut to whole seconds; the order has to be checked on the times as sent.
+        send(post(RECORDS), ME, record("rec-ms", "2026-01-10T01:00:00.800Z", "2026-01-10T01:00:00.200Z", EXERCISES))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath(ERROR_CODE).value("INVALID_REQUEST"));
+        // Same instant written with different offsets is not "before".
+        send(post(RECORDS), ME, record("rec-ms", "2026-01-10T10:00:00.500+09:00", "2026-01-10T01:00:00.500Z",
+                EXERCISES))
+                .andExpect(status().isCreated());
+        assertThat(countSessions(ME)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from workout_sessions where request_id = 'rec-ms'"
+                + " and user_id = 1001", Integer.class)).isEqualTo(1);
     }
 
     @Test

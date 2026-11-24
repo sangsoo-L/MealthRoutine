@@ -42,6 +42,7 @@
 | 409 | REQUEST_CONFLICT | 같은 `requestId`로 다른 내용을 다시 보냄 |
 | 409 | REVISION_MISMATCH | `expectedRevision`이 현재 값과 다름. `data.currentRevision`에 현재 값 |
 | 409 | SET_TARGETS_WOULD_BE_LOST | 세트별 목표가 있던 운동을 예전 방식 항목으로 바꾸는 PATCH. `discardSetTargets: true`가 필요 |
+| 409 | RECORD_EXERCISES_LOCKED | 완료 기록 저장 API로 만든 기록의 `exercises`를 PATCH로 바꾸려 함 |
 | 409 | DATA_CONFLICT | DB 제약 조건 충돌 |
 | 500 | INTERNAL_ERROR | 서버 오류 |
 
@@ -171,7 +172,7 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 - `routineId`만 보내면 루틴의 운동을 복사한다.
 - `setNumber`는 `sets` 순서대로 서버가 1부터 부여한다.
 - `exerciseRoutineItemId`는 응답 값을 그대로 보낸다. 이 기록의 루틴에 속하고 운동이 같아야 한다.
-- PATCH는 `startedAt`, `endedAt`, `feedbackRating`(1~5), `feedbackNote`, `exercises`를 받는다.
+- PATCH는 `startedAt`, `endedAt`, `feedbackRating`(1~5), `feedbackNote`, `exercises`를 받는다. 아래 "완료 기록 저장" API로 만든 기록은 `exercises`를 바꿀 수 없다(409 `RECORD_EXERCISES_LOCKED`).
 - 상태 변경 시 `endedAt`이 비어 있으면 현재 시각을 넣는다.
 
 **완료 기록 저장** (2026-11-24 추가)
@@ -202,7 +203,7 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 
 - `requestId`, `startedAt`, `endedAt`, `exercises`(1~100개)는 필수다. `requestId` 형식과 재전송 규칙은 루틴과 같다. 대소문자를 구분하고, 같은 회원의 업로드는 한 번에 하나씩 처리해서 동시에 같은 요청이 와도 `DATA_CONFLICT`로 끝나지 않는다.
 - `startedAt`, `endedAt`은 시간대가 붙은 값(`Z` 또는 `+09:00`)만 받는다. 서버는 한국 시각으로 바꿔 초 단위로 저장하고, 응답의 `startedAt`·`endedAt`도 한국 시각이다. 그래서 통계와 운동 보상(10분 이상 완료한 기록)의 날짜가 한국 날짜 기준으로 맞는다.
-- `endedAt`이 `startedAt`보다 빠르면 400이다.
+- `endedAt`이 `startedAt`보다 빠르면 400이다. 초 단위로 바꾸기 전의 보낸 시각으로 비교하므로 같은 초 안에서 순서가 뒤집힌 값(`01:00:00.800Z` → `01:00:00.200Z`)도 400이다.
 - `setTargets`는 루틴의 `sets`와 같은 규칙이다(1~200개, `recordType`별 허용 값).
 - `completedSets`에는 완료한 세트만 넣는다. `setNumber`는 `setTargets`에서의 위치(1부터)이고 점점 커져야 한다. 완료하지 않은 세트를 빼서 번호가 건너뛸 수 있다.
 - 완료한 세트가 하나도 없는 기록은 400이다. 완료한 세트가 없는 운동이 섞여 있는 것은 괜찮다.
@@ -220,6 +221,7 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 - `reps`: 1~999 정수 / `weightKg`: 0~999, 소수 둘째 자리까지 / `durationSeconds`: 0~86400 정수(측정한 시간)
 - 중량과 시간은 서버에서 선택 값이다. 프론트는 새로 완료하는 세트에 모두 요구하지만, 중량을 넣지 않았거나 타이머 없이 끝낸 예전 기록도 올릴 수 있게 서버는 비워 둘 수 있게 했다.
 - 완료 세트는 `workout_session_sets`에, 세트별 목표와 기록 방식은 `workout_session_exercises`에 저장한다. 응답과 상세 조회의 `exercises[]`에 `recordType`, `setTargets`가 함께 나온다.
+- 이 API로 저장한 기록은 `PATCH /workout-sessions/{sessionId}`로 `exercises`를 바꿀 수 없다(409 `RECORD_EXERCISES_LOCKED`, 같이 보낸 다른 필드도 저장하지 않는다). PATCH 본문에는 `recordType`, `setTargets`, 건너뛴 세트 번호를 담을 수 없어서 바꾸면 이 값들이 사라지기 때문이다. `feedbackRating`, `feedbackNote`, `startedAt`, `endedAt`은 바꿀 수 있다. 피드백은 재전송 비교에 들어가지 않지만, 시각을 바꾼 뒤 원래 요청을 다시 보내면 내용이 달라져 409 `REQUEST_CONFLICT`다(루틴을 수정한 뒤 다시 보낼 때와 같다).
 
 **통계**: completed 기록만 집계한다.
 

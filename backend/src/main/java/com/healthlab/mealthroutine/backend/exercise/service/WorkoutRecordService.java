@@ -49,11 +49,12 @@ public class WorkoutRecordService {
     @Transactional
     public SaveResult save(Long userId, SessionRecordRequest request) {
         // Validate everything first so a bad body is a 400 even when the requestId was used before.
-        LocalDateTime startedAt = toKst(request.startedAt());
-        LocalDateTime endedAt = toKst(request.endedAt());
-        if (endedAt.isBefore(startedAt)) {
+        // Compare the times as sent: once cut to whole seconds, 01:00:00.800 → 01:00:00.200 would look equal.
+        if (request.endedAt().isBefore(request.startedAt())) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
+        LocalDateTime startedAt = toKst(request.startedAt());
+        LocalDateTime endedAt = toKst(request.endedAt());
         List<ExerciseSpec> exercises = request.exercises().stream().map(WorkoutRecordService::toSpec).toList();
         if (exercises.stream().allMatch(e -> e.done().isEmpty())) {
             // A record needs at least one completed set; the frontend refuses to complete without one too.
