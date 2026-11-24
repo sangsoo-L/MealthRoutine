@@ -23,6 +23,9 @@ public enum ErrorCode {
     // Old-style items (targetSets only) would replace a routine that has per-set targets. Needs discardSetTargets.
     SET_TARGETS_WOULD_BE_LOST(HttpStatus.CONFLICT,
             "세트별 목표가 있는 루틴을 예전 형식으로 바꾸면 세트별 목표가 사라집니다. 바꾸려면 discardSetTargets를 true로 보내 주세요."),
+    // PATCH exercises on a record saved by POST /workout-sessions/records. PATCH cannot carry recordType, setTargets
+    // or skipped set numbers, so replacing the list would lose them.
+    RECORD_EXERCISES_LOCKED(HttpStatus.CONFLICT, "완료 기록으로 저장한 운동 목록은 수정할 수 없습니다."),
     FOOD_NOT_FOUND(HttpStatus.NOT_FOUND, "음식을 찾을 수 없습니다."),
     MEAL_RECORD_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 기록을 찾을 수 없습니다."),
     DIET_GOAL_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 목표를 찾을 수 없습니다."),

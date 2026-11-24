@@ -45,6 +45,9 @@ public class WorkoutSessionEntity {
 
     private String feedbackNote;
 
+    /** The client's id for a completed-record upload; a repeat with the same id returns this session. */
+    private String requestId;
+
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("workoutSessionExercisesId")
     private List<WorkoutSessionExerciseEntity> exercises = new ArrayList<>();
