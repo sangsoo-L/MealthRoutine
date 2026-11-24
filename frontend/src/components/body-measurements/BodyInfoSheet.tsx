@@ -1,7 +1,9 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
-import type {
-  BodyMeasurementInput,
-  BodyMeasurementStatus,
+import {
+  isLiveSaveOutcome,
+  type BodyMeasurementInput,
+  type BodyMeasurementStatus,
+  type BodySaveOutcome,
 } from '../../body-measurements/bodyTypes.ts'
 import {
   HEIGHT_RANGE,
@@ -91,8 +93,8 @@ interface BodyInfoSheetProps {
   variant: Variant
   /** 등록 여부. 이미 등록된 항목은 입력받지 않고 가려서(***) 보여 준다. */
   status: BodyMeasurementStatus
-  /** 저장. 실패하면 예외를 던지고, 그 경우 입력값은 그대로 남는다. */
-  save: (input: BodyMeasurementInput) => Promise<void>
+  /** 저장. 화면용 결과를 돌려준다(stale이면 아무것도 반영하지 않는다). 저장되지 않았거나 결과를 모르면 입력값은 그대로 남는다. */
+  save: (input: BodyMeasurementInput) => Promise<BodySaveOutcome>
   /** 시트가 닫힌 뒤(저장 성공·나중에 입력하기·Esc·배경·닫기 버튼) 호출된다. */
   onClose: () => void
 }
@@ -143,7 +145,12 @@ export function BodyInfoForm({
   closing,
   editable = [],
   onSaved,
-}: Omit<BodyInfoSheetProps, 'onClose'> & {
+}: Omit<BodyInfoSheetProps, 'onClose' | 'status'> & {
+  /**
+   * 등록 여부. `'protected'`(실제 모드, F5-D1)면 등록 여부를 모르므로 키·몸무게 두 칸을 모두 **선택 입력**으로 연다:
+   * 빈 칸은 보내지 않고, 둘 다 비면 요청하지 않으며, 하나만 입력해도 저장한다. 등록 여부를 "미등록"으로 꾸미지 않는다.
+   */
+  status: BodyMeasurementStatus | 'protected'
   close: () => void
   closing: boolean
   editable?: readonly ('height' | 'weight')[]
@@ -156,16 +163,23 @@ export function BodyInfoForm({
     Partial<Record<'height' | 'weight', MeasurementError>>
   >({})
   const [saving, setSaving] = useState(false)
-  const [saveFailed, setSaveFailed] = useState(false)
+  // 저장 실패 안내: failed(저장 안 됨, 다시 시도) · uncertain(저장됐는지 모름, 다시 보내라고 하지 않음) · needOne(선택 입력이 모두 빔)
+  const [saveError, setSaveError] = useState<
+    'failed' | 'uncertain' | 'needOne' | null
+  >(null)
+  const saveFailed = saveError !== null
+  const optional = status === 'protected'
+  const registered = (id: 'height' | 'weight') =>
+    status !== 'protected' && status[id]
   const [reentering, setReentering] = useState<
     Record<'height' | 'weight', boolean>
   >({ height: false, weight: false })
   const submitting = useRef(false)
   // 입력을 받는 항목: 등록되지 않은 항목, 그리고 "다시 입력"을 연 등록 항목.
   const missing = FIELDS.filter(
-    (f) => !status[f.id] || (editable.includes(f.id) && reentering[f.id]),
+    (f) => !registered(f.id) || (editable.includes(f.id) && reentering[f.id]),
   )
-  const firstMissing = FIELDS.find((f) => !status[f.id])?.id
+  const firstMissing = FIELDS.find((f) => !registered(f.id))?.id
 
   function toggleReenter(id: 'height' | 'weight', on: boolean) {
     setReentering((prev) => ({ ...prev, [id]: on }))
@@ -178,7 +192,7 @@ export function BodyInfoForm({
         return next
       })
     }
-    setSaveFailed(false)
+    setSaveError(null)
   }
 
   function validate(id: 'height' | 'weight', value: string) {
@@ -200,7 +214,18 @@ export function BodyInfoForm({
 
     const input: BodyMeasurementInput = {}
     let firstInvalid: string | null = null
-    for (const field of missing) {
+    // 선택 입력(protected): 비워 둔 칸은 검사·전송하지 않는다. 둘 다 비면 요청하지 않는다.
+    const targets = optional
+      ? missing.filter((field) => values[field.id].trim() !== '')
+      : missing
+    if (optional && targets.length === 0) {
+      setSaveError('needOne')
+      document
+        .getElementById(`${formId}-${missing[0]?.id ?? 'height'}`)
+        ?.focus()
+      return
+    }
+    for (const field of targets) {
       const result = validate(field.id, values[field.id])
       if (!result.ok) {
         firstInvalid ??= field.id
@@ -217,9 +242,20 @@ export function BodyInfoForm({
 
     submitting.current = true
     setSaving(true)
-    setSaveFailed(false)
+    setSaveError(null)
+    let outcome: BodySaveOutcome | null
     try {
-      await save(input)
+      outcome = await save(input)
+    } catch {
+      outcome = null
+    }
+    // 반영 바로 앞에서 다시 확인한다(8.8.3): 그 사이 로그인이 바뀌었으면 문구·입력·닫기 모두 하지 않는다.
+    if (outcome !== null && !isLiveSaveOutcome(outcome)) {
+      setSaving(false)
+      submitting.current = false
+      return
+    }
+    if (outcome?.kind === 'saved') {
       if (onSaved) {
         // 화면에 머무는 경우: 입력을 비우고 다시 입력 상태를 닫는다(저장한 값은 읽지 않는다).
         setValues({ height: '', weight: '' })
@@ -230,12 +266,12 @@ export function BodyInfoForm({
       } else {
         close()
       }
-    } catch {
-      // 실패하면 입력값을 그대로 두고 다시 시도할 수 있게 한다.
-      setSaveFailed(true)
-      setSaving(false)
-      submitting.current = false
+      return
     }
+    // 실패하면 입력값을 그대로 둔다. 결과를 모르면(uncertain) 다시 보내라고 하지 않는다(새 측정 행이 생길 수 있다).
+    setSaveError(outcome?.kind === 'uncertain' ? 'uncertain' : 'failed')
+    setSaving(false)
+    submitting.current = false
   }
 
   return (
@@ -258,7 +294,7 @@ export function BodyInfoForm({
           const inputId = `${formId}-${field.id}`
           const errorId = `${inputId}-error`
           const hintId = `${inputId}-hint`
-          if (status[field.id] && !reentering[field.id]) {
+          if (registered(field.id) && !reentering[field.id]) {
             // 이미 등록된 항목: 값을 읽지 않고 가려서 보여 준다. 다시 입력은 `editable`인 항목만 열 수 있다.
             return (
               <div key={field.id}>
@@ -311,7 +347,7 @@ export function BodyInfoForm({
                       ...prev,
                       [field.id]: e.target.value,
                     }))
-                    setSaveFailed(false)
+                    setSaveError(null)
                     if (error) validate(field.id, e.target.value)
                   }}
                   onBlur={(e) => {
@@ -347,7 +383,7 @@ export function BodyInfoForm({
                   {errorMessage(field, error)}
                 </p>
               ) : null}
-              {status[field.id] ? (
+              {registered(field.id) ? (
                 <button
                   type="button"
                   onClick={() => toggleReenter(field.id, false)}
@@ -368,8 +404,12 @@ export function BodyInfoForm({
       </p>
 
       {saveFailed ? (
-        <p role="alert" className={errorClass}>
-          저장하지 못했어요. 입력한 값은 그대로 있으니 다시 시도해 주세요.
+        <p role="alert" data-body-save-error={saveError} className={errorClass}>
+          {saveError === 'uncertain'
+            ? '저장 결과를 확인하지 못했어요. 2차 비밀번호로 신체 정보를 확인해 주세요.'
+            : saveError === 'needOne'
+              ? '키나 몸무게 중 하나 이상 입력해 주세요.'
+              : '저장하지 못했어요. 입력한 값은 그대로 있으니 다시 시도해 주세요.'}
         </p>
       ) : null}
 

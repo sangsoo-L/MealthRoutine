@@ -24,6 +24,23 @@ interface PinTokenEntry {
 
 let entry: PinTokenEntry | null = null
 let epoch = 0
+const listeners = new Set<() => void>()
+
+/** 폐기·저장이 있었다는 사실만 알린다. 토큰·회원 정보는 넘기지 않는다(F5-D8). */
+function notify(): void {
+  listeners.forEach((listener) => listener())
+}
+
+/**
+ * 토큰이 폐기되거나 새로 저장될 때 알림을 받는다(F5-D8). 알림에는 값이 없으므로 받는 쪽이 `getPinToken`·`currentPinEpoch`로
+ * 다시 판단한다. 예: 설정 화면에서 보낸 PIN 변경 응답이 늦게 도착해 토큰이 지워지면 열람 중인 신체 정보를 곧바로 가린다.
+ */
+export function subscribePinToken(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
 
 /** 지금 PIN 폐기 번호. 확인 요청이 시작할 때 잡아 두고 저장 직전에 다시 비교한다. */
 export function currentPinEpoch(): number {
@@ -37,6 +54,7 @@ export function currentPinEpoch(): number {
 export function clearPinToken(): void {
   entry = null
   epoch += 1
+  notify()
 }
 
 /** 확인에 성공한 토큰을 저장한다(이전 토큰은 교체). 번호를 올려 늦게 도착한 다른 확인 응답이 이 토큰을 덮지 못하게 한다. */
@@ -48,6 +66,7 @@ export function storePinToken(
 ): void {
   entry = { ownerId, token, expiresAt, guard }
   epoch += 1
+  notify()
 }
 
 /**
@@ -68,6 +87,19 @@ export function getPinToken(
     return null
   }
   return entry.token
+}
+
+/**
+ * 지금 쓸 수 있는 토큰의 만료 시각(브라우저 시계 ms, F5-D9). **토큰 값은 주지 않는다.** 판단 기준은 `getPinToken`과 같고,
+ * 쓸 수 없으면 보관분을 지우고 null이다. 신체 정보 열람이 1분보다 먼저 끝나는 토큰에 맞춰 가릴 시각을 잡는 데 쓴다.
+ */
+export function getPinTokenExpiresAt(
+  ownerId: string,
+  now: number = Date.now(),
+): number | null {
+  return getPinToken(ownerId, now) === null || entry === null
+    ? null
+    : entry.expiresAt
 }
 
 // 로그인·로그아웃·세션 종료의 계정 정리에서 함께 폐기한다(계획 3.4 ③).

@@ -1,16 +1,26 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { PIN_LOCKED_MESSAGE } from '../../pin-settings/pinSettingsMessages.ts'
+import {
+  PIN_LOCKED_MESSAGE,
+  PIN_SERVER_LOCKED_MESSAGE,
+} from '../../pin-settings/pinSettingsMessages.ts'
+import {
+  getBodyAccess,
+  revokeBodyAccessIf,
+} from '../../body-access/bodyAccessStore.ts'
 import type {
   BodyReveal,
   BodyRevealNotice,
 } from '../../body-access/useBodyReveal.ts'
 import { calculateBmi } from '../../body-measurements/bodyDisplay.ts'
-import type {
-  BodyMeasurementInput,
-  BodyMeasurementState,
-  BodyMeasurementStatus,
-  BodyMeasurementValues,
+import {
+  isLiveSaveOutcome,
+  type BodyMeasurementInput,
+  type BodyMeasurementState,
+  type BodyMeasurementStatus,
+  type BodyMeasurementValues,
+  type BodySaveOutcome,
+  type BodyServerMetrics,
 } from '../../body-measurements/bodyTypes.ts'
 import BodyInfoSheet from '../body-measurements/BodyInfoSheet.tsx'
 import { MY_DESTINATIONS, MY_PAGE_PATH } from '../../mypage/destinations.ts'
@@ -19,7 +29,7 @@ import { chipClass, focusRing, sectionTitleClass } from './myStyles.ts'
 
 interface BodyInfoSummaryProps {
   body: BodyMeasurementState
-  save: (input: BodyMeasurementInput) => Promise<void>
+  save: (input: BodyMeasurementInput) => Promise<BodySaveOutcome>
   /**
    * PIN 열람 상태(P05 확인 뒤). 없으면 항상 마스킹이다. 수치는 열람 권한이 있는 동안에만 이 값에 있고,
    * 권한이 끝나면(숨기기·1분·이탈·로그아웃·PIN 변경) 곧바로 사라진다.
@@ -47,17 +57,55 @@ const NOTICE_TEXT: Record<BodyRevealNotice, string> = {
   error: '신체 정보를 불러오지 못해 가려 두었어요. 다시 확인해 주세요.',
 }
 
-/** 열람 중인 항목의 표시 값. 등록되지 않은 항목은 "미등록", BMI는 키·몸무게가 모두 있어야 계산한다. */
+/**
+ * 열람 중인 항목의 표시 값. 등록되지 않은 항목은 "미등록".
+ * BMI: 서버 열람(`metrics` 있음)은 서버 값만 쓴다(프론트에서 다시 계산하지 않음, F5-D3). 모의 열람은 기존처럼 키·몸무게로 계산한다.
+ */
 function revealedText(
   key: (typeof BODY_FIELDS)[number]['key'],
   values: BodyMeasurementValues,
+  metrics?: BodyServerMetrics,
 ): string {
   if (key === 'height')
     return values.heightCm === null ? '미등록' : `${values.heightCm}cm`
   if (key === 'weight')
     return values.weightKg === null ? '미등록' : `${values.weightKg}kg`
+  if (metrics) return metrics.bmi === null ? '계산 불가' : `${metrics.bmi}`
   const bmi = calculateBmi(values.heightCm, values.weightKg)
   return bmi === null ? '계산 불가' : bmi.toFixed(1)
+}
+
+/** 서버 추정값 두 칸(F5-D3). 0은 정상 계산 결과다(HEALTH8-16) — 값이 null일 때만 "계산 불가". */
+const ESTIMATE_FIELDS = [
+  { label: '기초대사량', key: 'bmr' },
+  { label: '하루 소비 열량', key: 'tdee' },
+] as const
+
+function estimateText(
+  key: (typeof ESTIMATE_FIELDS)[number]['key'],
+  metrics: BodyServerMetrics,
+): string {
+  const value = metrics[key]
+  return value === null ? '계산 불가' : `${value}kcal`
+}
+
+const MISSING_LABEL: Record<string, string> = {
+  heightCm: '키',
+  weightKg: '몸무게',
+  birthDate: '생년월일',
+  gender: '성별',
+}
+
+/** 추정값을 계산하지 못한 이유 한 줄. 이유가 없으면 null. */
+function estimateNote(metrics: BodyServerMetrics): string | null {
+  const missing = metrics.missingFields
+    .map((field) => MISSING_LABEL[field])
+    .filter((label): label is string => label !== undefined)
+  if (missing.length > 0)
+    return `${missing.join('·')} 정보가 있어야 계산할 수 있어요.`
+  if (metrics.notCalculableFields.length > 0)
+    return '입력한 정보로는 기초대사량을 계산할 수 없어요.'
+  return null
 }
 
 /**
@@ -90,12 +138,22 @@ export default function BodyInfoSummary({
   const noticeText = reveal.notice
     ? NOTICE_TEXT[reveal.notice]
     : lockedNotice
-      ? PIN_LOCKED_MESSAGE
+      ? body.status === 'protected'
+        ? PIN_SERVER_LOCKED_MESSAGE
+        : PIN_LOCKED_MESSAGE
       : null
+  const metrics =
+    reveal.state.status === 'revealed' ? reveal.state.metrics : undefined
 
-  async function saveAndMask(input: BodyMeasurementInput) {
-    await save(input)
-    reveal.hide()
+  /** 저장하면 열람 중이던 수치는 낡았으므로 가린다. 저장을 시작할 때의 열람만, 지금도 유효한 저장 성공일 때만 가린다(8.8.3). */
+  async function saveAndMask(
+    input: BodyMeasurementInput,
+  ): Promise<BodySaveOutcome> {
+    const started = getBodyAccess()
+    const outcome = await save(input)
+    if (started && outcome.kind === 'saved' && isLiveSaveOutcome(outcome))
+      revokeBodyAccessIf(started)
+    return outcome
   }
 
   return (
@@ -124,7 +182,7 @@ export default function BodyInfoSummary({
           // 열람 중일 때만 값이 있다. 마스킹·불러오는 중에는 null이라 수치가 만들어지지 않는다.
           const shown =
             reveal.state.status === 'revealed'
-              ? revealedText(field.key, reveal.state.values)
+              ? revealedText(field.key, reveal.state.values, metrics)
               : null
           return (
             <div
@@ -164,6 +222,42 @@ export default function BodyInfoSummary({
           )
         })}
       </dl>
+
+      {/* 서버 열람: 서버가 계산한 추정값(F5-D3). 열람 중에만 그린다. */}
+      {metrics ? (
+        <div data-body-estimates="">
+          <dl className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(max(6.5rem,calc((100%-8px)/2)),1fr))] gap-2">
+            {ESTIMATE_FIELDS.map((field) => {
+              const text = estimateText(field.key, metrics)
+              return (
+                <div
+                  key={field.key}
+                  className="rounded-control bg-page px-2 py-2 text-center"
+                >
+                  <dt className="text-support leading-snug font-normal text-muted">
+                    {field.label}
+                  </dt>
+                  <dd className="text-section-title leading-snug font-semibold text-content">
+                    <span
+                      className={
+                        text === '계산 불가'
+                          ? 'text-support font-normal text-muted'
+                          : undefined
+                      }
+                    >
+                      {text}
+                    </span>
+                  </dd>
+                </div>
+              )
+            })}
+          </dl>
+          <p className="mt-2 text-support leading-snug font-normal text-muted">
+            BMI·기초대사량·하루 소비 열량은 서버가 계산한 추정값이에요.
+            {estimateNote(metrics) ? ` ${estimateNote(metrics)}` : ''}
+          </p>
+        </div>
+      ) : null}
 
       <p className="mt-2.5 text-support leading-snug font-normal text-muted">
         {revealing
