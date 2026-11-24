@@ -1,4 +1,4 @@
-import { ApiError, type HttpMethod } from './core.ts'
+import { ApiError, INVALID_RESPONSE, type HttpMethod } from './core.ts'
 import {
   authSession,
   type ApiRequestOptions,
@@ -22,4 +22,6 @@ export function apiRequest<T = unknown>(
 }
 
 export { ApiError }
+/** 응답이 공통 형식과 다르거나(성공인데 기대한 상태 코드가 아님 포함) 해석할 수 없을 때의 errorCode */
+export { INVALID_RESPONSE }
 export type { ApiRequestOptions, AuthMode, HttpMethod }

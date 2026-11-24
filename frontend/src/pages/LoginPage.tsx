@@ -122,11 +122,12 @@ function PasswordInput({
 }
 
 /**
- * hideStartupNotice: 회원가입 직후(F2-D3)처럼 앱 시작 확인 뒤 서버에 다시 닿은 것이 확인된 경우 true.
- * 이때는 과거 시작 확인의 연결 실패 안내(F1-D7 connectionNotice)를 숨긴다(방금 성공한 가입을 실패로 오해하지 않게).
- * 이 화면에서 새로 시도한 로그인의 연결 실패(noticeVisible)는 그대로 보인다.
+ * 로그인 입력 폼. 연결 실패 안내는 두 가지다: 이 화면에서 새로 시도한 로그인의 실패(noticeVisible)와
+ * 앱 시작 확인의 실패(F1-D7 connectionNotice). 가입 직후에는 가입 화면이 성공 때 지난 시작 확인 안내를 지우고 온다
+ * (dismissConnectionNotice, PR #27 리뷰). 그래서 여기서는 가입 표지(signedUp)로 안내를 숨기지 않는다 —
+ * 가입 완료 상태로 새로고침한 뒤의 새 시작 확인 실패도 보여야 하기 때문이다.
  */
-function LoginForm({ hideStartupNotice }: { hideStartupNotice: boolean }) {
+function LoginForm() {
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [errorKey, setErrorKey] = useState<FieldErrorKey | null>(null)
   const [noticeVisible, setNoticeVisible] = useState(false)
@@ -242,14 +243,9 @@ function LoginForm({ hideStartupNotice }: { hideStartupNotice: boolean }) {
         {submitting ? (
           <p className={noticeClass}>{FORM_MESSAGES.submitting}</p>
         ) : null}
-        {/* 제출 결과의 연결 실패, 또는 앱 시작 확인이 서버에 닿지 못한 경우(F1-D7). 같은 문구를 한 번만 보여 준다.
-            가입 직후에는 과거 시작 확인 실패 안내만 숨긴다(hideStartupNotice). */}
+        {/* 제출 결과의 연결 실패, 또는 앱 시작 확인이 서버에 닿지 못한 경우(F1-D7). 같은 문구를 한 번만 보여 준다. */}
         {noticeVisible ||
-        (connectionNotice &&
-          !hideStartupNotice &&
-          !submitting &&
-          !errorKey &&
-          !suspendedMessage) ? (
+        (connectionNotice && !submitting && !errorKey && !suspendedMessage) ? (
           <p className={noticeClass}>{FORM_MESSAGES.connectionFailed}</p>
         ) : null}
       </div>
@@ -325,7 +321,7 @@ export default function LoginPage() {
               <p className={noticeClass}>{SIGNED_UP_NOTICE}</p>
             ) : null}
           </div>
-          <LoginForm hideStartupNotice={signedUp} />
+          <LoginForm />
           <div className="mt-1 flex justify-center">
             <Link
               to="/password/reset"
