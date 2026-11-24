@@ -36,13 +36,8 @@ const PAGE_SIZE = 2000
 const num = (v: number | null | undefined): NutrientValue =>
   typeof v === 'number' && Number.isFinite(v) ? v : null
 
-/** 음식 id → 1인분 중량(g). 식단 기록에서 그램을 "몇 인분"으로 바꿀 때 쓴다. */
-const servingGrams = new Map<string, number>()
-
 function toFood(r: FoodResponse): Food {
   const id = String(r.foodId)
-  // 백엔드 계산과 같게: 1인분 = referenceServingSize, 없으면 기준량(servingSize)
-  servingGrams.set(id, r.referenceServingSize ?? r.servingSize ?? 100)
   return {
     id,
     name: r.brand ? `${r.name} (${r.brand})` : r.name,
@@ -55,6 +50,8 @@ function toFood(r: FoodResponse): Food {
     },
     allergyNote: null, // 원본 데이터에 알레르기 정보가 없다
     source: SERVER_FOOD_SOURCE,
+    // 백엔드 계산과 같게: 1인분 = referenceServingSize, 없으면 기준량(servingSize)
+    servingGrams: r.referenceServingSize ?? r.servingSize ?? 100,
   }
 }
 
@@ -77,14 +74,6 @@ async function loadAll(): Promise<readonly Food[]> {
     ),
   )
   return [first, ...rest].flatMap((p) => p.content.map(toFood))
-}
-
-/** 1인분 중량(g). 모르면 백엔드에서 한 건 조회해 채운다. */
-export async function servingGramsOf(foodId: string): Promise<number> {
-  const known = servingGrams.get(foodId)
-  if (known !== undefined) return known
-  await serverFoodRepository.getById(foodId)
-  return servingGrams.get(foodId) ?? 100
 }
 
 export const serverFoodRepository: FoodRepository = {

@@ -77,6 +77,8 @@ export interface MealRecord {
   weightGrams: number
   /** 저장 당시의 100g 기준 영양값. null은 정보 없음이다. */
   nutritionSnapshot: Per100g
+  /** 이 음식의 1인분 중량(g). 서버 기록만 있다(수정 시트의 예상 중량을 저장 기준과 맞춘다). */
+  servingGrams?: number
   nutritionSource: FoodSource
   /** 저장할 때마다 1씩 오르는 값(동시 수정 감지). */
   revision: number

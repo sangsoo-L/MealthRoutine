@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, before, beforeEach, test } from 'node:test'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
 
 // 식단 서버 저장소의 양 구분 ↔ 인분 변환 회귀 테스트(PR #30 리뷰 P1).
@@ -15,6 +17,9 @@ export function apiRequest(method, path, options) { return globalThis.__fakeApi(
 let server
 let Q
 let repoModule
+let Nutrition
+let Sheet
+let FoodRepo
 
 before(async () => {
   server = await createServer({
@@ -34,6 +39,13 @@ before(async () => {
   Q = await server.ssrLoadModule('/src/food/server/mealQuantity.ts')
   repoModule = await server.ssrLoadModule(
     '/src/food/server/serverMealRepository.ts',
+  )
+  Nutrition = await server.ssrLoadModule('/src/food/foodNutrition.ts')
+  Sheet = await server.ssrLoadModule(
+    '/src/components/food/MealPortionSheet.tsx',
+  )
+  FoodRepo = await server.ssrLoadModule(
+    '/src/food/server/serverFoodRepository.ts',
   )
 })
 
@@ -190,4 +202,108 @@ test('양 구분을 바꾸면 새 인분으로 저장되고 복원도 맞다', a
   assert.equal(saved.weightGrams, Math.round(149 * 0.5))
   assert.equal((await repo.get(record.id)).portion, 'less')
   assert.equal(patchCount, 1)
+})
+
+// PR #30 재검수 NEW-P1: 저장 전 안내(예상 중량·열량)와 실제 저장값이 같은 기준이어야 한다.
+const PER100G = { kcal: 50, protein: 3, fat: 1, carb: 10 } // 가짜 백엔드와 같은 100g 기준값
+
+test('저장 전 예상 중량·열량 = 저장 후 기록(1인분이 다른 여러 음식)', async () => {
+  const repo = repoModule.createServerMealRecordRepository('2')
+  let n = 0
+  for (const serving of SERVINGS) {
+    for (const portion of PORTIONS) {
+      const previewGrams = Nutrition.portionGrams(portion, serving)
+      const previewKcal = Nutrition.scaleNutrition(PER100G, previewGrams).kcal
+      const { record } = await repo.create(createInput(serving, portion, n++))
+      const at = `${serving}g ${portion}`
+      assert.equal(record.weightGrams, Math.round(previewGrams), at)
+      const savedKcal = Nutrition.scaleNutrition(
+        record.nutritionSnapshot,
+        record.weightGrams,
+      ).kcal
+      assert.ok(
+        Math.abs(savedKcal - previewKcal) <= 0.5 + 0.01 * previewKcal,
+        at,
+      )
+      // 수정 시트도 같은 1인분으로 계산한다
+      assert.equal(record.servingGrams, serving, at)
+    }
+  }
+})
+
+test('리뷰 재현 사례: 1인분 550g 음식 "많이"는 안내도 저장도 825g', async () => {
+  assert.equal(Nutrition.portionGrams('more', 550), 825)
+  const repo = repoModule.createServerMealRecordRepository('2')
+  const { record } = await repo.create(createInput(550, 'more', 0))
+  assert.equal(record.weightGrams, 825)
+})
+
+test('양 선택 시트: 서버 음식은 그 음식의 1인분 기준으로 안내하고 100g 고정 문구를 쓰지 않는다', () => {
+  const props = {
+    mode: 'new',
+    foodName: '가자미 매운탕',
+    per100g: PER100G,
+    servingGrams: 550,
+    initialPortion: 'normal',
+    meal: 'lunch',
+    busy: false,
+    error: null,
+    onSubmit() {},
+    onCancel() {},
+  }
+  const html = renderToStaticMarkup(createElement(Sheet.MealPortionForm, props))
+  assert.match(html, /275g/)
+  assert.match(html, /550g/)
+  assert.match(html, /825g/)
+  assert.match(html, /예상 413kcal/) // 825g × 50kcal/100g
+  assert.match(html, /1인분\(550g\)/)
+  assert.doesNotMatch(html, /1인분은 100g/)
+  // 1인분을 모르는 개발용 예시 음식은 기존 시안 기준 안내를 유지한다
+  const sample = renderToStaticMarkup(
+    createElement(Sheet.MealPortionForm, { ...props, servingGrams: undefined }),
+  )
+  assert.match(sample, /1인분은 100g/)
+})
+
+test('서버 음식 목록은 백엔드와 같은 기준으로 1인분 중량을 담는다', async () => {
+  globalThis.__fakeApi = async (method, path) => {
+    assert.equal(method, 'GET')
+    assert.match(path, /^\/foods\?page=0/)
+    const base = {
+      category: null,
+      brand: null,
+      servingUnit: 'g',
+      caloriesKcal: 50,
+      carbohydrateG: 10,
+      proteinG: 3,
+      fatG: 1,
+    }
+    return {
+      content: [
+        {
+          ...base,
+          foodId: 1,
+          name: '가',
+          servingSize: 100,
+          referenceServingSize: 550,
+        },
+        {
+          ...base,
+          foodId: 2,
+          name: '나',
+          servingSize: 100,
+          referenceServingSize: null,
+        },
+      ],
+      page: 0,
+      size: 2000,
+      totalElements: 2,
+      totalPages: 1,
+    }
+  }
+  const foods = await FoodRepo.serverFoodRepository.list()
+  assert.deepEqual(
+    foods.map((f) => f.servingGrams),
+    [550, 100],
+  )
 })

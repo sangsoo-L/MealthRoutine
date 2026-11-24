@@ -40,4 +40,9 @@ export interface Food {
    */
   allergyNote: string | null
   source: FoodSource
+  /**
+   * 이 음식의 1인분 중량(g). 서버 음식만 있다(백엔드와 같은 기준: referenceServingSize, 없으면 servingSize).
+   * 없으면 화면은 시안 예시 1인분(SAMPLE_SERVING_GRAMS)으로 계산한다.
+   */
+  servingGrams?: number
 }

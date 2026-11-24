@@ -79,6 +79,8 @@ function toRecord(r: MealRecordResponse, ownerId: string): MealRecord | null {
       fat: per100(item.fatG, grams),
       carb: per100(item.carbohydrateG, grams),
     },
+    // 1인분 중량 = 저장된 중량 ÷ 인분(수정 시트가 같은 기준으로 예상 중량을 보인다)
+    servingGrams: item.quantity > 0 ? grams / item.quantity : undefined,
     nutritionSource: SERVER_FOOD_SOURCE,
     revision: 1, // 백엔드에 revision이 없어 고정값을 쓴다
     requestId: `server-${r.mealRecordId}`,
