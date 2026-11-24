@@ -49,6 +49,8 @@ CREATE TABLE `exercise_routine_items` (
 	`target_reps`	SMALLINT	NULL	COMMENT '목표 반복 횟수',
 	`target_duration_seconds`	INT	NULL	COMMENT '목표 운동 시간',
 	`rest_seconds`	INT	NULL	COMMENT '세트 간 휴식 시간',
+	`record_type`	ENUM('reps','weight','time','time_reps','weight_time')	NULL	COMMENT '기록 방식(set_targets와 함께 있거나 함께 없음)',
+	`set_targets`	JSON	NULL	COMMENT '세트별 목표 [{reps,weightKg,targetSeconds}]',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
 	UNIQUE KEY `UK_ROUTINE_ITEM_SEQUENCE` (`routine_id`, `sequence_number`)
 );
@@ -70,8 +72,11 @@ CREATE TABLE `exercise_routines` (
 	`difficulty`	ENUM('beginner','intermediate','advanced')	NULL	COMMENT '운동 난이도',
 	`is_template`	BOOLEAN	NOT NULL	DEFAULT FALSE	COMMENT '다른사람 운동루틴 가져오기',
 	`visibility`	ENUM('private','shared','public')	NOT NULL	DEFAULT 'private'	COMMENT '루틴 공개 여부',
+	`revision`	INT	NOT NULL	DEFAULT 1	COMMENT '수정할 때마다 1 증가(동시 수정 감지)',
+	`request_id`	VARCHAR(100)	CHARACTER SET utf8mb4 COLLATE utf8mb4_bin	NULL	COMMENT '생성 요청 식별자(중복 저장 방지, 대소문자 구분)',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
-	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정일자'
+	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정일자',
+	UNIQUE KEY `UK_ROUTINE_OWNER_REQUEST` (`owner_user_id`, `request_id`)
 );
 
 CREATE TABLE `quiz_questions` (

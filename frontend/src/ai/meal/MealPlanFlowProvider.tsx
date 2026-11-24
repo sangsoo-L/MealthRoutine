@@ -16,7 +16,12 @@ import {
   type MealPlanRequest,
   type MealPlanSource,
 } from './mealPlanContract.ts'
-import { isRequestReady, type FoodTypeChoice } from './mealPlanFlow.ts'
+import {
+  isRequestReady,
+  suggestedSelectedCalories,
+  type ExcludedFoodGroup,
+  type FoodTypeChoice,
+} from './mealPlanFlow.ts'
 import {
   MealPlanFlowContext,
   type MealPlanFlowValue,
@@ -50,6 +55,11 @@ export default function MealPlanFlowProvider({
   const source = injectedSource !== undefined ? injectedSource : defaultSource
 
   const [state, dispatch] = useReducer(flowReducer, userId, initialFlowState)
+  // null이면 하루 목표로 끼니당 기본 열량을 제안한다. 사용자 수정값은 유지한다.
+  const targetCalories = state.targetCalories
+  const setTargetCalories = useCallback((value: string) => {
+    dispatch({ type: 'setTargetCalories', value })
+  }, [])
   // 사용자가 바뀌면 지난 사용자의 상태를 렌더 중에 바로 버린다(React가 곧바로 다시 그려 지난 사용자의 값이 보이지 않는다).
   if (state.owner !== userId) dispatch({ type: 'reset', owner: userId })
 
@@ -75,7 +85,7 @@ export default function MealPlanFlowProvider({
   )
 
   const startRequest = useCallback(
-    (goalUpdatedAt: string) => {
+    (goalUpdatedAt: string, dailyGoalKcal: number) => {
       if (userId === null) return
       const { selection, request } = state
       // 진행 중이거나 이미 결과가 있으면(선택이 그대로) 새로 요청하지 않는다. 조건이 바뀌면 reducer가 요청 전으로 돌린다.
@@ -87,7 +97,18 @@ export default function MealPlanFlowProvider({
       ) {
         return
       }
-      if (!isRequestReady(selection) || selection.targetDate === null) return
+      const kcal =
+        targetCalories === null
+          ? suggestedSelectedCalories(dailyGoalKcal, selection.meals.length)
+          : Number(targetCalories)
+      if (
+        !isRequestReady(selection) ||
+        selection.targetDate === null ||
+        !Number.isInteger(kcal) ||
+        kcal < 1 ||
+        kcal > 8000
+      )
+        return
       if (source === null) {
         dispatch({ type: 'setRequest', request: { status: 'unavailable' } })
         return
@@ -102,14 +123,21 @@ export default function MealPlanFlowProvider({
         foodType: selection.conditions.type,
         foodKinds: selection.conditions.kinds,
         excludedFoodIds: selection.conditions.excludedFoodIds,
+        excludedFoodGroups: selection.conditions.excludedFoodGroups,
         goalUpdatedAt,
+        targetCaloriesKcal: kcal,
       }
       void runPlanRequest(source, payload, controller.signal).then((next) => {
-        if (controller.signal.aborted) return
-        dispatch({ type: 'finishRequest', id, request: next })
+        // 성공/실패 모두 완료 시 ref를 비워야 '다시 요청하기'가 막히지 않는다.
+        // 오래된 요청 완료가 새 요청을 지우지 않도록 번호를 확인한다.
+        if (active.current?.id !== id) return
+        active.current = null
+        if (!controller.signal.aborted) {
+          dispatch({ type: 'finishRequest', id, request: next })
+        }
       })
     },
-    [state, source, userId],
+    [state, source, userId, targetCalories],
   )
 
   const cancelRequest = useCallback(() => {
@@ -121,15 +149,19 @@ export default function MealPlanFlowProvider({
   // 조작 함수는 dispatch만 쓰므로 한 번만 만든다(상태가 바뀌어도 이 함수들을 쓰는 효과가 다시 실행되지 않는다).
   const actions = useMemo(
     () => ({
-      toggleMeal: (meal: MealType, date: LocalDate) =>
-        dispatch({ type: 'toggleMeal', meal, date }),
-      toggleAllMeals: (date: LocalDate) =>
-        dispatch({ type: 'toggleAllMeals', date }),
+      toggleMeal: (meal: MealType, date: LocalDate) => {
+        dispatch({ type: 'toggleMeal', meal, date })
+      },
+      toggleAllMeals: (date: LocalDate) => {
+        dispatch({ type: 'toggleAllMeals', date })
+      },
       setFoodType: (value: FoodTypeChoice) =>
         dispatch({ type: 'setFoodType', value }),
       toggleKind: (kind: string) => dispatch({ type: 'toggleKind', kind }),
       toggleExcluded: (foodId: string) =>
         dispatch({ type: 'toggleExcluded', foodId }),
+      toggleExcludedGroup: (group: ExcludedFoodGroup) =>
+        dispatch({ type: 'toggleExcludedGroup', group }),
       resetConditions: () => dispatch({ type: 'resetConditions' }),
       syncGoal: (stamp: string) => dispatch({ type: 'syncGoal', stamp }),
       syncDate: (date: LocalDate) => dispatch({ type: 'syncDate', date }),
@@ -145,11 +177,21 @@ export default function MealPlanFlowProvider({
       notice: state.notice,
       noticeStep: state.noticeStep,
       source,
+      targetCalories,
+      setTargetCalories,
       ...actions,
       startRequest,
       cancelRequest,
     }),
-    [state, source, actions, startRequest, cancelRequest],
+    [
+      state,
+      source,
+      targetCalories,
+      setTargetCalories,
+      actions,
+      startRequest,
+      cancelRequest,
+    ],
   )
 
   return (

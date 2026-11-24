@@ -36,8 +36,8 @@ function ResultStep({
       request={flow.request}
       foodNameOf={foodNameOf}
       devSearch={devSearch}
-      onRequest={() => flow.startRequest(goalUpdatedAt)}
-      onRetry={() => flow.startRequest(goalUpdatedAt)}
+      onRequest={() => flow.startRequest(goalUpdatedAt, goal.kcal)}
+      onRetry={() => flow.startRequest(goalUpdatedAt, goal.kcal)}
       onLeave={() => {
         if (flow.request.status === 'analyzing') flow.cancelRequest()
       }}

@@ -12,15 +12,16 @@ FastAPI는 음식 ID 검증과 예상 영양정보 계산을 담당한다.
 import json
 import logging
 import os
+from time import sleep
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException
-from openai import OpenAIError
+from openai import InternalServerError, OpenAIError
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from services.diet_food_catalog import fetch_diet_candidates
+from services.diet_food_catalog import fetch_diet_candidates, FOOD_TYPE_KINDS, matches_food_kind
 from services.spring_food_catalog import SpringFoodApiError
 from services.food_vision import (
     get_gemini_vision_client,
@@ -49,6 +50,7 @@ class FoodOption(BaseModel):
     foodId: int = Field(gt=0)
     name: str = Field(min_length=1, max_length=200)
     brand: str | None = None
+    category: str | None = None
 
     servingSize: Decimal | None = Field(
         default=None, gt=0
@@ -130,6 +132,20 @@ class CatalogDietRequest(BaseModel):
         max_length=50,
     )
 
+    # 실제 후보 검색과 결과 검증에 강제 적용한다. 선호 문구에만 넣지 않는다.
+    food_type: Literal["음식·요리", "가공식품", "식재료"] | None = None
+    food_kinds: list[Literal[
+        "밥·죽", "면류", "국·찌개", "반찬", "샐러드", "소스·드레싱", "음료",
+        "도시락", "간식", "유제품", "곡류", "육류", "채소", "과일", "수산물",
+    ]] = Field(default_factory=list, max_length=15)
+
+    # 기호상 피할 넓은 음식 범주. *메뉴명 기준*으로만 후보에서 제외한다.
+    # 원재료·알레르기 검증과는 별개다.
+    excluded_food_groups: list[Literal[
+        "chicken", "beef", "pork", "fish", "seafood",
+        "egg", "dairy", "coffee", "mushroom",
+    ]] = Field(default_factory=list, max_length=9)
+
 
 class DraftFoodItem(BaseModel):
     food_id: int = Field(gt=0)
@@ -163,6 +179,32 @@ NUTRIENTS = {
 }
 
 CALORIE_TOLERANCE = Decimal("0.20")
+GEMINI_SERVER_RETRIES = 2  # 최초 1회 + 일시적 5xx에만 추가 최대 2회
+
+# 메뉴명 기반 *기호* 제외 그룹. 알레르겐/원재료 검증이 아니며,
+# 표기되지 않은 육수·소스·교차접촉 등은 판별할 수 없다.
+FOOD_EXCLUSION_WORDS: dict[str, tuple[str, ...]] = {
+    "chicken": ("닭", "치킨", "삼계탕", "백숙", "닭가슴", "계육"),
+    "beef": ("소고기", "쇠고기", "한우", "우육", "차돌", "육회", "불고기", "갈비탕"),
+    "pork": ("돼지", "돈육", "제육", "삼겹", "목살", "돈가스", "돈까스", "족발", "보쌈"),
+    "fish": ("고등어", "연어", "참치", "삼치", "갈치", "꽁치", "명태", "대구", "조기", "멸치", "생선", "장어"),
+    "seafood": ("해물", "해산물", "새우", "오징어", "문어", "낙지", "홍합", "조개", "바지락", "게살", "꽃게", "굴", "전복"),
+    "egg": ("달걀", "계란", "오믈렛", "스크램블", "에그"),
+    "dairy": ("우유", "치즈", "요거트", "요구르트", "버터", "크림", "라떼", "라테"),
+    "coffee": ("커피", "아메리카노", "에스프레소", "카푸치노", "콜드브루", "카페라떼", "카페라테", "카페모카", "마키아토"),
+    "mushroom": ("버섯", "표고", "느타리", "팽이", "양송이", "새송이"),
+}
+
+
+def _excluded_by_menu_name(name: str, groups: list[str]) -> bool:
+    """이름에 명시된 재료·메뉴만 제외한다 (알레르기 안전 필터가 아님)."""
+    normalized = normalize_food_name(name)
+    return any(
+        normalize_food_name(word) in normalized
+        for group in groups
+        for word in FOOD_EXCLUSION_WORDS[group]
+    )
+
 
 
 def _round2(value: Decimal) -> float:
@@ -234,6 +276,8 @@ def _filter_candidates(
         food
         for food in (request.available_foods or [])
         if food.foodId not in excluded
+        and matches_food_kind(food.model_dump(), request.food_type, request.food_kinds)
+        and not _excluded_by_menu_name(food.name, request.excluded_food_groups)
     ]
 
     if not request.allergies:
@@ -329,23 +373,30 @@ def _generate(
         or "gemini-2.5-flash"
     )
 
-    response = (
-        get_gemini_vision_client()
-        .beta.chat.completions.parse(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": instructions,
-                },
-                {
-                    "role": "user",
-                    "content": user_content,
-                },
-            ],
-            response_format=DraftDietPlan,
-        )
-    )
+    # Gemini의 간헐적인 InternalServerError(HTTP 5xx)만 재시도한다.
+    # 잘못된 입력/응답 검증 오류/429 등은 여기서 재시도하지 않는다.
+    # _generate는 threadpool에서 실행되므로 짧은 sleep도 이벤트 루프를 막지 않는다.
+    client = get_gemini_vision_client()
+    for attempt in range(GEMINI_SERVER_RETRIES + 1):
+        try:
+            response = client.beta.chat.completions.parse(
+                model=model,
+                messages=[
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": user_content},
+                ],
+                response_format=DraftDietPlan,
+            )
+            break
+        except InternalServerError as exc:
+            if attempt == GEMINI_SERVER_RETRIES:
+                raise
+            delay = 0.5 * (2 ** attempt)  # 0.5초, 1초
+            logger.warning(
+                "식단 추천 Gemini 서버 오류(%s). %d/%d회 재시도 (%.1f초 후)",
+                type(exc).__name__, attempt + 1, GEMINI_SERVER_RETRIES, delay,
+            )
+            sleep(delay)
 
     if (
         not response.choices
@@ -403,15 +454,17 @@ def _generate(
                 "nutrients": nutrients,
             })
 
-        meal_calories = _sum_known([
-            item["nutrients"]["calories_kcal"]
-            for item in selected
-        ])
+        meal_totals = {
+            f"estimated_{nutrient}": _sum_known([
+                item["nutrients"][nutrient] for item in selected
+            ])
+            for nutrient in NUTRIENTS.values()
+        }
 
         meals.append({
             "meal_type": meal.meal_type,
             "foods": selected,
-            "estimated_calories_kcal": meal_calories,
+            **meal_totals,
             "reason": meal.reason,
         })
 
@@ -451,6 +504,12 @@ def _generate(
         warnings.append(
             "일부 음식의 영양정보가 누락되어 "
             "총열량을 계산할 수 없습니다."
+        )
+
+    if req.excluded_food_groups:
+        warnings.append(
+            "선택한 음식 종류는 메뉴명에 나타난 경우에만 제외했습니다. "
+            "원재료·육수·소스·알레르겐까지 보장하지 않습니다."
         )
 
     if req.allergies:
@@ -503,11 +562,20 @@ async def recommend_from_foods(
             "meal_types에 중복된 끼니가 있습니다.",
         )
 
+    if request.food_type and request.food_kinds and any(
+        kind not in FOOD_TYPE_KINDS[request.food_type]
+        for kind in request.food_kinds
+    ):
+        raise HTTPException(422, "식품 구분과 음식 종류 선택이 일치하지 않습니다.")
+
     if request.available_foods is None:
         try:
-            retrieved = await run_in_threadpool(
-                fetch_diet_candidates, authorization
-            )
+            if request.food_type is not None or request.food_kinds:
+                retrieved = await run_in_threadpool(
+                    fetch_diet_candidates, authorization, request.food_type, request.food_kinds
+                )
+            else:
+                retrieved = await run_in_threadpool(fetch_diet_candidates, authorization)
             request = request.model_copy(update={
                 "available_foods": [FoodOption.model_validate(item) for item in retrieved],
             })
@@ -545,7 +613,7 @@ async def recommend_from_foods(
 
         raise HTTPException(
             422,
-            "추천할 수 있는 음식 후보가 없습니다.",
+            "선택한 음식 종류와 제외 조건에 맞는 추천 후보가 없습니다. 조건을 변경해 주세요.",
         )
 
     try:
