@@ -11,14 +11,15 @@ import { Link } from 'react-router'
 import {
   FIELD_STATUS_TEXT,
   NICKNAME_ERROR_MESSAGE,
-  NICKNAME_MAX,
-  NICKNAME_MIN,
+  NICKNAME_HELP_TEXT,
   PATH_PROFILE,
   isProfileEmpty,
   profileFieldView,
-  runUpdateNickname,
+  saveNickname,
+  saveOutcomePatch,
   validateNickname,
   type FieldView,
+  type NicknameSaveGuard,
   type NicknameSavePhase,
   type ProfileRowKey,
   type ProfileSource,
@@ -116,14 +117,26 @@ const SAVE_TEXT = {
   saving: '닉네임을 저장하고 있어요…',
   failed:
     '저장하지 못했어요. 입력한 내용은 그대로 남아 있으니 다시 시도해 주세요.',
+  // 409 NICKNAME_ALREADY_EXISTS(가입 화면과 같은 문구)
+  taken: '이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요.',
+  // 400: 서버는 필드별 정보를 주지 않는다
+  rejected: '저장하지 못했어요. 닉네임을 다시 확인해 주세요.',
   saved: '닉네임을 저장했어요.',
 } as const
 
+/** 저장 결과 안내(포커스를 옮겨 읽어 준다) */
+const RESULT_PHASES = ['failed', 'taken', 'rejected', 'saved'] as const
+type ResultPhase = (typeof RESULT_PHASES)[number]
+const isResultPhase = (phase: NicknameSavePhase): phase is ResultPhase =>
+  (RESULT_PHASES as readonly string[]).includes(phase)
+
 /**
  * P02 프로필과 개인정보 설정(화면명세 v5.0: 01 프로필 · 02 가입 개인정보 · 03 건강 관리 동의 · 저장·취소 · 계정 관리).
- * - 수정할 수 있는 것은 닉네임(2~20자)뿐이다. 서버 연결(source)이 없으면 저장 버튼을 비활성으로 두고 "저장되지 않아요"를 알린다.
- *   저장 완료 안내는 서버가 저장했을 때만 나온다. 취소는 저장하지 않고 돌아간다.
- * - 이름·휴대폰·본인인증 나이·성별·주소·알레르기·AI 활용 동의는 읽기 전용이며 서버가 준 값만 보인다(저장소가 없다). 연결 전은 "연결 전",
+ * - 수정할 수 있는 것은 닉네임(가입과 같은 규칙 NAME-2)뿐이다. 서버 연결(source)이 없으면 저장 버튼을 비활성으로 두고 "저장되지 않아요"를 알린다.
+ *   저장 완료 안내는 서버가 저장했을 때만 나오고, 화면 기준값은 서버가 저장한 닉네임이다. 저장되면 `onSaved`로 알려 로그인 정보에도 반영한다
+ *   (F3-D3, 늦은 응답 방어는 saveNickname·applySavedNickname). 중복(409)·규칙 위반(400)·연결 실패는 따로 안내한다. 취소는 저장하지 않고 돌아간다.
+ * - 이름·휴대폰·나이·성별·주소·알레르기·AI 활용 동의는 읽기 전용이며 서버가 준 값만 보인다(저장소가 없다). 나이·성별은 회원이 입력한 값이고
+ *   본인인증으로 확인한 값이 아니다(F3-D4). 연결 전은 "연결 전",
  *   서버가 값을 주지 않으면 "등록된 정보 없음"이다. 휴대폰은 일부만 보인다. 이 값들의 변경(본인인증·주소 검색·동의 저장)은 서버가 필요해 준비 중이다.
  * - 프로필 사진 변경도 업로드 수단이 없어 기본 이미지만 보인다(변경 버튼은 비활성).
  * - 계정 이메일은 읽기 전용이고 비밀번호 변경은 A04로 간다. 신체 정보(키·몸무게)와 건강 목표·잠금 관리는 마이페이지(P01·P06)의 책임이라
@@ -136,6 +149,7 @@ export default function ProfileSettingsView({
   onRetry,
   source,
   cancelTo,
+  beginSave,
   initial,
 }: {
   account: { nickname: string; email: string }
@@ -143,6 +157,11 @@ export default function ProfileSettingsView({
   onRetry: () => void
   source: ProfileSource | null
   cancelTo: string
+  /**
+   * 저장을 시작할 때 지금 로그인 작업에 묶인 표식을 받는다(AuthContext `beginNicknameSave`, F3-R1·C2). null이면 로그인 상태가 아니라 보내지 않는다.
+   * 넘기지 않으면(시험용 화면) 로그인 정보 반영 없이 서버 결과만 보인다.
+   */
+  beginSave?: () => NicknameSaveGuard | null
   initial?: {
     nickname?: string
     phase?: NicknameSavePhase
@@ -171,7 +190,7 @@ export default function ProfileSettingsView({
   const busy = phase === 'saving'
   const checked = validateNickname(nickname)
   const nicknameError =
-    shown && !checked.ok ? NICKNAME_ERROR_MESSAGE.length : null
+    shown && !checked.ok ? NICKNAME_ERROR_MESSAGE.invalid : null
   const dirty = nickname.trim() !== savedNickname
 
   useEffect(() => () => abortRef.current?.abort(), [])
@@ -180,7 +199,7 @@ export default function ProfileSettingsView({
       firstRef.current = false
       return
     }
-    if (phase === 'failed' || phase === 'saved') resultRef.current?.focus()
+    if (isResultPhase(phase)) resultRef.current?.focus()
   }, [phase])
 
   function handleNickname(event: ChangeEvent<HTMLInputElement>) {
@@ -198,27 +217,31 @@ export default function ProfileSettingsView({
       inputRef.current?.focus()
       return
     }
+    // 지금 로그인 작업에 묶는다. 저장 중 로그인이 바뀌면 결과는 화면·로그인 정보 모두 반영되지 않는다.
+    const guard = beginSave ? beginSave() : undefined
+    if (guard === null) return
     savingRef.current = true
     setPhase('saving')
     const controller = new AbortController()
     abortRef.current = controller
-    const outcome = await runUpdateNickname(
+    const outcome = await saveNickname(
       source,
       result.nickname,
       controller.signal,
+      guard,
     )
+    // 화면을 떠났으면(중단) 이 화면의 상태도 다시 쓰지 않는다.
     if (controller.signal.aborted) return
     abortRef.current = null
     savingRef.current = false
-    if (outcome === null) {
-      setPhase('idle')
-      return
+    // 'stale'(저장 중 로그인 작업이 바뀜)이면 결과를 버린다: 저장 기준·입력·성공 표시 불변, 진행 표시만 끝낸다.
+    // 저장됐으면 기준값은 서버가 저장한 닉네임이다(입력값이 아니다).
+    const patch = saveOutcomePatch(outcome)
+    if (patch.saved !== undefined) {
+      setSavedNickname(patch.saved)
+      setNickname(patch.saved)
     }
-    if (outcome === 'saved') {
-      setSavedNickname(result.nickname)
-      setNickname(result.nickname)
-    }
-    setPhase(outcome)
+    setPhase(patch.phase)
   }
 
   const row = (key: ProfileRowKey) => profileFieldView(state, key)
@@ -342,7 +365,7 @@ export default function ProfileSettingsView({
               className={field}
             />
             <p id={`${nicknameId}-help`} className={help}>
-              {NICKNAME_MIN}~{NICKNAME_MAX}자로 입력해 주세요.
+              {NICKNAME_HELP_TEXT}
             </p>
             <div role="alert">
               {nicknameError ? (
@@ -379,7 +402,7 @@ export default function ProfileSettingsView({
           </InfoRow>
           <InfoRow name="이름" view={row('name')} />
           <InfoRow name="휴대폰" view={row('phone')} />
-          <InfoRow name="본인인증 나이·성별" view={row('identity')} />
+          <InfoRow name="나이·성별" view={row('identity')} />
           <InfoRow name="주소" view={row('address')} />
         </dl>
         <p className={help}>
@@ -438,12 +461,12 @@ export default function ProfileSettingsView({
             {SAVE_TEXT.saving}
           </p>
         ) : null}
-        {phase === 'failed' || phase === 'saved' ? (
+        {isResultPhase(phase) ? (
           <div
             ref={resultRef}
             tabIndex={-1}
             data-profile-save={phase}
-            className={`rounded-control px-3 py-2 text-support leading-relaxed font-normal focus:outline-none ${phase === 'failed' ? 'border border-danger/30 bg-danger-soft text-danger' : 'bg-brand-soft text-content'}`}
+            className={`rounded-control px-3 py-2 text-support leading-relaxed font-normal focus:outline-none ${phase === 'saved' ? 'bg-brand-soft text-content' : 'border border-danger/30 bg-danger-soft text-danger'}`}
           >
             {SAVE_TEXT[phase]}
           </div>
