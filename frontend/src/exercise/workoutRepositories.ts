@@ -267,10 +267,10 @@ export interface SaveRoutineResult {
 
 /**
  * 운동 루틴 저장소(W06~W08). 계정 id로 만들며 모든 조회·쓰기는 그 계정의 루틴만 다룬다(다른 계정의 루틴은 "없음"과 같다).
- * 지금 구현은 개발 서버 전용 IndexedDB이며, 서버 연동(`/api/v1/workout-routines`)이 정해지면 workoutSource의 반환만 교체한다.
+ * 개발 서버는 IndexedDB(kind 'local'), 운영 빌드는 루틴 API(`/api/v1/workout-routines`, kind 'api') 구현을 쓴다(workoutSource.ts).
  */
 export interface WorkoutRoutineRepository {
-  readonly kind: 'local'
+  readonly kind: 'local' | 'api'
   create(input: CreateRoutineInput): Promise<SaveRoutineResult>
   /** 없으면(다른 계정의 루틴 포함) null. */
   get(routineId: string): Promise<WorkoutRoutine | null>
