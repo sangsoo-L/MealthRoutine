@@ -11,6 +11,7 @@ import { clearAccountScopedData } from './accountScope.ts'
 import {
   AuthContext,
   createLoginWork,
+  type AccountWorkGuard,
   type AuthContextValue,
   type NicknameSaveGuard,
 } from './authContext.ts'
@@ -151,6 +152,12 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [work])
 
+  // F4-R1: 로그인 수명에 묶인 작업(PIN 토큰 저장 등)의 범용 표식. 판정만 하며 로그인 정보를 바꾸지 않는다.
+  const beginAccountWork = useCallback(
+    (): AccountWorkGuard | null => work.beginAccountWork(),
+    [work],
+  )
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status: user ? 'authenticated' : booting ? 'loading' : 'unauthenticated',
@@ -159,6 +166,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       dismissConnectionNotice,
       login,
       logout,
+      beginAccountWork,
       beginNicknameSave,
     }),
     [
@@ -168,6 +176,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       dismissConnectionNotice,
       login,
       logout,
+      beginAccountWork,
       beginNicknameSave,
     ],
   )
