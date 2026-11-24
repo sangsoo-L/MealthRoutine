@@ -26,6 +26,8 @@ export function usePinSettings(ownerId: string, mode: PinSettingsMode) {
   const server = source?.mode === 'server'
   const [done, setDone] = useState(false)
   const submitting = useRef(false)
+  // 화면에 알릴 처리 중 여부(재확인 버튼을 막는 데 쓴다). 중복 제출 방지는 ref가 동기로 맡는다.
+  const [pending, setPending] = useState(false)
   // 모의 모드: 현재 번호 확인 5회 실패로 생긴 잠금. 잠금 상태 관리는 P05와 같은 훅을 쓴다.
   const lock = usePinLock(
     !server && status.kind === 'ready' ? status.retryAt : null,
@@ -37,10 +39,19 @@ export function usePinSettings(ownerId: string, mode: PinSettingsMode) {
     submitLock ?? (status.kind === 'ready' && status.locked === true)
   const locked = mode === 'change' && (server ? serverLocked : lock.locked)
 
-  const reload = useCallback(() => {
+  /** 훅 안에서 쓰는 재조회(제출 결과가 등록 상태 변화를 알려 줄 때). */
+  const refresh = useCallback(() => {
     setSubmitLock(null)
     reloadStatus()
   }, [reloadStatus])
+  /**
+   * 화면의 "잠금 상태 다시 확인"·"다시 확인하기". 등록·변경 요청을 처리하는 동안에는 무시한다(PR #35 리뷰):
+   * 재조회 중에는 폼이 내려갔다 새로 그려져, 진행 중인 요청의 결과 안내(결과 미확인·429 등)가 사라지기 때문이다.
+   */
+  const reload = useCallback(() => {
+    if (submitting.current) return
+    refresh()
+  }, [refresh])
 
   const submit = useCallback(
     async (values: PinFormValues): Promise<PinSubmitResult | null> => {
@@ -49,6 +60,7 @@ export function usePinSettings(ownerId: string, mode: PinSettingsMode) {
       if (!source)
         return { ok: false, error: new ExerciseGoalError('unavailable') }
       submitting.current = true
+      setPending(true)
       try {
         const guard = source.mode === 'server' ? beginAccountWork() : null
         const outcome = await submitPinSettings(source, mode, values, guard)
@@ -70,14 +82,15 @@ export function usePinSettings(ownerId: string, mode: PinSettingsMode) {
           }
           // 다른 탭 등에서 등록 상태가 바뀐 경우 화면의 분기(이미 등록됨·미등록)를 다시 판단한다.
           if (error.code === 'pinExists' || error.code === 'pinMissing')
-            reload()
+            refresh()
         }
         return { ok: false, error }
       } finally {
         submitting.current = false
+        setPending(false)
       }
     },
-    [source, mode, reload, markLocked, beginAccountWork],
+    [source, mode, refresh, markLocked, beginAccountWork],
   )
 
   return {
@@ -86,6 +99,8 @@ export function usePinSettings(ownerId: string, mode: PinSettingsMode) {
     locked,
     submit,
     reload,
+    /** 등록·변경 요청을 처리하는 중인지. 이 동안 화면은 재확인 버튼을 막는다. */
+    submitting: pending,
     connection: server ? ('server' as const) : ('mock' as const),
   }
 }
