@@ -123,8 +123,9 @@ function toResult(exercise: Exercise): ExerciseResult {
 /**
  * 현재 연결. 운동 데이터 저장소(exercise/exerciseSource.ts)를 통해 검색한다.
  * - 개발 서버: 운동 JSON 시드(exercise/seed/, 105종)를 조회한다.
- * - 운영 빌드: 저장소가 없다(운동 검색 API·데이터 미확정). 항상 "데이터 소스 미연결"을 돌려주며 가짜 운동을 만들지 않고
- *   결과 없음·오류로도 처리하지 않는다.
+ * - 운영 빌드: 운동 API(GET /api/v1/exercises) 저장소가 받아 둔 전체 운동에서 같은 조건으로 거른다. 목록 순서는 서버 응답 순서라
+ *   개발 서버(시드 파일 순서)와 다를 수 있다.
+ * - 저장소가 없으면(개발 서버의 미연결 스위치) "데이터 소스 미연결"을 돌려주며 가짜 운동을 만들지 않고 결과 없음·오류로도 처리하지 않는다.
  * 저장소가 조회에 실패하면 error를 돌려준다(입력은 화면이 그대로 유지하고 재시도할 수 있다).
  */
 export const exerciseBackend: ExerciseBackend = {

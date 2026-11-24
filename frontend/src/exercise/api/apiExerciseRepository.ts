@@ -18,8 +18,10 @@ import { validateRecordModes } from '../recordMode.ts'
  * 운동 API(GET /api/v1/exercises, docs/api_exercise_v1.0.md "운동")를 ExerciseRepository로 보여 주는 저장소. 운영 빌드에서 쓴다(exerciseSource.ts).
  *
  * - 운동 카탈로그는 105개 정도의 공용 읽기 전용 데이터라, 처음 조회할 때 전체를 페이지(최대 100개)로 나눠 한 번 받아 메모리에 둔다.
- *   이후 list(조건)과 getById는 그 목록에서 찾는다. 필터 규칙은 개발용 시드와 같은 filterExercises다(서버 검색과 결과가 달라지지 않게 한 곳에서만 거른다).
- * - 서버의 운동 행은 프론트 시드(exercises.json)와 같은 값을 쓴다(DB 시드가 그 파일에서 만들어진다). 그래서 변환 규칙도 시드 조회 계층
+ *   이후 list(조건)과 getById는 그 목록에서 찾는다. 필터 규칙은 개발용 시드와 같은 filterExercises다. 목록 순서는 서버 응답
+ *   순서(보통 id 순)라 개발용 시드(파일 순서)와 다를 수 있다.
+ * - 서버의 운동 행은 프론트 시드(exercises.json)와 같은 값을 쓴다(DB 시드가 그 파일에서 만들어진다, PR #34). 그 전의 DB 시드
+ *   (영어 장비 값, 다른 id)로 채워진 서버에 붙으면 장비 값이 맞지 않아 조회 실패가 되므로, 서버에 새 DB 시드가 들어간 뒤에 배포한다. 그래서 변환 규칙도 시드 조회 계층
  *   (seed/seedCatalog.ts)과 같다. 시드 모듈은 운영 번들에 넣지 않으므로 필요한 값만 여기에 둔다.
  * - 응답은 외부 입력으로 본다. 모양이 맞지 않는 운동이 하나라도 있으면 목록 전체를 쓰지 않고 조회 실패로 끝낸다(시드와 같은 정책:
  *   문제 있는 운동만 빼거나 다른 값으로 바꾸지 않는다). 실패하면 캐시하지 않아 다음 조회가 다시 받는다.
@@ -33,6 +35,8 @@ type Request = <T>(
 ) => Promise<T>
 
 const PAGE_SIZE = 100
+/** 카탈로그 전체(현재 두 페이지)를 받는 시간 제한. */
+const LOAD_TIMEOUT_MS = 15_000
 /** 페이지 수 상한(운동 2000개). 서버가 이상한 totalPages를 보내도 요청이 끝없이 이어지지 않게 한다. */
 const MAX_PAGES = 20
 
@@ -119,7 +123,8 @@ export function toExercise(row: unknown): Exercise {
     exercise.sourceUrl = row.sourceUrl
   }
   // 기록 방식은 둘이 함께 올 때만 담는다. 서버는 값이 없거나 서로 맞지 않으면 둘 다 null로 보낸다.
-  if (row.defaultRecordMode !== null || row.allowedRecordModes !== null) {
+  // 필드 자체가 없는 응답(기록 방식 컬럼을 추가하기 전 백엔드)도 null과 같게 본다(== null은 undefined도 포함).
+  if (row.defaultRecordMode != null || row.allowedRecordModes != null) {
     const modes = validateRecordModes(
       row.defaultRecordMode,
       row.allowedRecordModes,
@@ -164,13 +169,19 @@ interface Catalog {
   byId: ReadonlyMap<string, Exercise>
 }
 
-async function loadCatalog(request: Request): Promise<Catalog> {
+async function loadCatalog(
+  request: Request,
+  timeoutMs: number,
+): Promise<Catalog> {
+  // 공통 코드(apiRequest)에는 시간 제한이 없다. 응답이 오지 않으면 모든 운동 화면이 계속 불러오는 중에 머무르므로,
+  // 페이지 전체를 받는 데 시간 제한을 두고 넘으면 요청을 취소해 실패로 끝낸다(실패는 캐시하지 않아 다시 시도할 수 있다).
+  const signal = AbortSignal.timeout(timeoutMs)
   const fetchPage = async (page: number) =>
     toPage(
       await request<unknown>(
         'GET',
         `/exercises?page=${page}&size=${PAGE_SIZE}`,
-        { auth: 'optional' },
+        { auth: 'optional', signal },
       ),
     )
   const first = await fetchPage(0)
@@ -200,15 +211,17 @@ async function loadCatalog(request: Request): Promise<Catalog> {
 
 /**
  * 운동 API 저장소. 한 저장소 객체가 카탈로그를 한 번만 받아 둔다(exerciseSource.ts가 객체 하나를 계속 쓴다).
- * 동시에 여러 화면이 불러도 요청은 한 번이다. 실패하면 저장한 요청을 지워 다음 조회가 다시 받는다.
+ * 동시에 여러 화면이 불러도 요청은 한 번이다. 실패하거나 시간 제한을 넘기면 저장한 요청을 지워 다음 조회가 다시 받는다.
  */
 export function createApiExerciseRepository(
   request: Request = apiRequest,
+  options: { timeoutMs?: number } = {},
 ): ExerciseRepository {
+  const timeoutMs = options.timeoutMs ?? LOAD_TIMEOUT_MS
   let pending: Promise<Catalog> | null = null
   const catalog = (): Promise<Catalog> => {
     if (pending === null) {
-      const attempt = loadCatalog(request)
+      const attempt = loadCatalog(request, timeoutMs)
       pending = attempt
       attempt.catch(() => {
         if (pending === attempt) pending = null

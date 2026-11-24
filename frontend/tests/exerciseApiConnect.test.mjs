@@ -1,6 +1,6 @@
 // 운동·즐겨찾기 API 연결(F2). 가짜 request 함수로 서버 응답을 흉내 내고, vite SSR 로더로 소스를 불러온다.
 // 서버의 운동 행은 프론트 시드(exercises.json)에서 만든 DB 시드와 같은 값이므로, 시드를 서버 응답 모양(camelCase)으로 바꿔 넣으면
-// API 저장소가 개발용 시드 저장소와 똑같은 운동을 만들어야 한다.
+// API 저장소가 개발용 시드 저장소와 똑같은 운동을 만들어야 한다(목록 순서는 서버 응답 순서라 다를 수 있어 id로 정렬해 비교한다).
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -99,14 +99,17 @@ test('서버 운동 105개를 두 페이지로 받아 개발용 시드 저장소
   const fromSeed = [...seed.getSeedCatalog().getAllExercises()].sort(byId)
   assert.equal(fromApi.length, 105)
   assert.deepEqual(fromApi, fromSeed)
-  // 비회원도 볼 수 있는 조회라 optional, 페이지 크기는 서버 최대값 100
+  // 비회원도 볼 수 있는 조회라 optional, 페이지 크기는 서버 최대값 100, 두 페이지가 같은 시간 제한 신호를 쓴다
   assert.deepEqual(
-    calls.map((c) => [c.method, c.path, c.options]),
+    calls.map((c) => [c.method, c.path, c.options.auth]),
     [
-      ['GET', '/exercises?page=0&size=100', { auth: 'optional' }],
-      ['GET', '/exercises?page=1&size=100', { auth: 'optional' }],
+      ['GET', '/exercises?page=0&size=100', 'optional'],
+      ['GET', '/exercises?page=1&size=100', 'optional'],
     ],
   )
+  assert.ok(calls[0].options.signal instanceof AbortSignal)
+  assert.equal(calls[0].options.signal, calls[1].options.signal)
+  assert.equal(calls[0].options.signal.aborted, false)
   const rowing = await repository.getById('2')
   assert.equal(rowing.name, '원암 덤벨 로우')
   assert.deepEqual(rowing.recordModes, {
@@ -201,6 +204,58 @@ test('기록 방식이 둘 다 null이면 recordModes 없이, 비어 있는 설�
   assert.equal(exercise.sourceUrl, undefined)
   assert.deepEqual(exercise.precautions, [])
   assert.ok(Object.isFrozen(exercise))
+})
+
+test('기록 방식 필드가 아예 없는 응답(필드 추가 전 백엔드)도 null과 같게 보고, 한쪽만 null이고 다른 쪽이 없어도 같다', async () => {
+  const { defaultRecordMode, allowedRecordModes, ...withoutModes } = API_ROWS[0]
+  assert.ok(defaultRecordMode && allowedRecordModes)
+  for (const row of [
+    withoutModes,
+    { ...withoutModes, defaultRecordMode: null },
+    { ...withoutModes, allowedRecordModes: null },
+  ]) {
+    const { request } = fakeRequest({ [PAGE_0]: [page([row], 0, 100)] })
+    const [exercise] = await api.createApiExerciseRepository(request).list(ALL)
+    assert.equal(exercise.recordModes, undefined)
+    assert.equal(exercise.name, API_ROWS[0].name)
+  }
+  // 한쪽만 값이 있으면 여전히 잘못된 응답이다.
+  const { request } = fakeRequest({
+    [PAGE_0]: [page([{ ...withoutModes, defaultRecordMode: 'reps' }], 0, 100)],
+  })
+  await assert.rejects(
+    api.createApiExerciseRepository(request).list(ALL),
+    (error) => error.name === 'ExerciseApiDataError',
+  )
+})
+
+test('응답이 오지 않으면 시간 제한에서 요청을 취소해 실패로 끝내고, 다음 조회가 다시 받는다', async () => {
+  let hung = true
+  const calls = []
+  const request = (method, path, options) => {
+    calls.push(path)
+    if (!hung) {
+      return Promise.resolve(
+        page(API_ROWS, path.includes('page=1') ? 1 : 0, 100),
+      )
+    }
+    hung = false
+    // 서버가 응답하지 않는 상황: 취소 신호가 올 때만 끝난다.
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () =>
+        reject(options.signal.reason),
+      )
+    })
+  }
+  const repository = api.createApiExerciseRepository(request, {
+    timeoutMs: 50,
+  })
+  await assert.rejects(
+    repository.list(ALL),
+    (error) => error.name === 'TimeoutError',
+  )
+  assert.equal((await repository.list(ALL)).length, 105)
+  assert.equal(calls.length, 3)
 })
 
 test('페이지 사이에 순서가 바뀌어 같은 운동이 두 번 오면 하나만 두고, 빠진 운동이 있으면 실패한다', async () => {

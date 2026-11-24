@@ -5,7 +5,7 @@ import type { Exercise } from './exerciseTypes.ts'
 /**
  * 운동 목록(카탈로그) 조회 상태.
  * - loading: 불러오는 중.
- * - unavailable: 운동 데이터 소스가 연결되지 않았다(운영 빌드 등). "운동 없음"이나 오류가 아니다.
+ * - unavailable: 운동 데이터 소스가 연결되지 않았다(개발 서버의 미연결 스위치). "운동 없음"이나 오류가 아니다.
  * - error: 연결은 되어 있으나 조회에 실패했다.
  * - ready: 조회 성공.
  */
