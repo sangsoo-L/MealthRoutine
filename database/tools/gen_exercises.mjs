@@ -20,18 +20,42 @@ function fail(message) {
   process.exit(2)
 }
 
-function text(value, max, field, id) {
+// VARCHAR(n)은 글자 수, TEXT는 바이트 수(최대 65535)로 길이를 센다. 한글은 utf8mb4에서 한 글자가 3바이트다.
+function text(value, limit, field, id) {
   if (value === null || value === undefined) return null
-  if (typeof value !== 'string' || value.length === 0 || [...value].length > max) {
+  const tooLong =
+    typeof value === 'string' &&
+    (limit === 'TEXT' ? Buffer.byteLength(value, 'utf8') > 65535 : [...value].length > limit)
+  if (typeof value !== 'string' || value.length === 0 || tooLong) {
     fail(`exercise_id ${id}: ${field} 값이 올바르지 않아요`)
   }
   return value
 }
 
+// 형식뿐 아니라 실제로 있는 날짜·시각인지 본다(2026-02-30 같은 값은 MySQL이 거절한다).
+function validDatetime(value) {
+  if (typeof value !== 'string' || !DATETIME.test(value)) return false
+  const [date, time] = value.split(' ')
+  const [y, mo, d] = date.split('-').map(Number)
+  const [h, mi, se] = time.split(':').map(Number)
+  const at = new Date(Date.UTC(y, mo - 1, d, h, mi, se))
+  return (
+    at.getUTCFullYear() === y &&
+    at.getUTCMonth() === mo - 1 &&
+    at.getUTCDate() === d &&
+    at.getUTCHours() === h &&
+    at.getUTCMinutes() === mi &&
+    at.getUTCSeconds() === se
+  )
+}
+
+// 따옴표는 두 번 쓰고 백슬래시와 제어 문자는 이스케이프한다. 줄바꿈을 그대로 두면 Windows 체크아웃(autocrlf)에서
+// 문자열 안의 줄바꿈이 CRLF로 바뀌어 DB에 \r이 들어가므로, 줄바꿈도 이스케이프해서 SQL 파일 한 줄에 운동 한 행만 둔다.
+const ESCAPES = { '\\': '\\\\', '\n': '\\n', '\r': '\\r', '\0': '\\0', '\x1a': '\\Z' }
 function sql(value) {
   if (value === null) return 'NULL'
   if (typeof value === 'number') return String(value)
-  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`
+  return `'${value.replace(/[\\\n\r\0\x1a]/g, (c) => ESCAPES[c]).replace(/'/g, "''")}'`
 }
 
 const rows = JSON.parse(readFileSync(SOURCE, 'utf8'))
@@ -58,17 +82,17 @@ const values = rows
       fail(`exercise_id ${id}: 기록 방식(default_record_mode·allowed_record_modes)이 올바르지 않아요`)
     }
     for (const field of ['created_at', 'updated_at']) {
-      if (!DATETIME.test(row[field])) fail(`exercise_id ${id}: ${field}`)
+      if (!validDatetime(row[field])) fail(`exercise_id ${id}: ${field}`)
     }
     return [
       id,
       text(row.name, 160, 'name', id) ?? fail(`exercise_id ${id}: name이 없어요`),
-      text(row.instructions, 65535, 'instructions', id),
+      text(row.instructions, 'TEXT', 'instructions', id),
       row.difficulty,
       text(row.exercise_type, 60, 'exercise_type', id),
       text(row.exercise_equipment, 60, 'exercise_equipment', id),
-      text(row.description, 65535, 'description', id),
-      text(row.cautions, 65535, 'cautions', id),
+      text(row.description, 'TEXT', 'description', id),
+      text(row.cautions, 'TEXT', 'cautions', id),
       text(row.source_url, 1000, 'source_url', id),
       row.default_record_mode,
       JSON.stringify(allowed),

@@ -11,16 +11,23 @@
 -- 이 파일을 실행한 뒤 seed/001_insert_exercises.sql을 다시 실행해야 운동 105개와 기록 방식이 들어간다.
 -- 시드는 같은 exercise_id가 있으면 덮어쓰므로, 예전 시드로 들어간 운동(id 1~20)은 같은 id의 새 운동 내용으로 바뀐다.
 --
+-- 주의: 예전 운동 id 1~20을 가리키던 데이터(즐겨찾기 preference_exercises, 루틴 항목 exercise_routine_items,
+--   운동 기록 workout_session_exercises, 추천 기록 exercise_recommendations)는 오류 없이 다른 운동을 가리키게 된다.
+--   예: 즐겨찾기한 1번 푸시업이 1번 밴드 로우로 보인다. 중량으로 기록하던 루틴 항목이 횟수만 기록하는 운동에 붙을 수도 있다.
+--   개발 DB에 지켜야 할 데이터가 없다면 마이그레이션·시드 대신 DB를 새로 만드는 것이 가장 깔끔하다
+--   (docker compose down -v 후 docker compose up -d. 볼륨의 모든 데이터가 지워지고 스키마와 시드가 처음부터 들어간다).
+--
 -- 여러 번 실행해도 결과가 같다: 이미 있는 컬럼은 건너뛴다(information_schema로 확인).
 --
 -- 실행 방법: 대상 DB마다(mealthroutine, mealthroutine_test) 각각 실행한다.
---   Docker(맥·윈도우 공통, 한 줄씩. 마지막 줄의 DB 이름만 바꿔 실행, 비밀번호는 입력 요청 때 입력):
---     docker cp database/migration/20261124_exercise_record_mode_columns.sql mysqldb:/tmp/exercise_record_mode.sql
---     docker exec -it mysqldb sh -c "mysql --default-character-set=utf8mb4 -u root -p mealthroutine < /tmp/exercise_record_mode.sql"
+--   docker compose로 띄운 DB(맥·윈도우 공통, 한 줄씩. 마지막 줄의 DB 이름만 바꿔 실행, 비밀번호는 .env의 DB_PASSWORD):
+--     docker cp database/migration/20261124_exercise_record_mode_columns.sql mealthroutine-mysql-1:/tmp/exercise_record_mode.sql
+--     docker exec -it mealthroutine-mysql-1 sh -c "mysql --default-character-set=utf8mb4 -u mealthroutine -p mealthroutine < /tmp/exercise_record_mode.sql"
 --   이어서 시드(개발 DB만. 테스트 DB는 테스트가 운동을 직접 넣으므로 필요 없다):
---     docker cp database/seed/001_insert_exercises.sql mysqldb:/tmp/exercises.sql
---     docker exec -it mysqldb sh -c "mysql --default-character-set=utf8mb4 -u root -p mealthroutine < /tmp/exercises.sql"
---   (컨테이너 이름은 docker ps로 확인한다. docker compose로 띄웠다면 mealthroutine-mysql-1 등일 수 있다.)
+--     docker cp database/seed/001_insert_exercises.sql mealthroutine-mysql-1:/tmp/exercises.sql
+--     docker exec -it mealthroutine-mysql-1 sh -c "mysql --default-character-set=utf8mb4 -u mealthroutine -p mealthroutine < /tmp/exercises.sql"
+--   (compose는 root 비밀번호를 무작위로 만들므로 mealthroutine 계정을 쓴다. 이 계정은 두 DB에 모든 권한이 있다.
+--    컨테이너 이름이 다르면 docker ps로 확인한다.)
 --   IntelliJ Database 콘솔 / MySQL Workbench: DB를 선택하고 파일 전체를 한 번에 실행.
 --
 -- 마지막 결과표의 값이 모두 1이면 적용된 것이다. 0이 있으면 직접 고치지 말고 운동 파트에 공유한다.
