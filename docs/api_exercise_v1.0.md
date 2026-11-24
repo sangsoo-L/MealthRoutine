@@ -146,7 +146,8 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 | Method | URL | 요청 | 비고 |
 |---|---|---|---|
 | POST | /api/v1/workout-sessions | 아래 참고 | 201, 상태는 in_progress |
-| GET | /api/v1/workout-sessions | `status`, `from`, `to`(YYYY-MM-DD), `page`, `size` | `exercises` 없음 |
+| POST | /api/v1/workout-sessions/records | 아래 "완료 기록 저장" | 201. 같은 `requestId` 재전송이면 200 |
+| GET | /api/v1/workout-sessions | `status`, `from`, `to`(YYYY-MM-DD), `page`, `size`, `includeExercises` | `includeExercises=true`일 때만 `exercises` 포함 |
 | GET | /api/v1/workout-sessions/summary | `from`, `to` 필수 | 통계 |
 | GET | /api/v1/workout-sessions/{sessionId} | | |
 | PATCH | /api/v1/workout-sessions/{sessionId} | 아래 참고 | |
@@ -172,6 +173,53 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 - `exerciseRoutineItemId`는 응답 값을 그대로 보낸다. 이 기록의 루틴에 속하고 운동이 같아야 한다.
 - PATCH는 `startedAt`, `endedAt`, `feedbackRating`(1~5), `feedbackNote`, `exercises`를 받는다.
 - 상태 변경 시 `endedAt`이 비어 있으면 현재 시각을 넣는다.
+
+**완료 기록 저장** (2026-11-24 추가)
+
+프론트는 진행 중인 운동을 브라우저에 두고, 끝난 운동 한 건만 이 API로 보낸다. 서버는 한 트랜잭션으로 `completed` 상태의 기록을 만든다. 그래서 중간에 실패해도 반쪽 기록이 남지 않는다.
+
+```json
+{
+  "requestId": "rec-8d2f1a",
+  "startedAt": "2026-11-24T01:00:00.000Z",
+  "endedAt": "2026-11-24T01:30:00.000Z",
+  "exercises": [
+    {
+      "exerciseId": 1,
+      "recordType": "weight",
+      "setTargets": [{ "reps": 12, "weightKg": 40 }, { "reps": 10, "weightKg": 50 }, { "reps": 8, "weightKg": 60 }],
+      "completedSets": [{ "setNumber": 1, "reps": 12, "weightKg": 40 }, { "setNumber": 3, "reps": 8, "weightKg": 60 }]
+    },
+    {
+      "exerciseId": 2,
+      "recordType": "time",
+      "setTargets": [{ "targetSeconds": 30 }],
+      "completedSets": [{ "setNumber": 1, "durationSeconds": 31 }]
+    }
+  ]
+}
+```
+
+- `requestId`, `startedAt`, `endedAt`, `exercises`(1~100개)는 필수다. `requestId` 형식과 재전송 규칙은 루틴과 같다. 대소문자를 구분하고, 같은 회원의 업로드는 한 번에 하나씩 처리해서 동시에 같은 요청이 와도 `DATA_CONFLICT`로 끝나지 않는다.
+- `startedAt`, `endedAt`은 시간대가 붙은 값(`Z` 또는 `+09:00`)만 받는다. 서버는 한국 시각으로 바꿔 초 단위로 저장하고, 응답의 `startedAt`·`endedAt`도 한국 시각이다. 그래서 통계와 운동 보상(10분 이상 완료한 기록)의 날짜가 한국 날짜 기준으로 맞는다.
+- `endedAt`이 `startedAt`보다 빠르면 400이다.
+- `setTargets`는 루틴의 `sets`와 같은 규칙이다(1~200개, `recordType`별 허용 값).
+- `completedSets`에는 완료한 세트만 넣는다. `setNumber`는 `setTargets`에서의 위치(1부터)이고 점점 커져야 한다. 완료하지 않은 세트를 빼서 번호가 건너뛸 수 있다.
+- 완료한 세트가 하나도 없는 기록은 400이다. 완료한 세트가 없는 운동이 섞여 있는 것은 괜찮다.
+
+`recordType`별로 완료 세트에 쓸 수 있는 값:
+
+| recordType | reps (필수) | weightKg (선택) | durationSeconds (선택) |
+|---|---|---|---|
+| reps | O | | |
+| weight | O | O | |
+| time | | | O |
+| time_reps | O | | O |
+| weight_time | | O | O |
+
+- `reps`: 1~999 정수 / `weightKg`: 0~999, 소수 둘째 자리까지 / `durationSeconds`: 0~86400 정수(측정한 시간)
+- 중량과 시간은 서버에서 선택 값이다. 프론트는 새로 완료하는 세트에 모두 요구하지만, 중량을 넣지 않았거나 타이머 없이 끝낸 예전 기록도 올릴 수 있게 서버는 비워 둘 수 있게 했다.
+- 완료 세트는 `workout_session_sets`에, 세트별 목표와 기록 방식은 `workout_session_exercises`에 저장한다. 응답과 상세 조회의 `exercises[]`에 `recordType`, `setTargets`가 함께 나온다.
 
 **통계**: completed 기록만 집계한다.
 
