@@ -11,6 +11,10 @@ import java.util.List;
 /**
  * Null fields stay unchanged. When items is present it replaces the whole list. When expectedRevision is present and
  * differs from the routine's revision the update is refused with 409 REVISION_MISMATCH (data.currentRevision).
+ *
+ * <p>If the routine has per-set targets and the new items include an old-style one (targetSets only), the update is
+ * refused with 409 SET_TARGETS_WOULD_BE_LOST, because the per-set targets cannot be kept. Send
+ * {@code discardSetTargets: true} to make that change on purpose.
  */
 public record RoutineUpdateRequest(
         @Size(min = 1, max = 160) String routineName,
@@ -18,5 +22,6 @@ public record RoutineUpdateRequest(
         Difficulty difficulty,
         RoutineVisibility visibility,
         @Size(min = 1, max = 100) List<@NotNull @Valid RoutineItemRequest> items,
-        @Min(1) Integer expectedRevision) {
+        @Min(1) Integer expectedRevision,
+        Boolean discardSetTargets) {
 }

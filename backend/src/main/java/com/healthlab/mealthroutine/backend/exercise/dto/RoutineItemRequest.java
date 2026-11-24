@@ -9,7 +9,8 @@ import java.util.List;
  * One routine item, in one of two shapes (RoutineService checks which):
  * <ul>
  *   <li>Per-set: {@code recordType} + {@code sets}. The target* fields must be absent; the server fills them from the
- *       sets (count and first set) so older readers of those columns keep working.</li>
+ *       sets (count and first set) so a client that only reads targetSets/targetReps in responses still sees a
+ *       summary. Nothing on the server reads them: starting a session from a routine copies only the exercises.</li>
  *   <li>Old: {@code targetSets} (required) with optional {@code targetReps} and {@code targetDurationSeconds}.</li>
  * </ul>
  * {@code restSeconds} is allowed in both.

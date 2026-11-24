@@ -7,6 +7,7 @@
 --   exercise_routines
 --     revision    INT NOT NULL DEFAULT 1   수정할 때마다 1 증가(동시 수정 감지). 기존 행은 1이 된다.
 --     request_id  VARCHAR(100) NULL        생성 요청 식별자(같은 저장 요청을 다시 보내도 루틴이 하나만 생김). 기존 행은 NULL.
+--                                          utf8mb4_bin이라 대소문자를 구분한다(RT-1과 rt-1은 다른 키, 프론트와 같은 규칙).
 --     UNIQUE KEY UK_ROUTINE_OWNER_REQUEST (owner_user_id, request_id)
 --       NULL은 서로 겹쳐도 되므로 기존 루틴(request_id NULL)은 영향이 없다.
 --   exercise_routine_items
@@ -41,8 +42,21 @@ DEALLOCATE PREPARE stmt;
 SET @sql = IF(
     (SELECT COUNT(*) FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'exercise_routines' AND COLUMN_NAME = 'request_id') = 0,
-    'ALTER TABLE `exercise_routines` ADD COLUMN `request_id` VARCHAR(100) NULL COMMENT ''생성 요청 식별자(중복 저장 방지)'' AFTER `revision`',
+    'ALTER TABLE `exercise_routines` ADD COLUMN `request_id` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL COMMENT ''생성 요청 식별자(중복 저장 방지, 대소문자 구분)'' AFTER `revision`',
     'SELECT ''skip: exercise_routines.request_id'' AS info');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 2-1) request_id가 대소문자를 구분하게 한다(utf8mb4_bin). 이 파일의 이전 버전으로 이미 컬럼을 만든 DB도 여기서 바뀐다.
+--      기본 정렬(utf8mb4_0900_ai_ci)이면 RT-1과 rt-1이 같은 키가 되는데, 프론트는 둘을 다른 요청으로 본다.
+--      이전 버전으로 만든 컬럼에 대소문자만 다른 값이 이미 있으면 UNIQUE 때문에 들어갈 수 없었으므로, 바꿔도 충돌하지 않는다.
+SET @sql = IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'exercise_routines' AND COLUMN_NAME = 'request_id'
+        AND COLLATION_NAME <> 'utf8mb4_bin') = 1,
+    'ALTER TABLE `exercise_routines` MODIFY COLUMN `request_id` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL COMMENT ''생성 요청 식별자(중복 저장 방지, 대소문자 구분)''',
+    'SELECT ''skip: exercise_routines.request_id collation'' AS info');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
@@ -83,7 +97,8 @@ SELECT
       WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'exercise_routines' AND COLUMN_NAME = 'revision'
         AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT = '1') AS has_revision,
     (SELECT COUNT(*) FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'exercise_routines' AND COLUMN_NAME = 'request_id') AS has_request_id,
+      WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'exercise_routines' AND COLUMN_NAME = 'request_id'
+        AND COLLATION_NAME = 'utf8mb4_bin') AS has_case_sensitive_request_id,
     (SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS
       WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'exercise_routines' AND INDEX_NAME = 'UK_ROUTINE_OWNER_REQUEST'
         AND NON_UNIQUE = 0) AS has_unique_key,

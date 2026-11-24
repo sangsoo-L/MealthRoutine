@@ -29,4 +29,12 @@ public interface ExerciseRoutineRepository extends JpaRepository<ExerciseRoutine
     Optional<ExerciseRoutineEntity> findForUpdate(@Param("routineId") Long routineId);
 
     Optional<ExerciseRoutineEntity> findByOwnerUserIdAndRequestId(Long ownerUserId, String requestId);
+
+    /**
+     * Locks the member's users row (SELECT ... FOR UPDATE) until the transaction ends, so creates with a requestId
+     * from one member run one at a time. The second one waits for the first to commit, then its requestId lookup
+     * finds the first routine instead of hitting the UNIQUE key. Returns null if the member does not exist.
+     */
+    @Query(nativeQuery = true, value = "select user_id from users where user_id = :userId for update")
+    Long lockOwner(@Param("userId") Long userId);
 }

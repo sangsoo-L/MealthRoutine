@@ -73,7 +73,7 @@ CREATE TABLE `exercise_routines` (
 	`is_template`	BOOLEAN	NOT NULL	DEFAULT FALSE	COMMENT '다른사람 운동루틴 가져오기',
 	`visibility`	ENUM('private','shared','public')	NOT NULL	DEFAULT 'private'	COMMENT '루틴 공개 여부',
 	`revision`	INT	NOT NULL	DEFAULT 1	COMMENT '수정할 때마다 1 증가(동시 수정 감지)',
-	`request_id`	VARCHAR(100)	NULL	COMMENT '생성 요청 식별자(중복 저장 방지)',
+	`request_id`	VARCHAR(100)	CHARACTER SET utf8mb4 COLLATE utf8mb4_bin	NULL	COMMENT '생성 요청 식별자(중복 저장 방지, 대소문자 구분)',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
 	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정일자',
 	UNIQUE KEY `UK_ROUTINE_OWNER_REQUEST` (`owner_user_id`, `request_id`)

@@ -249,6 +249,82 @@ class RoutineContractTests {
     }
 
     @Test
+    void oldStylePatchCannotSilentlyDropPerSetTargets() throws Exception {
+        // Created with per-set targets, then an old-style PATCH, then read back (review of the routine contract PR).
+        String id = routineId(send(post(ROUTINES), ME, routine("하체 루틴", PER_SET_ITEMS, null)));
+        String oldStyle = "[{\"exerciseId\":2001,\"targetSets\":3,\"targetReps\":10}]";
+
+        send(patch(ROUTINES + "/" + id), ME, "{\"items\":" + oldStyle + "}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(ERROR_CODE).value("SET_TARGETS_WOULD_BE_LOST"));
+        // One old-style item among per-set ones is refused too.
+        send(patch(ROUTINES + "/" + id), ME, """
+                {"items":[{"exerciseId":2001,"recordType":"reps","sets":[{"reps":5}]},
+                          {"exerciseId":2002,"targetSets":2}]}""")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(ERROR_CODE).value("SET_TARGETS_WOULD_BE_LOST"));
+
+        perform(get(ROUTINES + "/" + id), ME)
+                .andExpect(jsonPath("$.data.revision").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].sets.length()").value(3))
+                .andExpect(jsonPath("$.data.items[0].sets[2].weightKg").value(22.5));
+
+        // Asked for on purpose: the per-set targets go away.
+        send(patch(ROUTINES + "/" + id), ME, "{\"discardSetTargets\":true,\"items\":" + oldStyle + "}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.revision").value(2));
+        perform(get(ROUTINES + "/" + id), ME)
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].targetSets").value(3))
+                .andExpect(jsonPath("$.data.items[0].recordType").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].sets").doesNotExist());
+    }
+
+    @Test
+    void patchesThatKeepPerSetTargetsNeedNoFlag() throws Exception {
+        String id = routineId(send(post(ROUTINES), ME, routine("하체 루틴", PER_SET_ITEMS, null)));
+
+        send(patch(ROUTINES + "/" + id), ME, "{\"routineName\":\"이름만\"}").andExpect(status().isOk());
+        perform(get(ROUTINES + "/" + id), ME).andExpect(jsonPath("$.data.items[0].sets.length()").value(3));
+
+        send(patch(ROUTINES + "/" + id), ME, """
+                {"items":[{"exerciseId":2002,"recordType":"reps","sets":[{"reps":5},{"reps":7}]}]}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].sets[1].reps").value(7));
+    }
+
+    @Test
+    void requestIdIsCaseSensitive() throws Exception {
+        String upper = routineId(send(post(ROUTINES), ME, routine("하체 루틴", PER_SET_ITEMS, "RT-1"))
+                .andExpect(status().isCreated()));
+        String lower = routineId(send(post(ROUTINES), ME, routine("하체 루틴", PER_SET_ITEMS, "rt-1"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.requestId").value("rt-1")));
+        assertThat(lower).isNotEqualTo(upper);
+        assertThat(countRoutines(ME)).isEqualTo(2);
+    }
+
+    @Test
+    void resendingAfterAnEditIsAConflictAndAfterADeleteCreatesAgain() throws Exception {
+        String body = routine("하체 루틴", PER_SET_ITEMS, "rt-life");
+        String id = routineId(send(post(ROUTINES), ME, body).andExpect(status().isCreated()));
+
+        // Compared with the routine as it is now, the same way the frontend's local store does.
+        send(patch(ROUTINES + "/" + id), ME, "{\"routineName\":\"수정됨\"}").andExpect(status().isOk());
+        send(post(ROUTINES), ME, body)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(ERROR_CODE).value("REQUEST_CONFLICT"));
+
+        // After a delete no routine holds the requestId, so the same request makes a new one.
+        perform(delete(ROUTINES + "/" + id), ME).andExpect(status().isOk());
+        String again = routineId(send(post(ROUTINES), ME, body)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.created").value(true)));
+        assertThat(again).isNotEqualTo(id);
+    }
+
+    @Test
     void oldItemsHaveNoRecordTypeOrSets() throws Exception {
         String id = routineId(send(post(ROUTINES), ME, """
                 {"routineName":"예전 루틴","items":[{"exerciseId":2001,"targetSets":3,"targetReps":10}]}""")

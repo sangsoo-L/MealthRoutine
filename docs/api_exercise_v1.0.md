@@ -41,6 +41,7 @@
 | 409 | INVALID_SESSION_STATUS | 이미 종료된 운동 기록의 상태 변경 |
 | 409 | REQUEST_CONFLICT | 같은 `requestId`로 다른 내용을 다시 보냄 |
 | 409 | REVISION_MISMATCH | `expectedRevision`이 현재 값과 다름. `data.currentRevision`에 현재 값 |
+| 409 | SET_TARGETS_WOULD_BE_LOST | 세트별 목표가 있는 루틴을 예전 방식 항목으로 PATCH. `discardSetTargets: true`가 필요 |
 | 409 | DATA_CONFLICT | DB 제약 조건 충돌 |
 | 500 | INTERNAL_ERROR | 서버 오류 |
 
@@ -101,9 +102,10 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 
 **항목은 두 가지 모양 중 하나로 보낸다** (2026-11-24 추가)
 
-- **세트별 목표:** `recordType` + `sets`(1~200개). 이때 `targetSets`·`targetReps`·`targetDurationSeconds`는 보내지 않는다. 서버가 세트 수와 첫 세트 값으로 채워서, 이 컬럼을 읽는 기존 코드(세션 복사·통계)는 그대로 동작한다.
+- **세트별 목표:** `recordType` + `sets`(1~200개). 이때 `targetSets`·`targetReps`·`targetDurationSeconds`는 보내지 않는다. 서버가 세트 수와 첫 세트 값으로 채워서, 응답에서 `targetSets`·`targetReps`만 읽는 클라이언트도 대략적인 목표를 볼 수 있다. 서버 안에서 이 값을 읽는 코드는 없다. 루틴으로 세션을 시작하면 운동만 복사하고 목표 값은 복사하지 않는다.
 - **예전 방식:** `targetSets`(필수), `targetReps`, `targetDurationSeconds`. 응답에 `recordType`·`sets`가 없다.
 - `restSeconds`는 두 모양 모두 쓸 수 있다.
+- **세트별 목표가 있는 루틴을 예전 방식으로 PATCH하면 409 `SET_TARGETS_WOULD_BE_LOST`다.** 예전 방식은 세트마다 다른 목표와 중량을 담을 수 없어서 세트별 목표가 사라지기 때문이다. 일부러 바꾸려면 PATCH 본문에 `"discardSetTargets": true`를 함께 보낸다. `items` 중 하나라도 예전 방식이면 해당한다. `items` 없이 이름 등만 PATCH하면 세트별 목표는 그대로다.
 
 `recordType`별로 세트에 쓸 수 있는 값은 아래와 같다. 표에 없는 값을 보내거나 필수 값이 빠지면 400이다. 값은 따옴표 없는 숫자만 받는다.
 
@@ -120,10 +122,13 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 
 **중복 저장 방지(`requestId`)**
 
-- 형식: 영문·숫자·`-`·`_`, 1~100자. 선택 값이다.
+- 형식: 영문·숫자·`-`·`_`, 1~100자. 선택 값이다. **대소문자를 구분한다**(`RT-1`과 `rt-1`은 다른 요청). 프론트 로컬 저장소와 같은 규칙이고, 컬럼 정렬 규칙을 `utf8mb4_bin`으로 두었다.
 - 같은 회원이 같은 `requestId`로 같은 내용을 다시 보내면 새로 만들지 않고 처음 만든 루틴을 돌려준다(200, `created: false`).
 - 같은 `requestId`에 내용이 다르면 409 `REQUEST_CONFLICT`다.
 - 새로 만들면 201, `created: true`다. `created`는 생성 응답에만 있다.
+- **동시에 들어온 같은 요청:** 같은 회원의 `requestId` 생성 요청은 한 번에 하나씩 처리한다(회원 행 잠금). 두 번째 요청은 첫 요청이 끝난 뒤 조회하므로 동시에 보내도 결과는 위와 같다(같은 내용 200, 다른 내용 409 `REQUEST_CONFLICT`). `DATA_CONFLICT`로 끝나지 않는다.
+- **수정한 뒤 같은 요청을 다시 보내면:** 지금 저장된 루틴과 비교한다. 수정으로 내용이 바뀌었으면 409 `REQUEST_CONFLICT`다. 프론트 로컬 저장소도 지금 값과 비교한다.
+- **삭제한 뒤 같은 요청을 다시 보내면:** 그 `requestId`를 가진 루틴이 없으므로 새 루틴을 만든다(201, `created: true`). 프론트 로컬 저장소와 같은 동작이다.
 
 **동시 수정 감지(`revision`)**
 

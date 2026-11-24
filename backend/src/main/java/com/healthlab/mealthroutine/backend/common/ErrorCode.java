@@ -20,6 +20,9 @@ public enum ErrorCode {
     REQUEST_CONFLICT(HttpStatus.CONFLICT, "같은 요청 ID로 다른 내용이 이미 저장되어 있습니다."),
     // expectedRevision differs from the stored revision. Carries data.currentRevision.
     REVISION_MISMATCH(HttpStatus.CONFLICT, "다른 곳에서 먼저 수정했습니다. 최신 내용을 다시 불러와 주세요."),
+    // Old-style items (targetSets only) would replace a routine that has per-set targets. Needs discardSetTargets.
+    SET_TARGETS_WOULD_BE_LOST(HttpStatus.CONFLICT,
+            "세트별 목표가 있는 루틴을 예전 형식으로 바꾸면 세트별 목표가 사라집니다. 바꾸려면 discardSetTargets를 true로 보내 주세요."),
     FOOD_NOT_FOUND(HttpStatus.NOT_FOUND, "음식을 찾을 수 없습니다."),
     MEAL_RECORD_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 기록을 찾을 수 없습니다."),
     DIET_GOAL_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 목표를 찾을 수 없습니다."),

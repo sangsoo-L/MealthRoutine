@@ -45,6 +45,10 @@ public class RoutineService {
                 request.visibility() == null ? RoutineVisibility.PRIVATE : request.visibility();
 
         if (request.requestId() != null) {
+            // Same member, same moment, same new requestId: without this lock both requests would miss the lookup
+            // below and the second insert would end in 409 DATA_CONFLICT instead of returning the first routine.
+            // The lock comes before any other read so the lookup sees what the first request committed.
+            routineRepository.lockOwner(userId);
             Optional<ExerciseRoutineEntity> existing =
                     routineRepository.findByOwnerUserIdAndRequestId(userId, request.requestId());
             if (existing.isPresent()) {
@@ -63,8 +67,6 @@ public class RoutineService {
         routine.setVisibility(visibility);
         routine.setRequestId(request.requestId());
         replaceItems(routine, items);
-        // Two requests with the same new requestId at the same moment: the UNIQUE key stops the second one with
-        // 409 DATA_CONFLICT, and the client's next retry finds the first routine through the lookup above.
         return new CreateResult(RoutineResponse.detail(routineRepository.save(routine), true), true);
     }
 
@@ -83,6 +85,9 @@ public class RoutineService {
                 request.items() == null ? null : request.items().stream().map(RoutineService::toSpec).toList();
         ExerciseRoutineEntity routine = findOwnedForUpdate(userId, routineId);
         checkRevision(routine, request.expectedRevision());
+        if (items != null && losesSetTargets(routine, items) && !Boolean.TRUE.equals(request.discardSetTargets())) {
+            throw new BusinessException(ErrorCode.SET_TARGETS_WOULD_BE_LOST);
+        }
         if (request.routineName() != null) {
             routine.setRoutineName(request.routineName());
         }
@@ -131,6 +136,16 @@ public class RoutineService {
     private ExerciseRoutineEntity find(Long routineId) {
         return routineRepository.findById(routineId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROUTINE_NOT_FOUND));
+    }
+
+    /**
+     * True when the routine has per-set targets and an old-style item (targetSets only) is about to replace them.
+     * The old shape cannot hold different targets per set or a weight, so that detail would be gone for good.
+     */
+    private static boolean losesSetTargets(ExerciseRoutineEntity routine, List<ItemSpec> newItems) {
+        boolean hasSetTargets = routine.getItems().stream().anyMatch(item -> item.getSetTargets() != null);
+        boolean hasOldStyle = newItems.stream().anyMatch(item -> item.sets() == null);
+        return hasSetTargets && hasOldStyle;
     }
 
     private static void checkRevision(ExerciseRoutineEntity routine, Integer expectedRevision) {
