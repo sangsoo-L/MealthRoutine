@@ -1,6 +1,10 @@
 import { Navigate, useNavigate } from 'react-router'
 import { useAuth } from '../auth/authContext.ts'
-import { SIGNED_UP_STATE, submitSignupOnce } from '../auth/signupApi.ts'
+import {
+  SIGNED_UP_STATE,
+  conflictStillApplies,
+  submitSignupOnce,
+} from '../auth/signupApi.ts'
 import Icon from '../components/icons/Icon.tsx'
 import { SIGNUP_PIN_PATH } from '../pin-settings/pinSettingsPolicy.ts'
 import {
@@ -164,8 +168,13 @@ function RegionAlert({
  */
 export default function SignupPage() {
   const navigate = useNavigate()
-  const { status } = useAuth()
+  const { status, dismissConnectionNotice } = useAuth()
   const [values, setValues] = useState<SignupValues>(INITIAL_VALUES)
+  // 가입 응답이 왔을 때의 최신 입력. 제출 중에도 이전 단계로 가서 고칠 수 있으므로 늦은 409를 지금 값과 비교한다(PR #27 리뷰).
+  const latestValuesRef = useRef(values)
+  useEffect(() => {
+    latestValuesRef.current = values
+  }, [values])
   const [errors, setErrors] = useState<Errors>({})
   const [noticeVisible, setNoticeVisible] = useState(false)
   const [step, setStep] = useState<SignupStep>(1)
@@ -555,6 +564,8 @@ export default function SignupPage() {
    * - 응답 전에 화면을 떠났으면 결과를 반영하지 않는다(새 화면을 덮지 않음).
    */
   async function submitToServer() {
+    // 이 요청이 보낸 이메일·닉네임. 늦은 409가 아직 지금 입력에 해당하는지 비교한다. 비밀번호는 기억하지 않는다.
+    const submitted = { email: values.email, nickname: values.nickname }
     const outcome = await submitSignupOnce(
       {
         name: values.name,
@@ -579,24 +590,36 @@ export default function SignupPage() {
     setSubmitting(false)
     switch (outcome) {
       case 'success':
+        // 서버에 닿아 가입이 끝났으므로, 이 앱에서 그 전에 났던 시작 확인 연결 경고(F1-D7)는 지난 일이다. 이것만 지운다(PR #27 리뷰).
+        // 새로고침 뒤의 새 시작 확인 실패와 로그인 화면의 새 로그인 실패는 그대로 보인다.
+        dismissConnectionNotice()
         navigate('/login', { replace: true, state: SIGNED_UP_STATE })
         return
       case 'emailUnavailable':
+      case 'nicknameTaken':
+        // 응답을 기다리는 동안 해당 값을 바꿨으면 이전 값의 결과다: 오류·단계·포커스를 바꾸지 않는다(PR #27 리뷰).
+        if (!conflictStillApplies(outcome, submitted, latestValuesRef.current))
+          return
+        if (outcome === 'nicknameTaken') {
+          showError({
+            region: 'nickname',
+            field: 'nickname',
+            message: SIGNUP_MESSAGES.nicknameTaken,
+          })
+          return
+        }
         showError({
           region: 'email',
           field: 'email',
           message: SIGNUP_MESSAGES.emailUnavailable,
         })
         return
-      case 'nicknameTaken':
-        showError({
-          region: 'nickname',
-          field: 'nickname',
-          message: SIGNUP_MESSAGES.nicknameTaken,
-        })
-        return
       case 'invalid':
         setSubmitError(SIGNUP_MESSAGES.invalidRequest)
+        return
+      case 'unconfirmed':
+        // 가입 여부를 확정할 수 없다: 완료 이동·자동 재전송 없이 이 화면에서 안내한다.
+        setSubmitError(SIGNUP_MESSAGES.signupUnconfirmed)
         return
       default:
         setSubmitError(SIGNUP_MESSAGES.connectionFailed)

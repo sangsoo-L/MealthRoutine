@@ -21,6 +21,11 @@ export interface AuthContextValue {
   user: AuthUser | null
   /** 앱 시작 확인이 서버 연결 실패로 끝났다(F1-D7). 로그인 화면이 연결 안내를 보여 준다. */
   connectionNotice: boolean
+  /**
+   * 지금 떠 있는 시작 확인 연결 안내를 지운다. 그 뒤 서버에 닿은 것이 확인됐을 때(가입 201)만 부른다(PR #27 리뷰).
+   * 새로고침하면 새 시작 확인이 다시 판단하므로 그 뒤의 연결 실패는 지우지 않는다.
+   */
+  dismissConnectionNotice(): void
   login(email: string, password: string): Promise<LoginResult>
   logout(): void
   /** 닉네임 저장을 시작할 때 지금 로그인 작업에 묶인 표식을 받는다(F3-D3·R1). 로그인 상태가 아니면 null. */

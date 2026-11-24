@@ -2,6 +2,7 @@ import {
   ApiError,
   INVALID_RESPONSE,
   checkBody,
+  checkExpectStatus,
   checkHeaders,
   checkPath,
   sendRaw,
@@ -68,6 +69,11 @@ export interface ApiRequestOptions {
   signal?: AbortSignal
   /** refresh 쿠키를 만들거나 지우는 요청(예: 비밀번호 변경). auth 모드와 상관없이 쿠키 변경 대기열을 거친다 */
   cookieChanging?: boolean
+  /**
+   * 성공 상태 코드를 하나로 정하는 요청만 쓴다(예: 가입은 201). 성공(2xx)인데 다르면 `INVALID_RESPONSE`.
+   * 넣지 않으면 기존처럼 모든 2xx가 성공이다. 200~299 정수만 받는다.
+   */
+  expectStatus?: number
 }
 
 export interface SessionDeps {
@@ -509,6 +515,7 @@ export function createAuthSession(deps: SessionDeps) {
     checkPath(path)
     checkBody(options.body)
     checkHeaders(options.headers, options.body !== undefined)
+    checkExpectStatus(options.expectStatus)
     const mode = options.auth ?? 'required'
     const base = {
       method,
@@ -516,6 +523,7 @@ export function createAuthSession(deps: SessionDeps) {
       body: options.body,
       headers: options.headers,
       signal: options.signal,
+      expectStatus: options.expectStatus,
     }
 
     /**

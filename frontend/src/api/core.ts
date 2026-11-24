@@ -100,6 +100,17 @@ export function checkHeaders(
   }
 }
 
+/** `expectStatus` 검사. 넣었다면 200~299 정수여야 한다(실패 코드를 성공으로 바꾸는 데 쓰지 못하게). */
+export function checkExpectStatus(status: number | undefined): void {
+  if (status === undefined) return
+  if (!Number.isInteger(status) || status < 200 || status > 299)
+    throw new ApiError(
+      0,
+      INVALID_REQUEST,
+      'expectStatus는 200~299 정수만 넣을 수 있습니다.',
+    )
+}
+
 export interface RawRequest {
   method: HttpMethod
   /** `/auth/login`처럼 API_PREFIX 뒤의 경로(checkPath를 통과한 값) */
@@ -111,6 +122,11 @@ export interface RawRequest {
   csrfHeader?: boolean
   headers?: Record<string, string>
   signal?: AbortSignal
+  /**
+   * 성공 응답이 반드시 이 상태 코드여야 하는 요청(예: 가입 201). 성공(2xx)인데 코드가 다르면 `INVALID_RESPONSE`로 던진다.
+   * 넣지 않으면(기본) 지금처럼 모든 2xx를 성공으로 본다. 실패 응답(4xx·5xx)의 해석은 이 값과 상관없다.
+   */
+  expectStatus?: number
 }
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
@@ -166,6 +182,20 @@ export async function sendRaw(
   } catch (error) {
     if (isAbortError(error)) throw error
     throw new ApiError(0, NETWORK_ERROR, '서버에 연결할 수 없습니다.')
+  }
+
+  if (
+    response.ok &&
+    request.expectStatus !== undefined &&
+    response.status !== request.expectStatus
+  ) {
+    throw new ApiError(
+      response.status,
+      INVALID_RESPONSE,
+      '응답 형식이 올바르지 않습니다.',
+      undefined,
+      retryAfter,
+    )
   }
 
   if (response.status === 204 || text === '') {

@@ -1,5 +1,6 @@
 import {
   ApiError,
+  INVALID_RESPONSE,
   apiRequest,
   type ApiRequestOptions,
   type HttpMethod,
@@ -12,7 +13,9 @@ import {
  *   비밀번호 확인값·휴대폰·주소는 보내지 않는다.
  * - 비회원 요청이므로 `auth: 'none'`이다(기본값 required면 요청 전에 LOGIN_REQUIRED로 막힌다).
  *   가입은 refresh 쿠키를 바꾸지 않아 `cookieChanging`을 붙이지 않는다.
- * - 성공(201)해도 로그인하지 않는다(SIGNUP-RES-1). 화면이 로그인 화면으로 보낸다(F2-D3).
+ * - 성공은 **HTTP 201 + 양의 정수 `data.userId`** 일 때만이다(PR #27 리뷰). 그 밖의 성공 응답은 `unconfirmed`로,
+ *   가입 완료로 보지 않고 다시 보내지도 않는다(서버에서는 이미 가입됐을 수 있다).
+ * - 성공해도 로그인하지 않는다(SIGNUP-RES-1). 화면이 로그인 화면으로 보낸다(F2-D3).
  * - 네트워크 오류·서버 오류에서 자동으로 다시 보내지 않는다(서버가 이미 가입을 끝냈을 수 있다).
  * - 비밀번호는 요청 본문에만 쓰고 결과·로그에 남기지 않는다.
  */
@@ -34,6 +37,8 @@ export type SignupOutcome =
   | 'nicknameTaken'
   /** 400 등 입력 오류: 서버는 필드별 정보를 주지 않는다 */
   | 'invalid'
+  /** 성공 응답(2xx)이 왔지만 201 + 유효한 userId가 아니다. 가입 여부를 확정할 수 없다 */
+  | 'unconfirmed'
   /** 네트워크 오류·서버 오류·그 밖의 예상하지 못한 응답 */
   | 'unavailable'
 
@@ -56,6 +61,13 @@ export function signupBody(input: SignupInput) {
 
 export function classifySignupError(error: unknown): SignupOutcome {
   if (!(error instanceof ApiError)) return 'unavailable'
+  // 2xx인데 형식이 맞지 않음(201이 아님·본문 없음·공통 형식 아님): 서버가 가입을 처리했을 수 있다.
+  if (
+    error.errorCode === INVALID_RESPONSE &&
+    error.status >= 200 &&
+    error.status <= 299
+  )
+    return 'unconfirmed'
   if (error.status === 409 && error.errorCode === 'EMAIL_UNAVAILABLE')
     return 'emailUnavailable'
   if (error.status === 409 && error.errorCode === 'NICKNAME_ALREADY_EXISTS')
@@ -64,20 +76,49 @@ export function classifySignupError(error: unknown): SignupOutcome {
   return 'unavailable'
 }
 
+/** 가입 성공 응답의 `data`가 서버 계약(`{ userId: 양의 정수 }`)과 맞는지 */
+export function isSignupSuccessData(data: unknown): boolean {
+  if (typeof data !== 'object' || data === null) return false
+  const userId = (data as Record<string, unknown>).userId
+  return (
+    typeof userId === 'number' && Number.isSafeInteger(userId) && userId > 0
+  )
+}
+
 /** 테스트에서는 가짜 fetch를 쓰는 세션의 request를 넘긴다. 앱은 공통 호출(apiRequest)을 쓴다. */
 export async function requestSignup(
   input: SignupInput,
   request: RequestFn = apiRequest,
 ): Promise<SignupOutcome> {
+  let data: unknown
   try {
-    await request('POST', '/auth/signup', {
+    // expectStatus: 201이 아닌 성공 응답은 공통 호출이 INVALID_RESPONSE로 던진다(이 호출에만 적용).
+    data = await request<unknown>('POST', '/auth/signup', {
       auth: 'none',
       body: signupBody(input),
+      expectStatus: 201,
     })
-    return 'success'
   } catch (error) {
     return classifySignupError(error)
   }
+  return isSignupSuccessData(data) ? 'success' : 'unconfirmed'
+}
+
+/**
+ * 늦게 도착한 409가 지금 입력에도 해당하는지(PR #27 리뷰). 서버가 비교하는 기준으로 맞춘다.
+ * - 이메일: 앞뒤 공백 제거 + 소문자(서버 `SignupRequest`가 같은 방식으로 바꾼 뒤 비교).
+ * - 닉네임: 앞뒤 공백 제거 + 소문자(서버 DB가 대소문자를 구분하지 않고 비교. 보내는 값은 `signupBody`처럼 trim).
+ * 값이 바뀌었으면 false: 그 409는 이전 값의 결과이므로 화면에 반영하지 않는다.
+ */
+export function conflictStillApplies(
+  outcome: 'emailUnavailable' | 'nicknameTaken',
+  submitted: Pick<SignupInput, 'email' | 'nickname'>,
+  current: Pick<SignupInput, 'email' | 'nickname'>,
+): boolean {
+  const key = (value: string) => value.trim().toLowerCase()
+  return outcome === 'emailUnavailable'
+    ? key(submitted.email) === key(current.email)
+    : key(submitted.nickname) === key(current.nickname)
 }
 
 export interface SubmitSignupOptions {

@@ -123,6 +123,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     [actions, work],
   )
 
+  const dismissConnectionNotice = useCallback(() => {
+    setConnectionNotice(false)
+  }, [])
+
   const logout = useCallback(() => {
     pendingRef.current = null
     authBackend.clear()
@@ -152,11 +156,20 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       status: user ? 'authenticated' : booting ? 'loading' : 'unauthenticated',
       user,
       connectionNotice,
+      dismissConnectionNotice,
       login,
       logout,
       beginNicknameSave,
     }),
-    [user, booting, connectionNotice, login, logout, beginNicknameSave],
+    [
+      user,
+      booting,
+      connectionNotice,
+      dismissConnectionNotice,
+      login,
+      logout,
+      beginNicknameSave,
+    ],
   )
 
   return <AuthContext value={value}>{children}</AuthContext>

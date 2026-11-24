@@ -19,6 +19,7 @@ import {
   fail,
   flush,
   networkError,
+  noContent,
   ok,
 } from './apiTestKit.mjs'
 
@@ -335,6 +336,126 @@ test('409라도 코드가 다르면 이메일·닉네임으로 단정하지 않�
   assert.equal(api.classifySignupError(new Error('x')), 'unavailable')
 })
 
+// ── 성공 응답 검증(PR #27 리뷰 P2 ③): 201 + 양의 정수 userId만 성공 ──
+
+const rawJson = (text, status) =>
+  new Response(text, {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+test('성공 응답 검증: 201 + 양의 정수 userId일 때만 success, 그 밖의 성공 응답은 unconfirmed(한 번만 보냄)', async () => {
+  const cases = [
+    ['정상 201', ok({ userId: 7 }, 201), 'success'],
+    ['큰 정수 201', ok({ userId: Number.MAX_SAFE_INTEGER }, 201), 'success'],
+    ['data 빈 객체 201', ok({}, 201), 'unconfirmed'],
+    ['data null 201', ok(null, 201), 'unconfirmed'],
+    [
+      'data 누락 201',
+      rawJson('{"success":true,"message":"m"}', 201),
+      'unconfirmed',
+    ],
+    ['본문 없는 201', new Response(null, { status: 201 }), 'unconfirmed'],
+    ['userId 0', ok({ userId: 0 }, 201), 'unconfirmed'],
+    ['userId 음수', ok({ userId: -3 }, 201), 'unconfirmed'],
+    ['userId 소수', ok({ userId: 1.5 }, 201), 'unconfirmed'],
+    ['userId 문자열', ok({ userId: '7' }, 201), 'unconfirmed'],
+    ['userId 범위 밖', ok({ userId: 2 ** 53 }, 201), 'unconfirmed'],
+    ['userId 배열 data', ok([7], 201), 'unconfirmed'],
+    ['본문 없는 204', noContent(), 'unconfirmed'],
+    ['정상 본문의 200', ok({ userId: 7 }, 200), 'unconfirmed'],
+    ['JSON 아닌 201', rawJson('created', 201), 'unconfirmed'],
+    ['기존 400', fail(400, 'INVALID_REQUEST'), 'invalid'],
+    ['기존 409 이메일', fail(409, 'EMAIL_UNAVAILABLE'), 'emailUnavailable'],
+    ['기존 409 닉네임', fail(409, 'NICKNAME_ALREADY_EXISTS'), 'nicknameTaken'],
+  ]
+  for (const [name, response, expected] of cases) {
+    const { fake, request } = makeSession()
+    fake.on('POST /auth/signup', response)
+    assert.equal(await api.requestSignup(input, request), expected, name)
+    // 자동 재전송·로그인 호출 없음
+    assert.deepEqual(fake.keys(), ['POST /auth/signup'], name)
+  }
+})
+
+test('expectStatus는 지정한 호출에만 적용된다: 옵션 없는 호출은 200·204를 그대로 성공으로 돌려준다', async () => {
+  const { fake, request } = makeSession()
+  fake.on('GET /plain', ok({ a: 1 }), noContent(), ok({ a: 2 }, 201))
+  assert.deepEqual(await request('GET', '/plain', { auth: 'none' }), { a: 1 })
+  assert.equal(await request('GET', '/plain', { auth: 'none' }), undefined)
+  assert.deepEqual(await request('GET', '/plain', { auth: 'none' }), { a: 2 })
+  // 지정하면 다른 2xx는 INVALID_RESPONSE(상태 코드는 그대로), 실패 응답 해석은 기존과 같다.
+  fake.on('GET /strict', ok({ a: 1 }, 200), fail(409, 'X_CONFLICT'))
+  await assert.rejects(
+    request('GET', '/strict', { auth: 'none', expectStatus: 201 }),
+    (e) => e.status === 200 && e.errorCode === 'INVALID_RESPONSE',
+  )
+  await assert.rejects(
+    request('GET', '/strict', { auth: 'none', expectStatus: 201 }),
+    (e) => e.status === 409 && e.errorCode === 'X_CONFLICT',
+  )
+})
+
+test('expectStatus에 200~299 정수가 아닌 값은 요청을 보내기 전에 막는다', async () => {
+  for (const bad of [404, 199, 300, 201.5, Number.NaN]) {
+    const { fake, request } = makeSession()
+    await assert.rejects(
+      request('GET', '/plain', { auth: 'none', expectStatus: bad }),
+      (e) => e.status === 0 && e.errorCode === 'INVALID_REQUEST',
+      String(bad),
+    )
+    assert.equal(fake.calls.length, 0)
+  }
+})
+
+// ── 늦은 409(PR #27 리뷰 P2 ①): 서버 비교 기준으로 지금 값과 대조 ──
+
+test('conflictStillApplies: 이메일은 trim+소문자, 닉네임은 trim+소문자(DB 대소문자 무시)로 비교한다', () => {
+  const sent = { email: ' New@Example.test ', nickname: ' GilDong ' }
+  const same = (current, outcome) =>
+    api.conflictStillApplies(outcome, sent, { ...sent, ...current })
+  // 같은 값(공백·대소문자만 다름) → 그대로 안내
+  assert.equal(same({ email: 'new@example.TEST' }, 'emailUnavailable'), true)
+  assert.equal(same({ nickname: 'gildong' }, 'nicknameTaken'), true)
+  // 값이 바뀜 → 이전 값의 결과라 반영하지 않음
+  assert.equal(same({ email: 'other@example.test' }, 'emailUnavailable'), false)
+  assert.equal(same({ nickname: 'GilDong2' }, 'nicknameTaken'), false)
+  // 다른 필드가 바뀐 것은 상관없다
+  assert.equal(same({ nickname: '다른닉' }, 'emailUnavailable'), true)
+  assert.equal(same({ email: 'x@example.test' }, 'nicknameTaken'), true)
+})
+
+test('화면 연결(정적): 409는 conflictStillApplies가 참일 때만 showError, unconfirmed는 이동 없이 안내', () => {
+  const signup = source('src/pages/SignupPage.tsx')
+  const conflict = signup.slice(
+    signup.indexOf("case 'emailUnavailable':"),
+    signup.indexOf("case 'invalid':"),
+  )
+  assert.match(
+    conflict,
+    /if \(!conflictStillApplies\(outcome, submitted, latestValuesRef\.current\)\)\s*return/,
+  )
+  assert.ok(
+    conflict.indexOf('conflictStillApplies') < conflict.indexOf('showError'),
+  )
+  // 제출한 값은 요청 전에 기억하고, 비교 대상은 응답 시점의 최신 입력이다.
+  assert.match(
+    signup,
+    /const submitted = \{ email: values\.email, nickname: values\.nickname \}\s*const outcome = await submitSignupOnce\(/,
+  )
+  assert.match(signup, /latestValuesRef\.current = values/)
+  const unconfirmed = signup.slice(
+    signup.indexOf("case 'unconfirmed':"),
+    signup.indexOf('default:', signup.indexOf("case 'unconfirmed':")),
+  )
+  assert.match(
+    unconfirmed,
+    /setSubmitError\(SIGNUP_MESSAGES\.signupUnconfirmed\)/,
+  )
+  assert.doesNotMatch(unconfirmed, /navigate|submitToServer|submitSignupOnce/)
+  assert.ok(validation.SIGNUP_MESSAGES.signupUnconfirmed.includes('로그인'))
+})
+
 // ── 제출 규칙(보류 Promise로 순서 강제) ──
 
 test('중복 제출: 보내는 중 두 번째 제출은 blocked, 요청은 1번', async () => {
@@ -463,6 +584,7 @@ function auth(status) {
     status,
     user: null,
     connectionNotice: false,
+    dismissConnectionNotice() {},
     login: async () => ({ ok: false, reason: 'invalid' }),
     logout() {},
   }
@@ -570,10 +692,14 @@ function renderLogin(state, connectionNotice) {
 const SIGNED_UP_TEXT = '회원가입이 완료됐어요'
 const CONNECTION_TEXT = '서버에 연결할 수 없어요'
 
-test('가입 직후에는 과거 시작 확인의 연결 실패 안내를 숨기고 완료 안내만 보인다', () => {
+test('가입 완료 표지가 있어도 지금 떠 있는 시작 확인 실패는 보인다(새로고침 뒤 새 실패, PR #27 리뷰 P2 ②)', () => {
   const html = renderLogin(api.SIGNED_UP_STATE, true)
   assert.ok(html.includes(SIGNED_UP_TEXT))
-  assert.equal(html.includes(CONNECTION_TEXT), false)
+  assert.ok(html.includes(CONNECTION_TEXT))
+  // 가입 화면이 지난 경고를 지우고 오면(connectionNotice false) 완료 안내만 보인다.
+  const cleared = renderLogin(api.SIGNED_UP_STATE, false)
+  assert.ok(cleared.includes(SIGNED_UP_TEXT))
+  assert.equal(cleared.includes(CONNECTION_TEXT), false)
 })
 
 test('가입을 거치지 않은 로그인 화면은 기존대로 시작 확인 실패 안내를 보인다(F1-D7 유지)', () => {
@@ -583,12 +709,29 @@ test('가입을 거치지 않은 로그인 화면은 기존대로 시작 확인 
   assert.equal(renderLogin(null, false).includes(CONNECTION_TEXT), false)
 })
 
-test('가입 직후라도 새 로그인 시도의 연결 실패(noticeVisible)는 숨기지 않는다(정적)', () => {
+test('지난 시작 확인 경고는 가입 성공 때만 지우고, 로그인 화면은 가입 표지로 경고를 숨기지 않는다(정적)', () => {
   const login = source('src/pages/LoginPage.tsx')
-  // noticeVisible은 hideStartupNotice와 무관하게 단독 조건이고, 숨김은 connectionNotice 쪽에만 걸린다.
+  // 새 로그인 실패(noticeVisible)는 단독 조건, 시작 확인 실패는 connectionNotice만 본다.
   assert.match(
     login,
-    /\{noticeVisible \|\|\s*\(connectionNotice &&\s*!hideStartupNotice/,
+    /\{noticeVisible \|\|\s*\(connectionNotice &&\s*!submitting/,
   )
-  assert.match(login, /<LoginForm hideStartupNotice=\{signedUp\} \/>/)
+  assert.doesNotMatch(login, /hideStartupNotice/)
+  assert.match(login, /<LoginForm \/>/)
+  const signup = source('src/pages/SignupPage.tsx')
+  const success = signup.slice(
+    signup.indexOf("case 'success':"),
+    signup.indexOf("case 'emailUnavailable':"),
+  )
+  assert.match(
+    success,
+    /dismissConnectionNotice\(\)\s*navigate\('\/login', \{ replace: true, state: SIGNED_UP_STATE \}\)/,
+  )
+  // 실패·409·unconfirmed에서는 지우지 않는다(서버에 닿았는지 확정되지 않았거나 가입이 끝나지 않음).
+  assert.equal(signup.match(/dismissConnectionNotice\(\)/g).length, 1)
+  const provider = source('src/auth/AuthProvider.tsx')
+  assert.match(
+    provider,
+    /const dismissConnectionNotice = useCallback\(\(\) => \{\s*setConnectionNotice\(false\)\s*\}, \[\]\)/,
+  )
 })
