@@ -9,8 +9,10 @@ import {
   correctAnswerText,
   markOption,
   rewardNotice,
+  rewardTimingOf,
   summarizeReward,
 } from '../../quiz/quizView.ts'
+import type { QuizRewardTiming } from '../../quiz/quizPolicy.ts'
 import {
   QUIZ_DOMAIN_CHIP,
   quizCard,
@@ -40,9 +42,11 @@ function QuestionMeta({ question }: { question: QuizQuestion }) {
 export function QuizEntry({
   question,
   onStart,
+  rewardTiming = 'instant',
 }: {
   question: QuizQuestion
   onStart: () => void
+  rewardTiming?: QuizRewardTiming
 }) {
   return (
     <section aria-labelledby="quiz-entry-title" className={quizCard}>
@@ -54,7 +58,9 @@ export function QuizEntry({
         하루에 한 문제만 풀 수 있어요. 맞혀도 틀려도 오늘의 퀴즈는 완료돼요.
       </p>
       <p className="mt-3 rounded-control bg-brand-soft px-3 py-2 text-support leading-relaxed font-normal break-keep text-content">
-        {rewardNotice()} 시험용 임시 보상 기준이에요.
+        {rewardTiming === 'nextDay'
+          ? rewardNotice('nextDay')
+          : `${rewardNotice()} 시험용 임시 보상 기준이에요.`}
       </p>
       <button
         type="button"
@@ -157,7 +163,12 @@ export function QuizResult({
   useEffect(() => {
     if (focusOnMount) headingRef.current?.focus()
   }, [focusOnMount])
-  const summary = summarizeReward(outcome, reward, totals)
+  const summary = summarizeReward(
+    outcome,
+    reward,
+    totals,
+    rewardTimingOf(ready.repository),
+  )
   const correctText = correctAnswerText(question)
 
   return (

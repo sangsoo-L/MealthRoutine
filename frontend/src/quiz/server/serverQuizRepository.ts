@@ -1,10 +1,12 @@
 import { ApiError, apiRequest } from '../../api/http.ts'
-import type {
-  CompleteResult,
-  DailyQuiz,
-  QuizRepository,
-  RewardEntry,
-  RewardTotals,
+import { SERVER_QUIZ_REWARD } from '../quizPolicy.ts'
+import {
+  QuizDayChangedError,
+  type CompleteResult,
+  type DailyQuiz,
+  type QuizRepository,
+  type RewardEntry,
+  type RewardTotals,
 } from '../quizRepository.ts'
 import type { QuizAnswerId } from '../quizTypes.ts'
 import { QUIZ_CODE_BY_DB_ID } from './quizIdMap.ts'
@@ -30,12 +32,6 @@ interface MyRewardResponse {
   totalXp: number
   balance: number
 }
-
-/**
- * 하루 점수에 퀴즈가 더하는 몫(정답 10점·오답 5점). 보상은 다음 날 00:05 정산 때
- * 경험치 = 점수, 포인트 = 점수 ÷ 2로 들어간다. 화면에는 "이번 보상"으로 이 예정 몫을 보여 준다.
- */
-const SCORE = { correct: 10, wrong: 5 }
 
 function todayKst(): string {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
@@ -83,12 +79,16 @@ export function createServerQuizRepository(ownerId: string): QuizRepository {
       selectedAnswerId: answer,
       isCorrect: done ? r.result!.correct : null,
       completedAt: done ? new Date().toISOString() : null,
+      serverQuestion: r.question, // 은행 문항과 같은지 화면에서 확인한다
     }
   }
 
   function rewardFor(quiz: DailyQuiz): RewardEntry | null {
     if (!quiz.completedAt || quiz.isCorrect === null) return null
-    const score = quiz.isCorrect ? SCORE.correct : SCORE.wrong
+    // 다음 날 00:05 정산 때 들어갈 퀴즈 몫(정산 예정 값)
+    const share = quiz.isCorrect
+      ? SERVER_QUIZ_REWARD.correct
+      : SERVER_QUIZ_REWARD.wrong
     return {
       transactionId: quiz.id,
       ownerId,
@@ -96,15 +96,19 @@ export function createServerQuizRepository(ownerId: string): QuizRepository {
       rewardKey: `QUIZ:${quiz.localDate}`,
       rewardType: 'quiz',
       localDate: quiz.localDate,
-      points: Math.floor(score / 2),
-      experience: score,
+      points: share.points,
+      experience: share.experience,
       createdAt: quiz.completedAt,
     }
   }
 
+  // 날짜별로 화면에 띄운 서버 문제 id(제출할 때 같은 문제인지 서버가 확인한다)
+  const shownQuizId = new Map<string, number>()
+
   async function get(localDate: string): Promise<DailyQuiz | null> {
     if (localDate !== todayKst()) return null // 서버는 오늘의 퀴즈만 준다
     const r = await apiRequest<TodayQuizResponse>('GET', '/quizzes/today')
+    shownQuizId.set(localDate, r.quizId)
     return toQuiz(r, localDate, loadSelected(selectedKey(ownerId, localDate)))
   }
 
@@ -123,9 +127,14 @@ export function createServerQuizRepository(ownerId: string): QuizRepository {
     },
     async complete({ localDate, selectedAnswerId }): Promise<CompleteResult> {
       const key = selectedKey(ownerId, localDate)
+      // 자정을 넘겼으면 어제 문제의 답을 보내지 않는다(서버가 오늘 문제로 채점하게 된다)
+      if (localDate !== todayKst()) throw new QuizDayChangedError()
       try {
         await apiRequest<QuizResultResponse>('POST', '/quizzes/today/attempt', {
-          body: { answer: selectedAnswerId },
+          body: {
+            answer: selectedAnswerId,
+            questionId: shownQuizId.get(localDate),
+          },
         })
         saveSelected(key, selectedAnswerId)
         const quiz = await get(localDate)
@@ -139,6 +148,9 @@ export function createServerQuizRepository(ownerId: string): QuizRepository {
           const quiz = await get(localDate)
           if (quiz) return { quiz, reward: null, alreadyCompleted: true }
         }
+        // 요청 중에 자정이 지나 서버의 오늘 문제가 바뀜 → 채점하지 않고 거절됨
+        if (error instanceof ApiError && error.errorCode === 'QUIZ_CHANGED')
+          throw new QuizDayChangedError()
         throw error
       }
     },
