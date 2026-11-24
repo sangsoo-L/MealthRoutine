@@ -5,7 +5,7 @@ import {
 } from '../../exercise/workoutRepositories.ts'
 import type { LocalDate } from '../../exercise/workoutTypes.ts'
 import { isLocalDate, isValidRequestId } from '../../exercise/workoutModel.ts'
-import { isPortion, portionGrams, type Portion } from '../foodNutrition.ts'
+import { isPortion } from '../foodNutrition.ts'
 import {
   MEAL_SCHEMA_VERSION,
   isMealType,
@@ -18,7 +18,8 @@ import type {
   MealRecordRepository,
   SaveMealResult,
 } from '../mealRepository.ts'
-import { SERVER_FOOD_SOURCE, servingGramsOf } from './serverFoodRepository.ts'
+import { portionOfQuantity, quantityOfPortion } from './mealQuantity.ts'
+import { SERVER_FOOD_SOURCE } from './serverFoodRepository.ts'
 
 /** 백엔드 MealRecordResponse. 프론트 기록 1건 = 백엔드 기록 1건(음식 1개)으로 주고받는다. */
 interface MealItemResponse {
@@ -56,12 +57,6 @@ const per100 = (value: number | null, grams: number): number | null =>
     ? null
     : Math.round((value * 10000) / grams) / 100
 
-function portionOf(grams: number): Portion {
-  if (grams <= portionGrams('less')) return 'less'
-  if (grams >= portionGrams('more')) return 'more'
-  return 'normal'
-}
-
 function toRecord(r: MealRecordResponse, ownerId: string): MealRecord | null {
   const item = r.items.length === 1 ? r.items[0] : undefined
   if (!item || !isMealType(r.mealType) || r.recordType !== 'actual') return null
@@ -75,7 +70,7 @@ function toRecord(r: MealRecordResponse, ownerId: string): MealRecord | null {
     mealType: r.mealType,
     foodId: item.foodId === null ? '' : String(item.foodId),
     foodName: item.foodName,
-    portion: portionOf(grams),
+    portion: portionOfQuantity(item.quantity), // 중량이 아니라 인분으로 복원
     weightGrams: Math.round(grams),
     // 백엔드는 먹은 양 기준 영양소를 주므로 100g 기준으로 되돌린다
     nutritionSnapshot: {
@@ -90,12 +85,6 @@ function toRecord(r: MealRecordResponse, ownerId: string): MealRecord | null {
     createdAt: at,
     updatedAt: at,
   }
-}
-
-/** 프론트 중량(g) → 백엔드 "몇 인분" */
-async function quantityOf(foodId: string, grams: number): Promise<number> {
-  const serving = await servingGramsOf(foodId)
-  return Math.round((grams / serving) * 100) / 100
 }
 
 /** 서버 오류를 화면이 아는 저장소 오류로 바꾼다. */
@@ -161,10 +150,7 @@ export function createServerMealRecordRepository(
       const done = savedByRequest.get(input.requestId)
       if (done) return { record: done, created: false }
       try {
-        const quantity = await quantityOf(
-          input.food.id,
-          portionGrams(input.portion),
-        )
+        const quantity = quantityOfPortion(input.portion)
         const r = await apiRequest<MealRecordResponse>(
           'POST',
           '/meal-records',
@@ -224,11 +210,11 @@ export function createServerMealRecordRepository(
       const current = await this.get(recordId)
       if (!current || current.foodId === '')
         throw new WorkoutStoreError('notFound')
+      // 양 구분을 바꾸지 않았으면 서버 기록(중량·영양소)을 그대로 둔다
+      if (current.portion === input.portion)
+        return { ...current, revision: input.expectedRevision + 1 }
       try {
-        const quantity = await quantityOf(
-          current.foodId,
-          portionGrams(input.portion),
-        )
+        const quantity = quantityOfPortion(input.portion)
         const r = await apiRequest<MealRecordResponse>(
           'PATCH',
           `/meal-records/${recordId}`,
