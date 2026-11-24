@@ -3,9 +3,11 @@ package com.healthlab.mealthroutine.backend.exercise.domain;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.healthlab.mealthroutine.backend.common.LowerCaseEnumConverter;
 import jakarta.persistence.Converter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import tools.jackson.core.JacksonException;
-import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -21,8 +23,6 @@ public enum CatalogRecordMode {
     @JsonProperty("weight_time") WEIGHT_TIME;
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
-    private static final TypeReference<List<CatalogRecordMode>> LIST = new TypeReference<>() {
-    };
 
     /**
      * Reads the allowed_record_modes JSON column. Returns null when the column is empty or does not hold a non-empty
@@ -32,15 +32,40 @@ public enum CatalogRecordMode {
         if (json == null) {
             return null;
         }
+        JsonNode node;
         try {
-            List<CatalogRecordMode> modes = MAPPER.readValue(json, LIST);
-            if (modes == null || modes.isEmpty() || modes.contains(null) || modes.stream().distinct().count() != modes.size()) {
-                return null;
-            }
-            return List.copyOf(modes);
+            node = MAPPER.readTree(json);
         } catch (JacksonException e) {
             return null;
         }
+        if (node == null || !node.isArray() || node.isEmpty()) {
+            return null;
+        }
+        // Read each element as a JSON string and match the code exactly. Binding straight to the enum would let Jackson
+        // take a number (1) or a string of digits ("1") as a position in the enum list.
+        List<CatalogRecordMode> modes = new ArrayList<>();
+        for (JsonNode item : node) {
+            CatalogRecordMode mode = item.isString() ? fromCode(item.asString()) : null;
+            if (mode == null || modes.contains(mode)) {
+                return null;
+            }
+            modes.add(mode);
+        }
+        return List.copyOf(modes);
+    }
+
+    /** The catalog code, e.g. {@code weight_reps}. */
+    public String code() {
+        return name().toLowerCase(Locale.ROOT);
+    }
+
+    private static CatalogRecordMode fromCode(String code) {
+        for (CatalogRecordMode mode : values()) {
+            if (mode.code().equals(code)) {
+                return mode;
+            }
+        }
+        return null;
     }
 
     @Converter(autoApply = true)

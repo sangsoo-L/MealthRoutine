@@ -9,12 +9,14 @@
 --     allowed_record_modes  JSON NULL   고를 수 있는 기록 방식 목록. 기존 행은 둘 다 NULL이다.
 --
 -- 이 파일을 실행한 뒤 seed/001_insert_exercises.sql을 다시 실행해야 운동 105개와 기록 방식이 들어간다.
--- 시드는 같은 exercise_id가 있으면 덮어쓰므로, 예전 시드로 들어간 운동(id 1~20)은 같은 id의 새 운동 내용으로 바뀐다.
 --
--- 주의: 예전 운동 id 1~20을 가리키던 데이터(즐겨찾기 preference_exercises, 루틴 항목 exercise_routine_items,
---   운동 기록 workout_session_exercises, 추천 기록 exercise_recommendations)는 오류 없이 다른 운동을 가리키게 된다.
---   예: 즐겨찾기한 1번 푸시업이 1번 밴드 로우로 보인다. 중량으로 기록하던 루틴 항목이 횟수만 기록하는 운동에 붙을 수도 있다.
---   개발 DB에 지켜야 할 데이터가 없다면 마이그레이션·시드 대신 DB를 새로 만드는 것이 가장 깔끔하다
+-- 시드는 기존 운동의 참조를 다른 운동으로 바꾸지 않는다. 예전 시드로 들어간 운동(id 1~20)은 같은 id의 새 운동과 이름이 다른데,
+--   그중 하나라도 즐겨찾기(preference_exercises)·루틴 항목(exercise_routine_items)·운동 기록(workout_session_exercises)·
+--   운동 추천(exercise_recommendations)이 참조하고 있거나, 새 시드에 없는 id의 운동이 있으면 시드는 아무것도 바꾸지 않고
+--   "seed_blocked__... doesn't exist" 오류로 멈춘다(바로 위에 막힌 운동 목록이 출력된다).
+--   예: 1번 푸시업을 즐겨찾기한 회원이 있으면 막힌다. 덮어쓰면 그 즐겨찾기가 1번 밴드 로우로 보이게 되기 때문이다.
+--   참조되지 않는 예전 운동만 있으면 새 운동으로 덮어쓴다(가리키는 데이터가 없어 바뀌는 참조가 없다).
+-- 막혔을 때 개발 DB에 지켜야 할 데이터가 없다면 DB를 새로 만든다
 --   (docker compose down -v 후 docker compose up -d. 볼륨의 모든 데이터가 지워지고 스키마와 시드가 처음부터 들어간다).
 --
 -- 여러 번 실행해도 결과가 같다: 이미 있는 컬럼은 건너뛴다(information_schema로 확인).
