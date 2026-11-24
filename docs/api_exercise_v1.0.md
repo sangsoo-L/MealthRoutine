@@ -62,7 +62,13 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 | GET | /api/v1/exercises | `keyword`, `difficulty`, `exerciseType`, `equipment`, `page`, `size` | 운동 페이지 |
 | GET | /api/v1/exercises/{exerciseId} | | 운동 |
 
-운동: `exerciseId, name, instructions, difficulty, exerciseType, exerciseEquipment, description, cautions, sourceUrl`
+운동: `exerciseId, name, instructions, difficulty, exerciseType, exerciseEquipment, description, cautions, sourceUrl, defaultRecordMode, allowedRecordModes`
+
+운동 데이터는 `database/seed/001_insert_exercises.sql`이고, 이 파일은 프론트 시드 `frontend/src/exercise/seed/exercises.json`에서 `database/tools/gen_exercises.mjs`로 만든다. `exerciseId`는 프론트 시드와 같은 값이다. `exerciseType`은 운동 부위(등, 가슴, 하체 등), `exerciseEquipment`는 도구 이름(맨몸, 덤벨, 밴드, 폼롤러, 마사지볼, 풀업바)이다.
+
+`defaultRecordMode`는 이 운동을 처음 담을 때의 기록 방식, `allowedRecordModes`는 고를 수 있는 기록 방식 목록이다. 값은 카탈로그 코드 `time`, `reps`, `weight_reps`, `time_reps`, `weight_time` 중 하나다. 중량+횟수는 여기서만 `weight_reps`이고 루틴·기록의 `recordType`에서는 `weight`다. 기록 방식 데이터가 없거나 기본값이 목록에 없는 운동은 두 필드가 함께 `null`이다.
+
+`size`는 최대 100이라 운동 전체(105개)를 받으려면 페이지를 두 번 요청한다.
 
 ## 즐겨찾기 (회원)
 

@@ -414,7 +414,9 @@ CREATE TABLE `exercises` (
 	`cautions`	TEXT	NULL	COMMENT '운동시 주의사항',
 	`source_url`	VARCHAR(1000)	NULL	COMMENT '참고자료URL',
 	`created_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	COMMENT '생성일자',
-	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정일자'
+	`updated_at`	DATETIME	NOT NULL	DEFAULT CURRENT_TIMESTAMP	ON UPDATE CURRENT_TIMESTAMP	COMMENT '수정일자',
+	`default_record_mode`	ENUM('time','reps','weight_reps','time_reps','weight_time')	NULL	COMMENT '기본 기록 방식(카탈로그 코드, 중량+횟수는 weight_reps)',
+	`allowed_record_modes`	JSON	NULL	COMMENT '고를 수 있는 기록 방식 목록(카탈로그 코드 배열)'
 );
 
 CREATE TABLE `audit_logs` (
