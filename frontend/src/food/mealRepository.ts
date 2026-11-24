@@ -28,7 +28,7 @@ export interface SaveMealResult {
 }
 
 export interface MealRecordRepository {
-  readonly kind: 'local'
+  readonly kind: 'local' | 'server'
   create(input: CreateMealInput): Promise<SaveMealResult>
   /** 없으면(다른 계정의 기록 포함) null. */
   get(recordId: string): Promise<MealRecord | null>

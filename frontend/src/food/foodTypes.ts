@@ -24,7 +24,7 @@ export interface Per100g {
  * 화면이 `label`을 그대로 보여 준다.
  */
 export interface FoodSource {
-  kind: 'dev-sample'
+  kind: 'dev-sample' | 'server'
   label: string
 }
 

@@ -702,7 +702,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록 저장소가 없어 모
     console.log(JSON.stringify({
       env: process.env.NODE_ENV,
       workout: workout.createWorkoutRecordRepository('u'),
-      meal: meal.createMealRecordRepository('u'),
+      meal: meal.createMealRecordRepository('u')?.kind ?? null,
     }))
     await server.close()
   `
@@ -718,7 +718,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록 저장소가 없어 모
   assert.deepEqual(JSON.parse(out.trim().split('\n').at(-1)), {
     env: 'production',
     workout: null,
-    meal: null,
+    meal: 'server', // 식단 기록은 백엔드에 연결됨
   })
   // 저장소가 없으면 훅은 두 영역을 unavailable로 만들고 화면은 0일·기록 없음 대신 연결 전 안내를 보인다.
   const w = week({ status: 'unavailable' }, { status: 'unavailable' })

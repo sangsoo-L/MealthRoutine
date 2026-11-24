@@ -7,7 +7,7 @@ import type { Food } from './foodTypes.ts'
  */
 export interface FoodRepository {
   /** 'dev-sample'이면 개발용 예시 데이터이며 개발 서버에서만 쓴다. */
-  readonly kind: 'dev-sample'
+  readonly kind: 'dev-sample' | 'server'
   list(): Promise<readonly Food[]>
   /** 없으면 null. */
   getById(foodId: string): Promise<Food | null>

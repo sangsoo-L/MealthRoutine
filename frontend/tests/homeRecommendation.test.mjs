@@ -467,7 +467,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록·목표 저장소가 �
     console.log(JSON.stringify({
       env: process.env.NODE_ENV,
       workout: workout.createWorkoutRecordRepository('u'),
-      meal: meal.createMealRecordRepository('u'),
+      meal: meal.createMealRecordRepository('u')?.kind ?? null,
       goal: goal.createExerciseGoalRepository('u'),
     }))
     await server.close()
@@ -485,7 +485,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록·목표 저장소가 �
   assert.deepEqual(result, {
     env: 'production',
     workout: null,
-    meal: null,
+    meal: 'server', // 식단 기록은 백엔드에 연결됨
     goal: null,
   })
   // 저장소가 없으면 훅은 세 사실 모두 unavailable로 만들고, 규칙은 기본 추천을 고른다(위 테스트).

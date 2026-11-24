@@ -110,7 +110,7 @@ export function validSource(raw: unknown): raw is FoodSource {
     return false
   const v = raw as Record<string, unknown>
   return (
-    v.kind === 'dev-sample' &&
+    (v.kind === 'dev-sample' || v.kind === 'server') &&
     typeof v.label === 'string' &&
     v.label.length > 0 &&
     v.label.length <= 100
