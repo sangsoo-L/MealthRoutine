@@ -38,6 +38,12 @@ public class ExerciseRoutineEntity {
 
     private RoutineVisibility visibility = RoutineVisibility.PRIVATE;
 
+    /** Starts at 1 and goes up by 1 on every update. A PATCH or DELETE may send the value it read to detect races. */
+    private int revision = 1;
+
+    /** The client's id for the create request; a repeat with the same id returns this routine. Null if not sent. */
+    private String requestId;
+
     private LocalDateTime createdAt = LocalDateTime.now();
 
     private LocalDateTime updatedAt = LocalDateTime.now();

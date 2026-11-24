@@ -5,13 +5,14 @@ import type {
 } from '../../../ai/meal/mealPlanContract.ts'
 import {
   describeConditions,
+  EXCLUDED_FOOD_GROUPS,
+  type ExcludedFoodGroup,
   hasAnyCondition,
   type FoodTypeChoice,
   type MealPlanSelection,
 } from '../../../ai/meal/mealPlanFlow.ts'
 import { PATH_AI_MEAL_MEALS } from '../../../ai/meal/mealPlanPaths.ts'
 import { formatDateLabel } from '../../../exercise/workoutListView.ts'
-import type { FoodsState } from '../../../food/useFoods.ts'
 import { MEAL_LABEL } from '../../../food/mealModel.ts'
 import { FOOD_TYPES, kindsFor } from '../../../pages/foodSearch.ts'
 import Icon from '../../icons/Icon.tsx'
@@ -25,7 +26,6 @@ import {
   mealPrimaryButton,
   mealSecondaryButton,
   planSectionTitle,
-  statusBox,
 } from './mealPlanStyles.ts'
 
 /**
@@ -82,6 +82,8 @@ function CandidateCount({
     text = '후보 수를 확인하는 중이에요…'
   } else if (candidates.status === 'error') {
     text = '후보 수를 확인하지 못했어요. 그래도 조건은 그대로 유지돼요.'
+  } else if (candidates.value.count === null) {
+    text = '후보 수 조회 API는 아직 없지만 실제 추천은 요청할 수 있어요.'
   } else if (candidates.value.count === 0) {
     text = '조건에 맞는 후보가 없어요. 조건을 바꿔 보세요.'
   } else {
@@ -106,73 +108,6 @@ function CandidateCount({
   )
 }
 
-/** 제외 음식 선택 영역. 음식 목록 조회 상태를 구분하고, 없는 데이터를 만들어 채우지 않는다. */
-function ExcludedFoods({
-  foods,
-  excludedIds,
-  onToggle,
-  onRetry,
-}: {
-  foods: FoodsState
-  excludedIds: readonly string[]
-  onToggle: (foodId: string) => void
-  onRetry: () => void
-}) {
-  if (foods.status === 'loading') {
-    return (
-      <p role="status" className={statusBox}>
-        음식 목록을 불러오는 중이에요…
-      </p>
-    )
-  }
-  if (foods.status === 'unavailable') {
-    return (
-      <p data-plan-foods-state="unavailable" className={statusBox}>
-        음식 데이터가 연결되기 전이라 빼고 싶은 음식을 고를 수 없어요.
-      </p>
-    )
-  }
-  if (foods.status === 'error') {
-    return (
-      <div role="alert" className={statusBox}>
-        음식 목록을 불러오지 못했어요.
-        <button
-          type="button"
-          onClick={onRetry}
-          className={`mt-2 w-full ${mealSecondaryButton}`}
-        >
-          다시 시도
-        </button>
-      </div>
-    )
-  }
-  if (foods.foods.length === 0) {
-    return <p className={statusBox}>고를 수 있는 음식이 없어요.</p>
-  }
-  return (
-    <ul role="list" className="flex flex-col gap-2">
-      {foods.foods.map((food) => (
-        <li key={food.id}>
-          <Choice
-            kind="checkbox"
-            name="plan-excluded"
-            label={food.name}
-            checked={excludedIds.includes(food.id)}
-            onChange={() => onToggle(food.id)}
-            describedBy={`plan-excluded-source-${food.id}`}
-          />
-          <span
-            id={`plan-excluded-source-${food.id}`}
-            className="mt-0.5 block px-1 text-support leading-snug font-normal text-muted"
-          >
-            {food.source.label}
-          </span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
 /**
  * I03-2 AI 식단 플랜 · 음식 조건 설정(`/ai/meal/foods`). F01과 같은 식품 구분(단일)·음식 종류(여러 개)와 제외 음식(여러 개)으로 후보를 좁힌다.
  * - 식품 구분을 바꾸면 새 구분에 맞지 않는 음식 종류는 풀리고 그 사실을 알린다(충돌 안내). 초기화는 조건만 비운다(끼니 선택은 유지).
@@ -182,41 +117,42 @@ function ExcludedFoods({
  */
 export default function MealPlanFoodsView({
   selection,
-  foods,
   candidates,
+  targetCalories,
+  onTargetCaloriesChange,
   notice,
   devSearch = '',
   onSetType,
   onToggleKind,
-  onToggleExcluded,
+  onToggleExcludedGroup,
   onReset,
-  onRetryFoods,
   onDismissNotice,
   onNext,
 }: {
   selection: MealPlanSelection
-  foods: FoodsState
   candidates: ServerInfoState<MealPlanCandidateCount>
+  targetCalories?: string
+  onTargetCaloriesChange?: (value: string) => void
   notice: string | null
   devSearch?: string
   onSetType: (value: FoodTypeChoice) => void
   onToggleKind: (kind: string) => void
-  onToggleExcluded: (foodId: string) => void
+  onToggleExcludedGroup: (group: ExcludedFoodGroup) => void
   onReset: () => void
-  onRetryFoods: () => void
   onDismissNotice: () => void
   onNext: () => void
 }) {
   const { conditions, meals, targetDate } = selection
   const kinds = kindsFor(conditions.type)
-  const foodNameOf = (id: string) =>
-    foods.status === 'ready'
-      ? (foods.foods.find((food) => food.id === id)?.name ?? null)
-      : null
-  const summary = describeConditions(conditions, foodNameOf)
+  const summary = describeConditions(conditions)
   const noCandidates =
     candidates.status === 'ready' && candidates.value.count === 0
   const touched = hasAnyCondition(conditions)
+  const kcal = Number(targetCalories)
+  const invalidCalories =
+    onTargetCaloriesChange !== undefined &&
+    (!Number.isInteger(kcal) || kcal < 1 || kcal > 8000)
+  const blocked = noCandidates || invalidCalories
   const nextBlockedId = 'plan-foods-blocked'
   return (
     <>
@@ -233,6 +169,38 @@ export default function MealPlanFoodsView({
         focusTitle
       />
       <FlowNotice notice={notice} onDismiss={onDismissNotice} />
+
+      {onTargetCaloriesChange !== undefined ? (
+        <section className={mealCard} data-ai-target-calories="">
+          <label
+            htmlFor="ai-target-kcal"
+            className="block text-body font-semibold text-content"
+          >
+            끼니당 목표 열량 (kcal)
+          </label>
+          <input
+            id="ai-target-kcal"
+            type="number"
+            min="1"
+            max="8000"
+            step="1"
+            inputMode="numeric"
+            aria-invalid={invalidCalories || undefined}
+            value={targetCalories ?? ''}
+            onChange={(event) => onTargetCaloriesChange(event.target.value)}
+            className="mt-2 w-full rounded-control border border-line bg-surface px-3 py-3 text-body text-content"
+          />
+          <p className="mt-2 text-support text-muted">
+            선택한 각 끼니에 이 열량을 각각 적용해요. 아침·점심·저녁을 고르고
+            700을 입력하면 각 끼니를 700kcal로 추천해요.
+          </p>
+          {invalidCalories ? (
+            <p role="alert" className="mt-1 text-support text-danger">
+              1~8000 사이의 정수 열량을 입력해 주세요.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <p
         data-plan-meals={meals.join(',')}
@@ -324,9 +292,11 @@ export default function MealPlanFoodsView({
           <summary
             className={`flex min-h-12 cursor-pointer flex-wrap items-center justify-between gap-x-3 rounded-control border border-line px-4 py-2 text-body ${mealFocusRing}`}
           >
-            <span className="font-semibold text-content">빼고 싶은 음식</span>
+            <span className="font-semibold text-content">
+              빼고 싶은 음식 종류
+            </span>
             <span className="text-support font-normal text-muted">
-              {conditions.excludedFoodIds.length}개 선택
+              {conditions.excludedFoodGroups?.length ?? 0}개 선택
             </span>
             <Icon
               name="chevron-down"
@@ -335,16 +305,33 @@ export default function MealPlanFoodsView({
             />
           </summary>
           <p className="mt-2 text-support leading-relaxed font-normal text-muted">
-            제외한 음식은 추천에 넣지 않아요.
+            닭고기·커피처럼 넓게 선택할 수 있어요. 메뉴 이름에 해당 재료나
+            종류가 표시된 후보를 추천 대상에서 제외합니다.
           </p>
-          <div className="mt-2">
-            <ExcludedFoods
-              foods={foods}
-              excludedIds={conditions.excludedFoodIds}
-              onToggle={onToggleExcluded}
-              onRetry={onRetryFoods}
-            />
-          </div>
+          <fieldset className="mt-2 min-w-0">
+            <legend className="sr-only">
+              빼고 싶은 음식 종류(여러 개 선택)
+            </legend>
+            <div className="grid grid-cols-1 gap-2 min-[18rem]:grid-cols-2">
+              {EXCLUDED_FOOD_GROUPS.map(({ id, label }) => (
+                <Choice
+                  key={id}
+                  kind="checkbox"
+                  name="plan-excluded-group"
+                  label={label}
+                  checked={(conditions.excludedFoodGroups ?? []).includes(id)}
+                  onChange={() => onToggleExcludedGroup(id)}
+                />
+              ))}
+            </div>
+          </fieldset>
+          <p
+            role="note"
+            className="mt-3 text-support leading-relaxed font-normal text-muted"
+          >
+            주의: 메뉴 이름 기반 기호 필터입니다. 육수·소스·숨은 원재료까지
+            확인할 수 없으므로 알레르기 안전성을 보장하지 않습니다.
+          </p>
         </details>
       </section>
 
@@ -383,26 +370,28 @@ export default function MealPlanFoodsView({
         <button
           type="button"
           data-plan-next=""
-          aria-disabled={noCandidates || undefined}
-          aria-describedby={noCandidates ? nextBlockedId : undefined}
+          aria-disabled={blocked || undefined}
+          aria-describedby={blocked ? nextBlockedId : undefined}
           onClick={() => {
-            if (!noCandidates) onNext()
+            if (!blocked) onNext()
           }}
           className={`${mealPrimaryButton}`}
         >
           추천 생성
         </button>
-        {noCandidates ? (
+        {blocked ? (
           <p
             id={nextBlockedId}
             className="text-support leading-relaxed font-semibold text-danger"
           >
-            후보가 없어서 추천을 만들 수 없어요. 조건을 바꿔 주세요.
+            {noCandidates
+              ? '후보가 없어서 추천을 만들 수 없어요. 조건을 바꿔 주세요.'
+              : '끼니당 목표 열량을 확인해 주세요.'}
           </p>
         ) : null}
         <p className="text-support leading-relaxed font-normal text-muted">
-          추천은 서버가 연결된 뒤에만 만들어져요. 지금은 연결 전이라 누르면 연결
-          전 안내가 나오고, 이용 횟수는 쓰이지 않아요.
+          추천 생성 시 입력한 목표 열량과 끼니를 AI 서버로 전송합니다. 결과는
+          미리보기이며 저장되지 않습니다.
         </p>
         <Link
           to={`${PATH_AI_MEAL_MEALS}${devSearch}`}

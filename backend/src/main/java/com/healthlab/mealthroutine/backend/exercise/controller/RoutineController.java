@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -20,7 +21,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,11 +30,13 @@ public class RoutineController {
 
     private final RoutineService routineService;
 
+    /** 201 when this request made the routine, 200 when it repeats an earlier request with the same requestId. */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<RoutineResponse> create(@LoginUser Long userId,
+    public ResponseEntity<ApiResponse<RoutineResponse>> create(@LoginUser Long userId,
             @Valid @RequestBody RoutineCreateRequest request) {
-        return ApiResponse.ok(routineService.create(userId, request));
+        RoutineService.CreateResult result = routineService.create(userId, request);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(ApiResponse.ok(result.routine()));
     }
 
     @GetMapping
@@ -57,8 +59,9 @@ public class RoutineController {
     }
 
     @DeleteMapping("/{routineId}")
-    public ApiResponse<Void> delete(@LoginUser Long userId, @PathVariable Long routineId) {
-        routineService.delete(userId, routineId);
+    public ApiResponse<Void> delete(@LoginUser Long userId, @PathVariable Long routineId,
+            @RequestParam(required = false) @Min(1) Integer expectedRevision) {
+        routineService.delete(userId, routineId, expectedRevision);
         return ApiResponse.ok();
     }
 }

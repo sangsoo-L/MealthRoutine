@@ -7,8 +7,10 @@ import {
   setFoodType,
   toggleAllMeals,
   toggleExcluded,
+  toggleExcludedGroup,
   toggleKind,
   toggleMeal,
+  type ExcludedFoodGroup,
   type FoodTypeChoice,
   type MealPlanSelection,
   type PlanStep,
@@ -33,6 +35,7 @@ export interface FlowState {
   /** 흐름이 시작될 때 본 식단 목표의 시점(updatedAt). 아직 보지 않았으면 null. */
   goalStamp: string | null
   selection: MealPlanSelection
+  targetCalories: string | null
   request: PlanRequestState
   /** 지금 진행 중인(결과를 받아도 되는) 요청 번호. 진행 중인 요청이 없으면 null. */
   activeRequestId: number | null
@@ -47,6 +50,7 @@ export function initialFlowState(owner: string | null): FlowState {
     owner,
     goalStamp: null,
     selection: EMPTY_SELECTION,
+    targetCalories: null,
     request: IDLE_REQUEST,
     activeRequestId: null,
     notice: null,
@@ -60,7 +64,9 @@ export type FlowAction =
   | { type: 'setFoodType'; value: FoodTypeChoice }
   | { type: 'toggleKind'; kind: string }
   | { type: 'toggleExcluded'; foodId: string }
+  | { type: 'toggleExcludedGroup'; group: ExcludedFoodGroup }
   | { type: 'resetConditions' }
+  | { type: 'setTargetCalories'; value: string }
   | { type: 'syncGoal'; stamp: string }
   | { type: 'syncDate'; date: LocalDate }
   /** 서버 요청을 시작한다(번호는 Provider가 매긴다). */
@@ -93,6 +99,11 @@ function withSelection(
   return {
     ...state,
     selection,
+    targetCalories:
+      sameList(state.selection.meals, selection.meals) &&
+      state.selection.targetDate === selection.targetDate
+        ? state.targetCalories
+        : null,
     request: IDLE_REQUEST,
     activeRequestId: null,
     notice,
@@ -110,7 +121,11 @@ function sameSelection(a: MealPlanSelection, b: MealPlanSelection): boolean {
     sameList(a.meals, b.meals) &&
     a.conditions.type === b.conditions.type &&
     sameList(a.conditions.kinds, b.conditions.kinds) &&
-    sameList(a.conditions.excludedFoodIds, b.conditions.excludedFoodIds)
+    sameList(a.conditions.excludedFoodIds, b.conditions.excludedFoodIds) &&
+    sameList(
+      a.conditions.excludedFoodGroups ?? [],
+      b.conditions.excludedFoodGroups ?? [],
+    )
   )
 }
 
@@ -123,6 +138,7 @@ function clearedFlow(
     ...state,
     goalStamp,
     selection: EMPTY_SELECTION,
+    targetCalories: null,
     request: IDLE_REQUEST,
     activeRequestId: null,
     notice,
@@ -162,6 +178,23 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
         ...state.selection,
         conditions: toggleExcluded(state.selection.conditions, action.foodId),
       })
+    case 'toggleExcludedGroup':
+      return withSelection(state, {
+        ...state.selection,
+        conditions: toggleExcludedGroup(
+          state.selection.conditions,
+          action.group,
+        ),
+      })
+    case 'setTargetCalories':
+      return state.targetCalories === action.value
+        ? state
+        : {
+            ...state,
+            targetCalories: action.value,
+            request: IDLE_REQUEST,
+            activeRequestId: null,
+          }
     case 'resetConditions':
       return hasAnyCondition(state.selection.conditions)
         ? withSelection(state, {

@@ -399,8 +399,8 @@ test('I04-1 결과 없음·실패·연결 전·시작 전: 각각 다른 안내�
   )
 })
 
-test('연결 경계: 서버 연결은 아직 없고(null), 개발 검증 상태는 예시 표지를 단다', async () => {
-  assert.equal(contract.createPhotoAnalysisSource(), null)
+test('연결 경계: 개발 환경에서는 실제 분석 소스를 만들고 예시 표지도 지원한다', async () => {
+  assert.equal(typeof contract.createPhotoAnalysisSource()?.analyze, 'function')
   assert.equal(dev.parseDevAnalysisPreview('?devAnalysis=result'), 'result')
   assert.equal(dev.parseDevAnalysisPreview('?devAnalysis=nope'), null)
   assert.equal(dev.parseDevAnalysisPreview(''), null)
@@ -446,7 +446,7 @@ function walk(dir, out = []) {
   return out
 }
 
-test('사진·결과를 저장하거나 전송하지 않는다(저장소·전송 API·router state 사용 없음)', () => {
+test('사진·결과는 저장하지 않으며 전송은 API 어댑터에 한정한다', () => {
   const dirs = ['src/photo-analysis', 'src/components/ai/photo']
   const files = [
     ...dirs.flatMap((d) => walk(fileURLToPath(new URL(d, root)))),
@@ -460,9 +460,12 @@ test('사진·결과를 저장하거나 전송하지 않는다(저장소·전송
       .replace(/^\s*\/\/.*$/gm, '')
     assert.doesNotMatch(
       code,
-      /localStorage|sessionStorage|indexedDB|document\.cookie|FormData|fetch\(|XMLHttpRequest|sendBeacon|readAsDataURL|FileReader|WebSocket/,
+      /localStorage|sessionStorage|indexedDB|document\.cookie|XMLHttpRequest|sendBeacon|readAsDataURL|FileReader|WebSocket/,
       relative(fileURLToPath(root), path),
     )
+    if (!path.endsWith('photoAnalysisApi.ts')) {
+      assert.doesNotMatch(code, /FormData|fetch\(/, path)
+    }
     // 사진은 router state·주소로 넘기지 않는다(state는 from 경로만).
     assert.doesNotMatch(code, /state:\s*\{[^}]*(photo|file|url)/i, path)
   }
@@ -608,4 +611,26 @@ test('D02 식단 기록에서 I04로 가는 진입 링크가 오늘 기록(recor
   assert.match(view, /state=\{\{ from: PATH_MEAL_RECORD \}\}/)
   assert.match(view, /data-photo-entry/)
   assert.match(view, /사진으로 식단 기록하기/)
+})
+
+test('실제 분석 어댑터: 열량 누락은 음식 인식 실패와 구분한다', async () => {
+  const { parsePhotoAnalysis } = await server.ssrLoadModule(
+    '/src/photo-analysis/photoAnalysisApi.ts',
+  )
+  const result = parsePhotoAnalysis({
+    foods: [
+      { primary: '국수', estimated_calories_kcal: 300 },
+      { primary: '반찬' },
+    ],
+    estimated_total_calories_kcal: 300,
+    calorie_estimate_complete: false,
+  })
+  assert.equal(result.partial, false)
+  assert.equal(result.calorieIncomplete, true)
+  const output = text(
+    render(createElement(Analysis, analysisProps({ status: 'ready', result }))),
+  )
+  assert.match(output, /확인된 열량 합계/)
+  assert.match(output, /일부 음식의 열량을 확인하지 못했어요/)
+  assert.doesNotMatch(output, /일부 음식은 인식하지 못했어요/)
 })

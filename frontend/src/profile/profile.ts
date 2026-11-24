@@ -1,6 +1,7 @@
 import {
   ApiError,
   apiRequest,
+  INVALID_RESPONSE,
   type ApiRequestOptions,
   type HttpMethod,
 } from '../api/http.ts'
@@ -64,6 +65,11 @@ export type ProfileSex = 'male' | 'female' | 'other' | 'undisclosed'
  * allergies: null은 "응답 없음(미확인)", 빈 목록은 "없음"으로 구분한다(명세 A02).
  */
 export interface ProfileData {
+  /**
+   * 서버가 가진 닉네임(GET `displayName`). 저장 응답과 같은 성공 조건(`serverNickname`)을 통과할 때만 값이 있다.
+   * 화면 저장 기준 동기화에만 쓰고 로그인 정보(전역 닉네임)는 바꾸지 않는다(F3-D3, PR #29 P2-03).
+   */
+  nickname: string | null
   name: string | null
   phone: string | null
   /** 도로명 + 상세 주소. */
@@ -141,6 +147,7 @@ export function toProfileData(
   const profileData = record(profile)
   const gender = text(profileData.gender)
   return {
+    nickname: serverNickname(profileData.displayName),
     name: text(meData.username),
     phone: text(profileData.phoneNumber),
     address: null,
@@ -148,6 +155,26 @@ export function toProfileData(
     sex: SEXES.find((sex) => sex === gender) ?? null,
     allergies: null,
     aiConsent: null,
+  }
+}
+
+/**
+ * 서버가 돌려준 닉네임이 계약에 맞는지(PR #29 P2-02). 문자열 + **원문 앞뒤 공백 없음** + 가입과 같은 규칙(NAME-2).
+ * `isValidNickname`은 안에서 trim하므로 원문 공백은 따로 본다. 맞지 않으면 null이다(입력값으로 대신하지 않는다).
+ */
+export function serverNickname(value: unknown): string | null {
+  return typeof value === 'string' &&
+    value === value.trim() &&
+    isValidNickname(value)
+    ? value
+    : null
+}
+
+/** 요청은 성공(2xx)했지만 응답을 계약대로 해석할 수 없음. 서버가 저장했는지 알 수 없다(`uncertain`). */
+export class NicknameResponseError extends Error {
+  constructor() {
+    super('닉네임 저장 응답이 계약과 다름')
+    this.name = 'NicknameResponseError'
   }
 }
 
@@ -165,16 +192,19 @@ export function createServerProfileSource(
       return toProfileData(me, profile, now())
     },
     async updateNickname(nickname, signal) {
-      const saved = record(
-        await request<unknown>('PATCH', '/users/me/profile', {
-          body: { displayName: nickname },
-          signal,
-        }),
-      )
-      // 서버가 저장한 값을 돌려준다. 응답에 없으면 저장 여부를 이 화면이 확인할 수 없으므로 실패로 다룬다(입력값으로 대신하지 않는다).
-      if (typeof saved.displayName !== 'string')
-        throw new Error('응답 형식이 계약과 다름')
-      return saved.displayName
+      // 성공은 200만(P2-02). 200이 아닌 2xx는 공통 호출이 INVALID_RESPONSE로 던진다.
+      const data = await request<unknown>('PATCH', '/users/me/profile', {
+        body: { displayName: nickname },
+        signal,
+        expectStatus: 200,
+      })
+      // 서버가 저장한 값을 돌려준다. 계약에 맞는 닉네임이 없으면 저장 여부를 확인할 수 없다(입력값으로 대신하지 않는다).
+      const saved =
+        typeof data === 'object' && data !== null && !Array.isArray(data)
+          ? serverNickname((data as Record<string, unknown>).displayName)
+          : null
+      if (saved === null) throw new NicknameResponseError()
+      return saved
     },
   }
 }
@@ -192,7 +222,15 @@ export type ProfileState =
   | { status: 'loading' }
   | { status: 'unavailable' }
   | { status: 'error' }
-  | { status: 'ready'; data: ProfileData }
+  | {
+      status: 'ready'
+      data: ProfileData
+      /**
+       * 이 조회를 시작할 때의 화면 저장 버전(PR #29 P2-03). 편집기는 지금 저장 버전과 같을 때만 이 조회의 닉네임을 반영한다
+       * (`readNicknameToApply`). 없으면(시험용 화면) 버전을 보지 않는다.
+       */
+      readVersion?: number
+    }
 
 /** 조회 한 번의 결과. 연결이 없으면 조회하지 않고 unavailable이다. */
 export async function runGetProfile(
@@ -208,23 +246,47 @@ export async function runGetProfile(
 }
 
 /**
- * 저장 상태. idle 초기 · invalid 입력 오류 · saving 저장 요청 중 · failed 저장 실패(연결·서버 오류) · taken 닉네임 중복(409) ·
- * rejected 서버 규칙 위반(400) · saved 저장 완료(서버가 저장했을 때만).
+ * 저장 상태. idle 초기 · invalid 입력 오류 · saving 저장 요청 중 · failed 서버가 거절함(저장 안 됨) · taken 닉네임 중복(409) ·
+ * rejected 요청 거절(400 INVALID_REQUEST) · uncertain 저장 여부를 확인할 수 없음 · saved 저장 완료(서버가 저장했을 때만).
  */
 export type NicknameSavePhase =
-  'idle' | 'invalid' | 'saving' | 'failed' | 'taken' | 'rejected' | 'saved'
+  | 'idle'
+  | 'invalid'
+  | 'saving'
+  | 'failed'
+  | 'taken'
+  | 'rejected'
+  | 'uncertain'
+  | 'saved'
 
 /** 저장 요청 한 번의 결과. saved에는 서버가 저장한 닉네임이 있다. */
 export type NicknameSaveResult =
   | { phase: 'saved'; nickname: string }
-  | { phase: 'failed' | 'taken' | 'rejected' }
+  | { phase: 'failed' | 'taken' | 'rejected' | 'uncertain' }
 
-/** 서버 오류를 화면 결과로 나눈다. 401(로그인 만료)은 공통 세션 처리가 화면을 정리하므로 여기서는 실패로만 본다. */
+/**
+ * 서버 오류를 화면 결과로 나눈다(PR #29 P2-02, F3-R29-QA·QB).
+ * - uncertain: 요청은 성공(2xx)했지만 응답이 계약과 다름, 또는 서버에 닿지 못함(네트워크)·5xx. 서버가 이미 저장했을 수 있어 "저장 안 됨"으로 단정하지 않는다.
+ *   4xx는 본문이 깨져 있어도 서버가 거절한 것이고, 보내기 전에 막힌 호출(상태 0 INVALID_REQUEST)도 보내지 않았으므로 failed다.
+ * - taken: 409 NICKNAME_ALREADY_EXISTS. rejected: 400 INVALID_REQUEST(닉네임 규칙 외의 형식 오류도 같은 코드라 일반 거절로 안내).
+ * - failed: 그 밖에 서버가 분명히 거절한 응답(401 등 — 로그인 만료는 공통 세션 처리가 화면을 정리한다).
+ */
 function classifySaveError(error: unknown): NicknameSaveResult {
+  if (error instanceof NicknameResponseError) return { phase: 'uncertain' }
   if (error instanceof ApiError) {
+    // 응답 형식 오류는 성공(2xx) 응답일 때만 결과 미확인이다. 4xx는 본문이 깨져도 서버가 거절한 것이다(Codex 재검토).
+    const malformedSuccess =
+      error.errorCode === INVALID_RESPONSE &&
+      error.status >= 200 &&
+      error.status < 300
+    // 상태 0은 서버에 닿지 못한 네트워크 오류(`NETWORK`, api/core.ts NETWORK_ERROR)만. 보내기 전에 막힌 잘못된 호출(INVALID_REQUEST)은 보내지 않았으므로 실패다.
+    const unreached = error.status === 0 && error.errorCode === 'NETWORK'
+    if (malformedSuccess || unreached || error.status >= 500)
+      return { phase: 'uncertain' }
     if (error.status === 409 && error.errorCode === 'NICKNAME_ALREADY_EXISTS')
       return { phase: 'taken' }
-    if (error.status === 400) return { phase: 'rejected' }
+    if (error.status === 400 && error.errorCode === 'INVALID_REQUEST')
+      return { phase: 'rejected' }
   }
   return { phase: 'failed' }
 }
@@ -287,9 +349,78 @@ export function saveOutcomePatch(
   outcome: NicknameSaveResult | null | 'stale',
 ): { phase: NicknameSavePhase; saved?: string } {
   if (outcome === 'stale' || outcome === null) return { phase: 'idle' }
+  // uncertain도 실패와 같이 안내만 바꾸고 입력·기준은 그대로 둔다.
   if (outcome.phase === 'saved')
     return { phase: 'saved', saved: outcome.nickname }
   return { phase: outcome.phase }
+}
+
+/**
+ * 편집기의 닉네임 상태. input은 입력칸, saved는 변경 여부(dirty)의 기준(서버가 가진 것으로 아는 닉네임)이다.
+ */
+export interface NicknameEditor {
+  input: string
+  saved: string
+}
+
+/**
+ * 새 서버 값(최신 GET의 닉네임, 같은 계정 재로그인 뒤 로그인 정보의 닉네임)을 편집기에 맞춘다(PR #29 P2-03).
+ * - 기준(saved)은 들어온 값이 된다.
+ * - 입력이 기준과 같으면(미저장 입력 없음) 입력도 들어온 값으로 바꾼다.
+ * - 미저장 입력이 있거나 저장 중이면 입력은 그대로 둔다(저장 중에는 응답이 마지막으로 정리한다).
+ */
+export function syncNicknameBaseline(
+  editor: NicknameEditor,
+  incoming: string,
+  saving: boolean,
+): NicknameEditor {
+  const clean = editor.input.trim() === editor.saved
+  return {
+    input: clean && !saving ? incoming : editor.input,
+    saved: incoming,
+  }
+}
+
+/**
+ * 조회(GET) 결과를 반영해도 되는지 판단하는 함수를 만든다(PR #29 P2-03).
+ * 조회를 시작할 때 `begin()`을 부르면, 그때의 로그인 작업 표식과 화면 저장 버전을 잡아 두고 도착 때 쓸 판정 함수를 돌려준다.
+ * 판정 = 로그인 작업이 그대로(같은 회원 재로그인도 새 작업) **그리고** 그 사이 저장 성공이 반영되지 않음.
+ * 하나라도 바뀌면 그 조회는 오래된 값일 수 있어 버린다. 표식은 `isCurrent`만 쓰고 로그인 정보를 바꾸지 않는다.
+ */
+export function createReadGate(
+  beginGuard: () => { isCurrent(): boolean } | null,
+  saveVersion: () => number,
+): () => ProfileRead {
+  return () => {
+    const guard = beginGuard()
+    const version = saveVersion()
+    return {
+      version,
+      fresh: () =>
+        guard !== null && guard.isCurrent() && saveVersion() === version,
+    }
+  }
+}
+
+/** 조회 한 번의 판정: 시작 때의 저장 버전과, 도착 때 반영해도 되는지 보는 함수. */
+export interface ProfileRead {
+  version: number
+  fresh(): boolean
+}
+
+/**
+ * 편집기에 반영할 조회 닉네임(PR #29 P2-03, Codex 재검토). 상태에 들어온 조회라도 **편집기에 적용하는 순간** 시작 때의 저장 버전이
+ * 지금 화면의 저장 버전과 같아야 한다. 저장 응답과 조회 응답이 같은 턴에 끝나 조회가 먼저 유효 판정을 통과하고 같은 렌더에서
+ * 저장이 반영되는 경우, 이 확인이 예전 조회가 저장 직후의 입력·기준을 되돌리는 것을 막는다. 반영할 값이 없으면 null.
+ */
+export function readNicknameToApply(
+  state: ProfileState,
+  saveVersion: number,
+): string | null {
+  if (state.status !== 'ready') return null
+  if (state.readVersion !== undefined && state.readVersion !== saveVersion)
+    return null
+  return typeof state.data.nickname === 'string' ? state.data.nickname : null
 }
 
 /** 한 칸의 표시: 값이 있거나, 값 대신 상태 글자(조회 중·연결 전·불러오지 못함·등록된 정보 없음)를 보인다. */
