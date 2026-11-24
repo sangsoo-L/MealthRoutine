@@ -41,7 +41,7 @@
 | 409 | INVALID_SESSION_STATUS | 이미 종료된 운동 기록의 상태 변경 |
 | 409 | REQUEST_CONFLICT | 같은 `requestId`로 다른 내용을 다시 보냄 |
 | 409 | REVISION_MISMATCH | `expectedRevision`이 현재 값과 다름. `data.currentRevision`에 현재 값 |
-| 409 | SET_TARGETS_WOULD_BE_LOST | 세트별 목표가 있는 루틴을 예전 방식 항목으로 PATCH. `discardSetTargets: true`가 필요 |
+| 409 | SET_TARGETS_WOULD_BE_LOST | 세트별 목표가 있던 운동을 예전 방식 항목으로 바꾸는 PATCH. `discardSetTargets: true`가 필요 |
 | 409 | DATA_CONFLICT | DB 제약 조건 충돌 |
 | 500 | INTERNAL_ERROR | 서버 오류 |
 
@@ -105,7 +105,9 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 - **세트별 목표:** `recordType` + `sets`(1~200개). 이때 `targetSets`·`targetReps`·`targetDurationSeconds`는 보내지 않는다. 서버가 세트 수와 첫 세트 값으로 채워서, 응답에서 `targetSets`·`targetReps`만 읽는 클라이언트도 대략적인 목표를 볼 수 있다. 서버 안에서 이 값을 읽는 코드는 없다. 루틴으로 세션을 시작하면 운동만 복사하고 목표 값은 복사하지 않는다.
 - **예전 방식:** `targetSets`(필수), `targetReps`, `targetDurationSeconds`. 응답에 `recordType`·`sets`가 없다.
 - `restSeconds`는 두 모양 모두 쓸 수 있다.
-- **세트별 목표가 있는 루틴을 예전 방식으로 PATCH하면 409 `SET_TARGETS_WOULD_BE_LOST`다.** 예전 방식은 세트마다 다른 목표와 중량을 담을 수 없어서 세트별 목표가 사라지기 때문이다. 일부러 바꾸려면 PATCH 본문에 `"discardSetTargets": true`를 함께 보낸다. `items` 중 하나라도 예전 방식이면 해당한다. `items` 없이 이름 등만 PATCH하면 세트별 목표는 그대로다.
+- **세트별 목표가 있던 운동을 예전 방식으로 바꾸는 PATCH는 409 `SET_TARGETS_WOULD_BE_LOST`다.** 예전 방식은 세트마다 다른 목표와 중량을 담을 수 없어서 세트별 목표가 사라지기 때문이다. 일부러 바꾸려면 PATCH 본문에 `"discardSetTargets": true`를 함께 보낸다.
+  - 운동별로 비교한다. 세트별 목표가 있던 운동이 새 `items`에 예전 방식으로 들어 있고, 그 운동의 세트별 항목 수가 전보다 줄었을 때만 해당한다.
+  - 플래그 없이 통과하는 경우: 원래 예전 방식이던 항목을 그대로 보내는 것(휴식 시간 등을 바꿔도), 세트별 항목은 그대로 두고 순서만 바꾸는 것, 운동을 아예 빼는 것(형식 전환이 아니라 삭제), `items` 없이 이름 등만 바꾸는 것.
 
 `recordType`별로 세트에 쓸 수 있는 값은 아래와 같다. 표에 없는 값을 보내거나 필수 값이 빠지면 400이다. 값은 따옴표 없는 숫자만 받는다.
 

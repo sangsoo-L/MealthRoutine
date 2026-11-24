@@ -12,9 +12,10 @@ import java.util.List;
  * Null fields stay unchanged. When items is present it replaces the whole list. When expectedRevision is present and
  * differs from the routine's revision the update is refused with 409 REVISION_MISMATCH (data.currentRevision).
  *
- * <p>If the routine has per-set targets and the new items include an old-style one (targetSets only), the update is
- * refused with 409 SET_TARGETS_WOULD_BE_LOST, because the per-set targets cannot be kept. Send
- * {@code discardSetTargets: true} to make that change on purpose.
+ * <p>If an exercise that has per-set targets would come back in the old shape (targetSets only), the update is
+ * refused with 409 SET_TARGETS_WOULD_BE_LOST, because those per-set targets cannot be kept. Send
+ * {@code discardSetTargets: true} to make that change on purpose. Items that were old-style already, a reordered
+ * list and removed exercises need no flag.
  */
 public record RoutineUpdateRequest(
         @Size(min = 1, max = 160) String routineName,

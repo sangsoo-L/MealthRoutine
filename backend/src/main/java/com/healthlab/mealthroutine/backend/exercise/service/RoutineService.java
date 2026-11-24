@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -139,13 +141,27 @@ public class RoutineService {
     }
 
     /**
-     * True when the routine has per-set targets and an old-style item (targetSets only) is about to replace them.
-     * The old shape cannot hold different targets per set or a weight, so that detail would be gone for good.
+     * True when an exercise that had per-set targets now comes in the old shape (targetSets only) and has fewer
+     * per-set items than before, i.e. at least one per-set item was turned into an old-style one. The old shape
+     * cannot hold different targets per set or a weight, so that detail would be gone for good.
+     *
+     * <p>Compared per exercise, not per position, so these pass without the flag: items that were old-style all
+     * along sent again (even with a changed restSeconds), a reordered list, and dropping an exercise entirely
+     * (that is a removal, not a format change).
      */
     private static boolean losesSetTargets(ExerciseRoutineEntity routine, List<ItemSpec> newItems) {
-        boolean hasSetTargets = routine.getItems().stream().anyMatch(item -> item.getSetTargets() != null);
-        boolean hasOldStyle = newItems.stream().anyMatch(item -> item.sets() == null);
-        return hasSetTargets && hasOldStyle;
+        Map<Long, Long> perSetBefore = routine.getItems().stream()
+                .filter(item -> item.getSetTargets() != null)
+                .collect(Collectors.groupingBy(item -> item.getExercise().getExerciseId(), Collectors.counting()));
+        Map<Long, Long> perSetAfter = newItems.stream()
+                .filter(item -> item.sets() != null)
+                .collect(Collectors.groupingBy(ItemSpec::exerciseId, Collectors.counting()));
+        Set<Long> oldStyleAfter = newItems.stream()
+                .filter(item -> item.sets() == null)
+                .map(ItemSpec::exerciseId)
+                .collect(Collectors.toSet());
+        return perSetBefore.entrySet().stream().anyMatch(before -> oldStyleAfter.contains(before.getKey())
+                && perSetAfter.getOrDefault(before.getKey(), 0L) < before.getValue());
     }
 
     private static void checkRevision(ExerciseRoutineEntity routine, Integer expectedRevision) {

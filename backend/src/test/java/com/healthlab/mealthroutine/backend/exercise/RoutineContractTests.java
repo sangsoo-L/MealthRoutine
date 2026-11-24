@@ -281,6 +281,78 @@ class RoutineContractTests {
                 .andExpect(jsonPath("$.data.items[0].sets").doesNotExist());
     }
 
+    /** 스쿼트 with per-set targets and 플랭크 in the old shape, in one routine. */
+    private static final String SQUAT_PER_SET =
+            "{\"exerciseId\":2001,\"recordType\":\"weight\",\"sets\":[{\"reps\":12,\"weightKg\":40},"
+                    + "{\"reps\":8,\"weightKg\":60}]}";
+    private static final String PLANK_OLD_STYLE = "{\"exerciseId\":2002,\"targetSets\":3,\"targetDurationSeconds\":30"
+            + ",\"restSeconds\":60}";
+
+    @Test
+    void mixedRoutineCanChangeItsOldStyleItemWithoutTheFlag() throws Exception {
+        // Review: per-set item sent unchanged, only the old-style item's restSeconds changed -> 200, targets kept.
+        String id = routineId(send(post(ROUTINES), ME,
+                routine("섞인 루틴", "[" + SQUAT_PER_SET + "," + PLANK_OLD_STYLE + "]", null)));
+
+        send(patch(ROUTINES + "/" + id), ME, "{\"expectedRevision\":1,\"items\":[" + SQUAT_PER_SET + ","
+                + PLANK_OLD_STYLE.replace("\"restSeconds\":60", "\"restSeconds\":90") + "]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.revision").value(2));
+
+        perform(get(ROUTINES + "/" + id), ME)
+                .andExpect(jsonPath("$.data.items[0].recordType").value("weight"))
+                .andExpect(jsonPath("$.data.items[0].sets.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].sets[1].weightKg").value(60))
+                .andExpect(jsonPath("$.data.items[1].sets").doesNotExist())
+                .andExpect(jsonPath("$.data.items[1].targetSets").value(3))
+                .andExpect(jsonPath("$.data.items[1].restSeconds").value(90));
+    }
+
+    @Test
+    void mixedRoutineStillRefusesTurningItsPerSetItemOldStyle() throws Exception {
+        String id = routineId(send(post(ROUTINES), ME,
+                routine("섞인 루틴", "[" + SQUAT_PER_SET + "," + PLANK_OLD_STYLE + "]", null)));
+
+        // The per-set 스쿼트 comes back in the old shape: a real format change, so 409 without the flag.
+        send(patch(ROUTINES + "/" + id), ME, "{\"items\":[{\"exerciseId\":2001,\"targetSets\":2,\"targetReps\":12},"
+                + PLANK_OLD_STYLE + "]}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(ERROR_CODE).value("SET_TARGETS_WOULD_BE_LOST"));
+
+        perform(get(ROUTINES + "/" + id), ME)
+                .andExpect(jsonPath("$.data.revision").value(1))
+                .andExpect(jsonPath("$.data.items[0].sets.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].sets[0].weightKg").value(40));
+    }
+
+    @Test
+    void sameExerciseTwiceCountsEachPerSetCopy() throws Exception {
+        // 스쿼트 appears twice with per-set targets; turning one copy old-style still loses targets.
+        String id = routineId(send(post(ROUTINES), ME,
+                routine("스쿼트 두 번", "[" + SQUAT_PER_SET + "," + SQUAT_PER_SET + "]", null)));
+
+        send(patch(ROUTINES + "/" + id), ME, "{\"items\":[" + SQUAT_PER_SET
+                + ",{\"exerciseId\":2001,\"targetSets\":2,\"targetReps\":12}]}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(ERROR_CODE).value("SET_TARGETS_WOULD_BE_LOST"));
+    }
+
+    @Test
+    void reorderingOrDroppingAnExerciseIsNotAFormatChange() throws Exception {
+        String id = routineId(send(post(ROUTINES), ME,
+                routine("섞인 루틴", "[" + SQUAT_PER_SET + "," + PLANK_OLD_STYLE + "]", null)));
+
+        // Same items, other order.
+        send(patch(ROUTINES + "/" + id), ME, "{\"items\":[" + PLANK_OLD_STYLE + "," + SQUAT_PER_SET + "]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[1].sets.length()").value(2));
+
+        // Dropping the per-set exercise is a removal, not turning it into the old shape.
+        send(patch(ROUTINES + "/" + id), ME, "{\"items\":[" + PLANK_OLD_STYLE + "]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1));
+    }
+
     @Test
     void patchesThatKeepPerSetTargetsNeedNoFlag() throws Exception {
         String id = routineId(send(post(ROUTINES), ME, routine("하체 루틴", PER_SET_ITEMS, null)));
