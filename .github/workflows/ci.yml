@@ -1,0 +1,116 @@
+# CI: PR과 develop·main push마다 백엔드 테스트와 프론트 검사를 자동으로 돌린다. 배포는 하지 않는다.
+# 배포 워크플로(deploy.yml)도 배포 전에 이 검사를 그대로 불러 쓴다(workflow_call).
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: 검사할 커밋 SHA (deploy.yml이 넘겨준다)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (Gradle test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || '' }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            backend/*.gradle*
+            backend/gradle/wrapper/gradle-wrapper.properties
+
+      # 테스트 DB 비밀번호·root 비밀번호·테스트용 JWT 키는 실행할 때마다 여기서 새로 만들고, 쓰기 전에 로그 마스킹을
+      # 등록한다. 저장해 둘 Secret이 없다(TEST-KEY-1). MySQL에 root 비밀번호 생성을 맡기면(RANDOM_ROOT_PASSWORD)
+      # 그 값이 마스킹 없이 컨테이너 로그에 찍히므로 쓰지 않는다(CICD-R3).
+      - name: 테스트용 MySQL 8.4 실행
+        run: |
+          DB_PASSWORD="$(openssl rand -hex 24)"
+          ROOT_PASSWORD="$(openssl rand -hex 24)"
+          JWT_TEST="$(openssl rand -base64 32)"
+          echo "::add-mask::$DB_PASSWORD"
+          echo "::add-mask::$ROOT_PASSWORD"
+          echo "::add-mask::$JWT_TEST"
+          {
+            echo "DB_PASSWORD=$DB_PASSWORD"
+            echo "JWT_SECRET_TEST=$JWT_TEST"
+            echo "JWT_SECRET=$JWT_TEST"
+          } >> "$GITHUB_ENV"
+          docker run -d --name mysql -p 3306:3306 \
+            -e MYSQL_ROOT_PASSWORD="$ROOT_PASSWORD" \
+            -e MYSQL_DATABASE=mealthroutine_test \
+            -e MYSQL_USER=mealthroutine \
+            -e MYSQL_PASSWORD="$DB_PASSWORD" \
+            -e TZ=Asia/Seoul \
+            mysql:8.4 --performance-schema=OFF
+          # 초기화 중에는 TCP가 꺼져 있으므로, TCP 응답이 오면 초기화가 끝난 것이다.
+          for i in $(seq 1 90); do
+            if docker exec mysql mysqladmin ping -h 127.0.0.1 --silent 2>/dev/null; then echo "MySQL 준비 완료"; exit 0; fi
+            sleep 2
+          done
+          # 진단 로그는 공개되므로 비밀번호가 언급된 줄은 빼고 보여 준다(값은 위에서 마스킹도 등록됨).
+          echo "MySQL이 시작되지 않았습니다"
+          docker logs mysql 2>&1 | grep -v -i 'password' | tail -50
+          exit 1
+
+      - name: 테스트 DB에 스키마 적용
+        run: docker exec -i -e MYSQL_PWD="$DB_PASSWORD" mysql mysql -umealthroutine mealthroutine_test < database/schema/001_create_tables.sql
+
+      # gradlew가 Git에 실행 권한 없이(100644) 저장돼 있어 sh로 실행한다.
+      - name: Gradle test
+        working-directory: backend
+        run: sh ./gradlew --no-daemon test
+
+      - name: 실패한 테스트 보고서 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: backend/build/reports/tests/
+          retention-days: 7
+
+  frontend:
+    name: frontend (typecheck·lint·test·build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || '' }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      # 기본 병렬 실행은 끝나지 않고 멈추는 기록이 있어 팀 검증과 같은 순차 실행으로 돌린다.
+      - name: Node 테스트(순차)
+        run: node --test --test-concurrency=1 "tests/*.test.mjs"
+      - run: npm run build
+      # 운영 번들에 개발용 계정·체험 코드가 섞이지 않았는지 확인한다.
+      - run: npm run verify:dist
