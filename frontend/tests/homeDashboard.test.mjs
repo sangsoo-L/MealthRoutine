@@ -720,7 +720,8 @@ test('운영 환경(NODE_ENV=production)에서는 운동 기록은 로컬 저장
     workout: true,
     meal: null,
   })
-  // 저장소가 없으면 훅은 두 영역을 unavailable로 만들고 화면은 0일·기록 없음 대신 연결 전 안내를 보인다.
+  // 저장소가 없는 영역(운영 빌드의 식단)은 훅이 unavailable로 만들고 화면은 0일·기록 없음 대신 연결 전 안내를 보인다.
+  // 아래는 두 영역 모두 저장소가 없을 때의 규칙이다.
   const w = week({ status: 'unavailable' }, { status: 'unavailable' })
   assert.deepEqual(
     [w.exercise, w.meal],

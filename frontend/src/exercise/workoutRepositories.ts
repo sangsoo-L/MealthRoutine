@@ -10,7 +10,7 @@ import type {
 
 /**
  * 운동 목록·수행 세션·완료 기록의 데이터 경계. 화면(W11·W14·W15·W10·W01)은 이 인터페이스만 안다.
- * 지금 구현은 개발 서버 전용 IndexedDB(exercise/local/)이며, 나중에 서버 구현으로 exercise/workoutSource.ts의 반환만 교체한다.
+ * 지금 구현은 개발 서버와 운영 빌드가 함께 쓰는 IndexedDB(exercise/local/)이며, 서버 구현이 필요해지면 exercise/workoutSource.ts의 반환만 교체한다.
  *
  * 공통 규칙
  * - 저장소는 계정 id(ownerId)로 만든다. 모든 조회·쓰기는 그 계정의 데이터만 다룬다. 다른 계정의 데이터는 "없음"과 같다.

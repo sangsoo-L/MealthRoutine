@@ -488,7 +488,7 @@ test('운영 환경(NODE_ENV=production)에서는 운동 기록만 로컬 저장
     meal: null,
     goal: null,
   })
-  // 저장소가 없으면 훅은 세 사실 모두 unavailable로 만들고, 규칙은 기본 추천을 고른다(위 테스트).
+  // 저장소가 없는 사실(운영 빌드의 식단 기록·목표)은 훅이 unavailable로 만든다. 아래는 세 사실 모두 저장소가 없을 때 규칙이 기본 추천을 고르는지 본다(위 테스트).
   const unavailable = { status: 'unavailable' }
   assert.equal(
     policy.selectHomeRecommendation({

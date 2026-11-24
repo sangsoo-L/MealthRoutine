@@ -7,7 +7,7 @@ import type { LocalDate } from './workoutTypes.ts'
  * 내일 운동 계획 저장소(W11 저장, W10 조회·수정·삭제, W01 요약). 계정 id로 만들며 모든 조회·쓰기는 그 계정의 계획만 다룬다
  * (다른 계정의 계획은 "없음"과 같다). 운동 목록(WorkoutListRepository)·세션·기록·루틴 저장소와 **별개**이며 서로의 데이터를 읽거나 바꾸지 않는다.
  * 오류는 다른 운동 저장소와 같은 WorkoutStoreError(workoutRepositories.ts)를 던진다(같은 DB·같은 규칙).
- * 지금 구현은 개발 서버 전용 IndexedDB이며, 서버 연동이 정해지면 workoutPlanSource의 반환만 교체한다.
+ * 지금 구현은 개발 서버와 운영 빌드가 함께 쓰는 IndexedDB이며, 서버 연동이 정해지면 workoutPlanSource의 반환만 교체한다.
  *
  * 계정당 계획 날짜별 계획은 1개다. 같은 날짜에 새 계획을 만들면 conflict(planExists)이고, 교체는 사용자의 확인을 받은 뒤 replace로 한다.
  */
