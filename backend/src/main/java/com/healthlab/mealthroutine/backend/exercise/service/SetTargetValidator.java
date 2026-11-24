@@ -66,7 +66,7 @@ public final class SetTargetValidator {
         return new SetTarget(reps, weight, seconds);
     }
 
-    private static Integer wholeNumber(BigDecimal value, int min, int max) {
+    static Integer wholeNumber(BigDecimal value, int min, int max) {
         BigDecimal stripped = value.stripTrailingZeros();
         if (stripped.scale() > 0 || stripped.compareTo(BigDecimal.valueOf(min)) < 0
                 || stripped.compareTo(BigDecimal.valueOf(max)) > 0) {
@@ -76,15 +76,24 @@ public final class SetTargetValidator {
     }
 
     /** 0 to 999 kg with at most 2 decimal places. Stored without trailing zeros: 22.50 becomes 22.5, 40.0 becomes 40. */
-    private static BigDecimal weight(BigDecimal value) {
-        BigDecimal stripped = value.stripTrailingZeros();
-        if (stripped.scale() > 2 || stripped.signum() < 0 || stripped.compareTo(MAX_WEIGHT_KG) > 0) {
+    static BigDecimal weight(BigDecimal value) {
+        BigDecimal normalized = normalizeWeight(value);
+        if (normalized.scale() > 2 || normalized.signum() < 0 || normalized.compareTo(MAX_WEIGHT_KG) > 0) {
             throw invalid();
         }
+        return normalized;
+    }
+
+    /** Drops trailing zeros without switching to exponent form: 40.00 becomes 40, 22.50 becomes 22.5. */
+    public static BigDecimal normalizeWeight(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        BigDecimal stripped = value.stripTrailingZeros();
         return stripped.scale() < 0 ? stripped.setScale(0) : stripped;
     }
 
-    private static BusinessException invalid() {
+    static BusinessException invalid() {
         return new BusinessException(ErrorCode.INVALID_REQUEST);
     }
 }

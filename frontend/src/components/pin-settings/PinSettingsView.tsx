@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode, type Ref } from 'react'
 import { Link } from 'react-router'
+import { PIN_SERVER_LOCKED_MESSAGE } from '../../pin-settings/pinSettingsMessages.ts'
 import {
   BODY_UNLOCK_PATH,
   PIN_PATHS,
@@ -75,7 +76,13 @@ function returnLabel(returnTo: PinReturn | null): string {
     : '상세 설정으로'
 }
 
-function Guidance({ mode }: { mode: PinSettingsMode }) {
+function Guidance({
+  mode,
+  connection,
+}: {
+  mode: PinSettingsMode
+  connection: PinConnection
+}) {
   return (
     <section
       aria-labelledby="pin-guidance-title"
@@ -96,8 +103,8 @@ function Guidance({ mode }: { mode: PinSettingsMode }) {
           2차 비밀번호를 잊으셨나요? 재설정 기능은 준비 중이에요.
         </p>
       ) : null}
-      {/* 개발 서버에서만 보이는 안내. 운영 빌드에서는 코드째 제거된다. */}
-      {import.meta.env.DEV ? (
+      {/* 개발 서버의 모의 모드에서만 보이는 안내. 서버 연결(개발 기본) 중에는 사실과 달라 숨긴다. 운영 빌드에서는 코드째 제거된다. */}
+      {import.meta.env.DEV && connection === 'mock' ? (
         <p className="mt-2 text-support leading-relaxed font-normal text-muted">
           개발 서버 전용 모의 기능이에요. 번호는 이 브라우저에 해시로만 남고
           실제 보안 수단이 아니에요.
@@ -106,6 +113,9 @@ function Guidance({ mode }: { mode: PinSettingsMode }) {
     </section>
   )
 }
+
+/** 모의 모드(개발용 저장소) / 서버 모드(F4). 잠금 안내·제출 차단·같은 번호 허용이 다르다. */
+export type PinConnection = 'mock' | 'server'
 
 /**
  * P11 등록·P12 변경 본문. 상태에 따라 화면이 갈린다.
@@ -121,6 +131,8 @@ export function PinSettingsBody({
   submit,
   reload,
   returnTo = null,
+  connection = 'mock',
+  submitting = false,
 }: {
   mode: PinSettingsMode
   status: PinStatus
@@ -129,6 +141,10 @@ export function PinSettingsBody({
   submit: (values: PinFormValues) => Promise<PinSubmitResult | null>
   reload: () => void
   returnTo?: PinReturn | null
+  /** 기본 mock(기존 동작). server면 잠금을 안내만 하고 제출을 막지 않으며 "잠금 상태 다시 확인"을 보인다(F4-D4·D7). */
+  connection?: PinConnection
+  /** 등록·변경 요청을 처리하는 중이면 "잠금 상태 다시 확인"을 막는다(재조회로 폼이 바뀌면 결과 안내가 사라진다). */
+  submitting?: boolean
 }) {
   const doneHeading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
@@ -302,6 +318,42 @@ export function PinSettingsBody({
         />
       </>
     )
+  } else if (connection === 'server') {
+    // 서버 모드(F4-D4): 해제 시각을 계산하지 않는다. 잠금이면 안내와 재조회 버튼만 보이고 제출은 서버 판정에 맡긴다.
+    body = (
+      <>
+        {locked ? (
+          <div
+            data-pin-lock-recheck=""
+            className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4"
+          >
+            <p className="text-body leading-relaxed font-normal text-muted">
+              2차 비밀번호 확인이 잠겨 있어요. 잠금이 풀렸는지 다시 확인할 수
+              있어요.
+            </p>
+            <button
+              type="button"
+              onClick={reload}
+              disabled={submitting}
+              data-pin-lock-recheck-button=""
+              className={`${secondaryButtonClass} disabled:cursor-not-allowed disabled:border-line disabled:text-muted disabled:hover:bg-surface`}
+            >
+              잠금 상태 다시 확인
+            </button>
+          </div>
+        ) : null}
+        <PinSettingsForm
+          mode={mode}
+          disabled={false}
+          locked={locked}
+          lockMessage={PIN_SERVER_LOCKED_MESSAGE}
+          blockWhenLocked={false}
+          allowSamePin
+          submit={submit}
+          returnTo={returnTo}
+        />
+      </>
+    )
   } else {
     body = (
       <PinSettingsForm
@@ -318,7 +370,7 @@ export function PinSettingsBody({
     <div className="flex flex-col gap-6 break-keep wrap-anywhere">
       <Heading title={TITLE[mode]} description={description} />
       {body}
-      <Guidance mode={mode} />
+      <Guidance mode={mode} connection={connection} />
     </div>
   )
 }
@@ -333,7 +385,8 @@ export default function PinSettingsView({
   mode: PinSettingsMode
   returnTo?: PinReturn | null
 }) {
-  const { status, done, locked, submit, reload } = usePinSettings(ownerId, mode)
+  const { status, done, locked, submit, reload, connection, submitting } =
+    usePinSettings(ownerId, mode)
   return (
     <PinSettingsBody
       mode={mode}
@@ -343,6 +396,8 @@ export default function PinSettingsView({
       submit={submit}
       reload={reload}
       returnTo={returnTo}
+      connection={connection}
+      submitting={submitting}
     />
   )
 }

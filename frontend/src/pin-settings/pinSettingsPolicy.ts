@@ -90,10 +90,13 @@ function formatProblem(value: string, emptyMessage: string): string | null {
 /**
  * 제출 전 검증. 첫 번째 문제만 돌려주며 순서는 화면 순서(현재 → 새 → 확인 → 일치 → 동일)다.
  * 이 검증은 현재 번호 확인(실패 횟수)과 무관하다. 통과해도 실제 확인은 저장소가 한다.
+ * `allowSame`: 현재와 같은 새 번호를 허용한다. 서버 모드만 true다(F4-D7, PIN7-9 "같은 PIN 변경 허용").
+ * 모의 모드(개발용 저장소)는 기존 규칙대로 막는다.
  */
 export function validatePinForm(
   mode: PinSettingsMode,
   values: PinFormValues,
+  { allowSame = false }: { allowSame?: boolean } = {},
 ): PinFormIssue | null {
   if (mode === 'change') {
     const message = formatProblem(
@@ -114,7 +117,7 @@ export function validatePinForm(
   if (confirmProblem) return { field: 'confirm', message: confirmProblem }
   if (values.next !== values.confirm)
     return { field: 'confirm', message: '새 비밀번호 확인이 일치하지 않아요.' }
-  if (mode === 'change' && values.next === values.current)
+  if (mode === 'change' && !allowSame && values.next === values.current)
     return {
       field: 'new',
       message: '현재와 다른 새 비밀번호를 입력해 주세요.',
