@@ -224,11 +224,10 @@ export function describeConditions(
 ): { type: string; kinds: string; excluded: string } {
   const names = [
     ...(conditions.excludedFoodGroups ?? []).map(
-      (id) => EXCLUDED_FOOD_GROUPS.find((group) => group.id === id)?.label ?? id,
+      (id) =>
+        EXCLUDED_FOOD_GROUPS.find((group) => group.id === id)?.label ?? id,
     ),
-    ...conditions.excludedFoodIds.map(
-      (id) => foodNameOf(id) ?? '선택한 음식',
-    ),
+    ...conditions.excludedFoodIds.map((id) => foodNameOf(id) ?? '선택한 음식'),
   ]
   return {
     type: conditions.type ?? '전체',
@@ -242,7 +241,10 @@ export function describeConditions(
  * 예: 하루 2,000kcal → 끼니당 700kcal. 선택한 끼니 수와 무관합니다.
  * 서버 공식 목표가 아닌 제안값이며 사용자가 직접 수정할 수 있습니다.
  */
-export function suggestedSelectedCalories(dailyGoalKcal: number, _selectedMealCount: number): number {
+export function suggestedSelectedCalories(
+  dailyGoalKcal: number,
+  _selectedMealCount: number,
+): number {
   void _selectedMealCount
   return Math.max(1, Math.min(8000, Math.round(dailyGoalKcal / 300) * 100))
 }

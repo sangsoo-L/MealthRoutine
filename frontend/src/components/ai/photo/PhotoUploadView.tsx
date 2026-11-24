@@ -278,8 +278,8 @@ export default function PhotoUploadView({
               사진 사용 안내
             </h2>
             <p className="mt-1 text-support leading-relaxed font-normal text-muted">
-              올린 사진은 음식 분석에만 사용해요. 분석 시작을 누르면 AI 서버로 전송되며,
-          분석 요청 전에는 이 기기에서만 미리봅니다.
+              올린 사진은 음식 분석에만 사용해요. 분석 시작을 누르면 AI 서버로
+              전송되며, 분석 요청 전에는 이 기기에서만 미리봅니다.
             </p>
           </section>
 

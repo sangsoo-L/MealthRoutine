@@ -202,8 +202,8 @@ export default function MealPlanGoalView({
           추천받을 끼니 선택하기
         </Link>
         <p className="text-support leading-relaxed font-normal text-muted">
-          끼니를 고른 다음 목표 열량을 직접 입력해 AI 식단 추천을 요청할 수 있어요.
-          이용 횟수·추천 결과 저장 기능은 추후 서버 연동 시 제공됩니다.
+          끼니를 고른 다음 목표 열량을 직접 입력해 AI 식단 추천을 요청할 수
+          있어요. 이용 횟수·추천 결과 저장 기능은 추후 서버 연동 시 제공됩니다.
         </p>
       </div>
     </>

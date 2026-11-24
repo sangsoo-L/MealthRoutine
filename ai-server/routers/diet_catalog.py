@@ -454,15 +454,17 @@ def _generate(
                 "nutrients": nutrients,
             })
 
-        meal_calories = _sum_known([
-            item["nutrients"]["calories_kcal"]
-            for item in selected
-        ])
+        meal_totals = {
+            f"estimated_{nutrient}": _sum_known([
+                item["nutrients"][nutrient] for item in selected
+            ])
+            for nutrient in NUTRIENTS.values()
+        }
 
         meals.append({
             "meal_type": meal.meal_type,
             "foods": selected,
-            "estimated_calories_kcal": meal_calories,
+            **meal_totals,
             "reason": meal.reason,
         })
 

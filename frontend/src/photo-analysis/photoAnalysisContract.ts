@@ -28,6 +28,8 @@ export interface PhotoAnalysisResult {
   summary: string | null
   /** 일부 음식을 인식하지 못했는지(성공한 항목은 그대로 보인다). */
   partial: boolean
+  /** 열량 합계가 일부 음식만 포함하거나 계산 불가인 경우. */
+  calorieIncomplete?: boolean
   /** 개발 서버 전용 예시 결과 표지. 실제 서버 결과에는 없다. */
   example?: boolean
 }

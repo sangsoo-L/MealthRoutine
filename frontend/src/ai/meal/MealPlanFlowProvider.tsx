@@ -16,7 +16,12 @@ import {
   type MealPlanRequest,
   type MealPlanSource,
 } from './mealPlanContract.ts'
-import { isRequestReady, suggestedSelectedCalories, type ExcludedFoodGroup, type FoodTypeChoice } from './mealPlanFlow.ts'
+import {
+  isRequestReady,
+  suggestedSelectedCalories,
+  type ExcludedFoodGroup,
+  type FoodTypeChoice,
+} from './mealPlanFlow.ts'
 import {
   MealPlanFlowContext,
   type MealPlanFlowValue,
@@ -51,10 +56,9 @@ export default function MealPlanFlowProvider({
 
   const [state, dispatch] = useReducer(flowReducer, userId, initialFlowState)
   // null이면 하루 목표로 끼니당 기본 열량을 제안한다. 사용자 수정값은 유지한다.
-  const [targetCalories, setTargetCaloriesValue] = useState<string | null>(null)
+  const targetCalories = state.targetCalories
   const setTargetCalories = useCallback((value: string) => {
-    setTargetCaloriesValue(value)
-    dispatch({ type: 'setRequest', request: { status: 'idle' } })
+    dispatch({ type: 'setTargetCalories', value })
   }, [])
   // 사용자가 바뀌면 지난 사용자의 상태를 렌더 중에 바로 버린다(React가 곧바로 다시 그려 지난 사용자의 값이 보이지 않는다).
   if (state.owner !== userId) dispatch({ type: 'reset', owner: userId })
@@ -93,11 +97,18 @@ export default function MealPlanFlowProvider({
       ) {
         return
       }
-      const kcal = targetCalories === null
-        ? suggestedSelectedCalories(dailyGoalKcal, selection.meals.length)
-        : Number(targetCalories)
-      if (!isRequestReady(selection) || selection.targetDate === null ||
-          !Number.isInteger(kcal) || kcal < 1 || kcal > 8000) return
+      const kcal =
+        targetCalories === null
+          ? suggestedSelectedCalories(dailyGoalKcal, selection.meals.length)
+          : Number(targetCalories)
+      if (
+        !isRequestReady(selection) ||
+        selection.targetDate === null ||
+        !Number.isInteger(kcal) ||
+        kcal < 1 ||
+        kcal > 8000
+      )
+        return
       if (source === null) {
         dispatch({ type: 'setRequest', request: { status: 'unavailable' } })
         return
@@ -139,11 +150,9 @@ export default function MealPlanFlowProvider({
   const actions = useMemo(
     () => ({
       toggleMeal: (meal: MealType, date: LocalDate) => {
-        setTargetCaloriesValue(null) // 끼니가 달라지면 이전 끼니의 수동 입력은 초기화
         dispatch({ type: 'toggleMeal', meal, date })
       },
       toggleAllMeals: (date: LocalDate) => {
-        setTargetCaloriesValue(null)
         dispatch({ type: 'toggleAllMeals', date })
       },
       setFoodType: (value: FoodTypeChoice) =>
@@ -174,7 +183,15 @@ export default function MealPlanFlowProvider({
       startRequest,
       cancelRequest,
     }),
-    [state, source, targetCalories, setTargetCalories, actions, startRequest, cancelRequest],
+    [
+      state,
+      source,
+      targetCalories,
+      setTargetCalories,
+      actions,
+      startRequest,
+      cancelRequest,
+    ],
   )
 
   return (

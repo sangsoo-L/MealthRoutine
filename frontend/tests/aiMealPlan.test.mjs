@@ -433,35 +433,50 @@ test('AI 추천 직접 호출: 세 끼는 각각 700kcal로 POST 3회, 탭별 �
       ok: true,
       json: async () => ({
         status: 'generated',
-        meals: [{
-          meal_type: meal,
-          estimated_calories_kcal: 700,
-          reason: '끼니별 식단',
-          foods: [{
-            food_id: 123,
-            food_name: `${meal} 테스트 음식`,
-            quantity: 1,
-            nutrients: { calories_kcal: 700 },
-          }],
-        }],
+        meals: [
+          {
+            meal_type: meal,
+            estimated_calories_kcal: 700,
+            reason: '끼니별 식단',
+            foods: [
+              {
+                food_id: 123,
+                food_name: `${meal} 테스트 음식`,
+                quantity: 1,
+                nutrients: { calories_kcal: 700 },
+              },
+            ],
+          },
+        ],
       }),
     }
   }
   try {
-    const result = await Api.createLocalMealPlanSource().requestPlan({
-      ...request,
-      meals: ['breakfast', 'lunch', 'dinner'],
-      targetCaloriesKcal: 700,
-    }, new AbortController().signal)
+    const result = await Api.createLocalMealPlanSource().requestPlan(
+      {
+        ...request,
+        meals: ['breakfast', 'lunch', 'dinner'],
+        targetCaloriesKcal: 700,
+      },
+      new AbortController().signal,
+    )
     assert.equal(calls.length, 3)
-    assert.deepEqual(calls.map((body) => body.meal_types), [
-      ['breakfast'], ['lunch'], ['dinner'],
-    ])
-    assert.deepEqual(calls.map((body) => body.target_calories_kcal), [700, 700, 700])
-    assert.deepEqual(result.meals.map((item) => item.meal), [
-      'breakfast', 'lunch', 'dinner',
-    ])
-    assert.deepEqual(result.meals.map((item) => item.totals.kcal), [700, 700, 700])
+    assert.deepEqual(
+      calls.map((body) => body.meal_types),
+      [['breakfast'], ['lunch'], ['dinner']],
+    )
+    assert.deepEqual(
+      calls.map((body) => body.target_calories_kcal),
+      [700, 700, 700],
+    )
+    assert.deepEqual(
+      result.meals.map((item) => item.meal),
+      ['breakfast', 'lunch', 'dinner'],
+    )
+    assert.deepEqual(
+      result.meals.map((item) => item.totals.kcal),
+      [700, 700, 700],
+    )
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -472,22 +487,30 @@ test('AI 추천 직접 호출: 개발용 ID를 무시하고 넓은 제외 범주
   let payload = null
   globalThis.fetch = async (_url, options) => {
     payload = JSON.parse(options.body)
-    return { ok: true, json: async () => ({
-      status: 'generated',
-      meals: [{
-        meal_type: 'lunch',
-        estimated_calories_kcal: 701,
-        foods: [{ food_id: 42, food_name: '현미밥', quantity: 1 }],
-      }],
-    }) }
+    return {
+      ok: true,
+      json: async () => ({
+        status: 'generated',
+        meals: [
+          {
+            meal_type: 'lunch',
+            estimated_calories_kcal: 701,
+            foods: [{ food_id: 42, food_name: '현미밥', quantity: 1 }],
+          },
+        ],
+      }),
+    }
   }
   try {
-    await Api.createLocalMealPlanSource().requestPlan({
-      ...request,
-      targetCaloriesKcal: 700,
-      excludedFoodIds: ['dev-food-2', '31'],
-      excludedFoodGroups: ['chicken', 'coffee'],
-    }, new AbortController().signal)
+    await Api.createLocalMealPlanSource().requestPlan(
+      {
+        ...request,
+        targetCaloriesKcal: 700,
+        excludedFoodIds: ['dev-food-2', '31'],
+        excludedFoodGroups: ['chicken', 'coffee'],
+      },
+      new AbortController().signal,
+    )
     assert.deepEqual(payload.excluded_food_groups, ['chicken', 'coffee'])
     assert.deepEqual(payload.excluded_food_ids, [31])
   } finally {
@@ -500,17 +523,32 @@ test('음식 종류 선택: 면류와 식품 구분이 API 본문에 독립된 �
   let payload = null
   globalThis.fetch = async (_url, options) => {
     payload = JSON.parse(options.body)
-    return { ok: true, json: async () => ({
-      status: 'generated',
-      meals: [{ meal_type: 'lunch', estimated_calories_kcal: 700,
-        foods: [{ food_id: 100, food_name: '우동_일식', quantity: 1 }] }],
-    }) }
+    return {
+      ok: true,
+      json: async () => ({
+        status: 'generated',
+        meals: [
+          {
+            meal_type: 'lunch',
+            estimated_calories_kcal: 700,
+            foods: [{ food_id: 100, food_name: '우동_일식', quantity: 1 }],
+          },
+        ],
+      }),
+    }
   }
   try {
-    await Api.createLocalMealPlanSource().requestPlan({
-      ...request, meals: ['lunch'], targetCaloriesKcal: 700,
-      foodType: '음식·요리', foodKinds: ['면류'], excludedFoodGroups: ['dairy'],
-    }, new AbortController().signal)
+    await Api.createLocalMealPlanSource().requestPlan(
+      {
+        ...request,
+        meals: ['lunch'],
+        targetCaloriesKcal: 700,
+        foodType: '음식·요리',
+        foodKinds: ['면류'],
+        excludedFoodGroups: ['dairy'],
+      },
+      new AbortController().signal,
+    )
     assert.equal(payload.food_type, '음식·요리')
     assert.deepEqual(payload.food_kinds, ['면류'])
     assert.deepEqual(payload.excluded_food_groups, ['dairy'])
@@ -526,19 +564,29 @@ test('AI 추천 직접 호출: 점심 하나 선택 시 700kcal로 POST 1회', a
   const calls = []
   globalThis.fetch = async (_url, options) => {
     calls.push(JSON.parse(options.body))
-    return { ok: true, json: async () => ({
-      status: 'generated',
-      meals: [{
-        meal_type: 'lunch',
-        estimated_calories_kcal: 700,
-        foods: [{ food_id: 100, food_name: '점심 식단', quantity: 1 }],
-      }],
-    }) }
+    return {
+      ok: true,
+      json: async () => ({
+        status: 'generated',
+        meals: [
+          {
+            meal_type: 'lunch',
+            estimated_calories_kcal: 700,
+            foods: [{ food_id: 100, food_name: '점심 식단', quantity: 1 }],
+          },
+        ],
+      }),
+    }
   }
   try {
-    const result = await Api.createLocalMealPlanSource().requestPlan({
-      ...request, meals: ['lunch'], targetCaloriesKcal: 700,
-    }, new AbortController().signal)
+    const result = await Api.createLocalMealPlanSource().requestPlan(
+      {
+        ...request,
+        meals: ['lunch'],
+        targetCaloriesKcal: 700,
+      },
+      new AbortController().signal,
+    )
     assert.equal(calls.length, 1)
     assert.deepEqual(calls[0].meal_types, ['lunch'])
     assert.equal(calls[0].target_calories_kcal, 700)
@@ -835,9 +883,14 @@ test('I03-2: 메뉴명 기준 넓은 제외 범주를 선택하고, 알레르기
     Flow.toggleExcludedGroup(picked.conditions, 'chicken'),
     'coffee',
   )
-  const out = html(createElement(FoodsView, foodsProps({
-    selection: { ...picked, conditions },
-  })))
+  const out = html(
+    createElement(
+      FoodsView,
+      foodsProps({
+        selection: { ...picked, conditions },
+      }),
+    ),
+  )
   const visible = text(out)
   assert.match(visible, /닭고기류/)
   assert.match(visible, /커피 음료/)
@@ -1160,4 +1213,130 @@ test('범위 준수: 기존 식단 기록·계획 저장소와 운동 목표 코
     read('../src/food/local/indexedDbMealPlanRepository.ts'),
     /./, // 파일이 있다
   )
+})
+
+test('추천 결과: 빈 음식 목록은 결과 없음, 서버 목표 및 경고는 보존', () => {
+  const request = {
+    targetDate: DATE,
+    meals: ['lunch'],
+    targetCaloriesKcal: 700,
+  }
+  const meal = { meal_type: 'lunch', foods: [], estimated_calories_kcal: 650 }
+  assert.equal(
+    Api.parseDietRecommendation(
+      { status: 'generated', meals: [meal] },
+      request,
+    ),
+    null,
+  )
+  const result = Api.parseDietRecommendation(
+    {
+      status: 'generated',
+      target_calories_kcal: 700,
+      warnings: ['목표 열량 확인'],
+      meals: [
+        { ...meal, foods: [{ food_id: 1, food_name: '국수', quantity: 1 }] },
+      ],
+    },
+    request,
+  )
+  assert.equal(result.meals[0].target.kcal, 700)
+  assert.deepEqual(result.meals[0].warnings, ['목표 열량 확인'])
+})
+
+test('수동 목표 열량은 음식 조건 변경에는 유지하고 목표·날짜·계정·끼니 변경에는 초기화', () => {
+  let state = State.initialFlowState('a')
+  const reduce = (action) => {
+    state = State.flowReducer(state, action)
+  }
+  reduce({ type: 'syncGoal', stamp: 'g1' })
+  reduce({ type: 'toggleMeal', meal: 'lunch', date: DATE })
+  reduce({ type: 'setTargetCalories', value: '700' })
+  reduce({ type: 'setFoodType', value: '식재료' })
+  assert.equal(state.targetCalories, '700')
+  reduce({ type: 'syncGoal', stamp: 'g2' })
+  assert.equal(state.targetCalories, null)
+  reduce({ type: 'toggleMeal', meal: 'lunch', date: DATE })
+  reduce({ type: 'setTargetCalories', value: '600' })
+  reduce({ type: 'syncDate', date: '2099-01-01' })
+  assert.equal(state.targetCalories, null)
+  reduce({ type: 'toggleMeal', meal: 'lunch', date: DATE })
+  reduce({ type: 'setTargetCalories', value: '800' })
+  reduce({ type: 'toggleMeal', meal: 'dinner', date: DATE })
+  assert.equal(state.targetCalories, null)
+  reduce({ type: 'setTargetCalories', value: '900' })
+  reduce({ type: 'reset', owner: 'b' })
+  assert.equal(state.targetCalories, null)
+})
+
+test('추천 합계: 서버 탄단지 값과 누락 및 0을 그대로 표시', () => {
+  const request = {
+    targetDate: DATE,
+    meals: ['lunch'],
+    targetCaloriesKcal: 700,
+  }
+  const result = Api.parseDietRecommendation(
+    {
+      status: 'generated',
+      target_calories_kcal: 700,
+      meals: [
+        {
+          meal_type: 'lunch',
+          estimated_calories_kcal: 829.8,
+          estimated_carbohydrate_g: 125.79,
+          estimated_protein_g: 37.89,
+          estimated_fat_g: 0,
+          foods: [
+            { food_id: 1, food_name: '밥', quantity: 1 },
+            { food_id: 2, food_name: '반찬', quantity: 1 },
+          ],
+        },
+      ],
+    },
+    request,
+  )
+  assert.deepEqual(result.meals[0].totals, {
+    kcal: 829.8,
+    carbG: 125.79,
+    proteinG: 37.89,
+    fatG: 0,
+  })
+  const out = html(
+    createElement(ResultView, resultProps({ status: 'ready', result })),
+  )
+  const t = text(out)
+  assert.match(t, /끼니 목표 열량 열량 700 kcal 추천 합계/)
+  assert.match(t, /탄수화물 125\.79g/)
+  assert.match(t, /단백질 37\.89g/)
+  assert.match(t, /지방 0g/)
+  assert.match(t, /목표 대비 129\.8 kcal 초과/)
+  assert.equal(
+    (t.match(/원재료·알레르기 정보를 확인할 수 없어요/g) ?? []).length,
+    1,
+  )
+  const missing = Api.parseDietRecommendation(
+    {
+      status: 'generated',
+      meals: [
+        {
+          meal_type: 'lunch',
+          estimated_calories_kcal: 600,
+          estimated_protein_g: null,
+          foods: [{ food_id: 1, food_name: '밥', quantity: 1 }],
+        },
+      ],
+    },
+    request,
+  )
+  assert.equal(missing.meals[0].totals.proteinG, null)
+  const missingText = text(
+    html(
+      createElement(
+        ResultView,
+        resultProps({ status: 'ready', result: missing }),
+      ),
+    ),
+  )
+  assert.match(missingText, /목표 대비 100 kcal 부족/)
+  assert.match(missingText, /단백질 정보 없음/)
 })

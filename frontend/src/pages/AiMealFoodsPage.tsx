@@ -1,7 +1,11 @@
 import { useMemo } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import type { MealPlanRequest } from '../ai/meal/mealPlanContract.ts'
-import { redirectStep, STEP_PATH, suggestedSelectedCalories } from '../ai/meal/mealPlanFlow.ts'
+import {
+  redirectStep,
+  STEP_PATH,
+  suggestedSelectedCalories,
+} from '../ai/meal/mealPlanFlow.ts'
 import { useMealPlanFlow } from '../ai/meal/mealPlanFlowContext.ts'
 import { PATH_AI_MEAL_PLAN } from '../ai/meal/mealPlanPaths.ts'
 import { useFlowTomorrow } from '../ai/meal/useFlowTomorrow.ts'
@@ -40,7 +44,10 @@ function FoodsStep({ goal, devSearch }: { goal: MealGoal; devSearch: string }) {
   }
   return (
     <MealPlanFoodsView
-      targetCalories={flow.targetCalories ?? String(suggestedSelectedCalories(goal.kcal, selection.meals.length))}
+      targetCalories={
+        flow.targetCalories ??
+        String(suggestedSelectedCalories(goal.kcal, selection.meals.length))
+      }
       onTargetCaloriesChange={flow.setTargetCalories}
       selection={selection}
       candidates={candidates}

@@ -1,6 +1,9 @@
 import type {
-  MealPlanCandidateCount, MealPlanRequest, MealPlanResult,
-  MealPlanSource, MealPlanTargets,
+  MealPlanCandidateCount,
+  MealPlanRequest,
+  MealPlanResult,
+  MealPlanSource,
+  MealPlanTargets,
 } from './mealPlanContract.ts'
 import type { MealType } from '../../food/mealModel.ts'
 
@@ -10,8 +13,12 @@ const isMeal = (v: unknown): v is MealType =>
 const numberOrNull = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null
 
-export function parseDietRecommendation(raw: unknown, request: MealPlanRequest): MealPlanResult | null {
-  if (!raw || typeof raw !== 'object') throw new Error('식단 추천 응답이 올바르지 않습니다.')
+export function parseDietRecommendation(
+  raw: unknown,
+  request: MealPlanRequest,
+): MealPlanResult | null {
+  if (!raw || typeof raw !== 'object')
+    throw new Error('식단 추천 응답이 올바르지 않습니다.')
   const data = raw as Record<string, unknown>
   if (data.status !== 'generated' || !Array.isArray(data.meals)) {
     throw new Error('식단 추천 결과가 누락됐습니다.')
@@ -23,38 +30,73 @@ export function parseDietRecommendation(raw: unknown, request: MealPlanRequest):
     const items = meal.foods.flatMap((rawFood: unknown, index: number) => {
       if (!rawFood || typeof rawFood !== 'object') return []
       const food = rawFood as Record<string, unknown>
-      if (!Number.isSafeInteger(food.food_id) || !(Number(food.food_id) > 0) ||
-          typeof food.food_name !== 'string') return []
-      const nutrients = food.nutrients && typeof food.nutrients === 'object'
-        ? food.nutrients as Record<string, unknown> : null
-      return [{
-        foodId: String(food.food_id),
-        foodName: food.food_name,
-        quantity: numberOrNull(food.quantity),
-        unit: '인분',
-        nutrients: nutrients ? {
-          kcal: numberOrNull(nutrients.calories_kcal),
-          carbG: numberOrNull(nutrients.carbohydrate_g),
-          proteinG: numberOrNull(nutrients.protein_g),
-          fatG: numberOrNull(nutrients.fat_g),
-        } : null,
-        allergenNotes: null,
-        reason: index === 0 && typeof meal.reason === 'string' ? meal.reason : null,
-      }]
+      if (
+        !Number.isSafeInteger(food.food_id) ||
+        !(Number(food.food_id) > 0) ||
+        typeof food.food_name !== 'string' ||
+        !food.food_name.trim()
+      )
+        return []
+      const nutrients =
+        food.nutrients && typeof food.nutrients === 'object'
+          ? (food.nutrients as Record<string, unknown>)
+          : null
+      return [
+        {
+          foodId: String(food.food_id),
+          foodName: food.food_name,
+          quantity: numberOrNull(food.quantity),
+          unit: '인분',
+          nutrients: nutrients
+            ? {
+                kcal: numberOrNull(nutrients.calories_kcal),
+                carbG: numberOrNull(nutrients.carbohydrate_g),
+                proteinG: numberOrNull(nutrients.protein_g),
+                fatG: numberOrNull(nutrients.fat_g),
+              }
+            : null,
+          allergenNotes: null,
+          reason:
+            index === 0 && typeof meal.reason === 'string' ? meal.reason : null,
+        },
+      ]
     })
-    return [{
-      meal: meal.meal_type,
-      target: null, // FastAPI는 끼니별 목표를 반환하지 않습니다.
-      items,
-      totals: {
-        kcal: numberOrNull(meal.estimated_calories_kcal),
-        carbG: null, proteinG: null, fatG: null,
+    return [
+      {
+        meal: meal.meal_type,
+        target: {
+          kcal:
+            numberOrNull(data.target_calories_kcal) ??
+            request.targetCaloriesKcal ??
+            null,
+          carbG: null,
+          proteinG: null,
+          fatG: null,
+        },
+        warnings: Array.isArray(data.warnings)
+          ? data.warnings.filter(
+              (warning): warning is string =>
+                typeof warning === 'string' && warning.trim().length > 0,
+            )
+          : [],
+        items,
+        totals: {
+          kcal: numberOrNull(meal.estimated_calories_kcal),
+          carbG: numberOrNull(meal.estimated_carbohydrate_g),
+          proteinG: numberOrNull(meal.estimated_protein_g),
+          fatG: numberOrNull(meal.estimated_fat_g),
+        },
       },
-    }]
+    ]
   })
-  if (meals.length === 0) return null
+  if (meals.length === 0 || meals.some((meal) => meal.items.length === 0))
+    return null
   // FastAPI는 저장된 계획 ID를 제공하지 않으므로 표시 전용 임시 ID를 씁니다.
-  return { requestId: `local-${Date.now()}`, targetDate: request.targetDate, meals }
+  return {
+    requestId: `local-${Date.now()}`,
+    targetDate: request.targetDate,
+    meals,
+  }
 }
 
 export function createLocalMealPlanSource(): MealPlanSource {
@@ -70,7 +112,12 @@ export function createLocalMealPlanSource(): MealPlanSource {
     },
     async requestPlan(request, signal) {
       const kcal = request.targetCaloriesKcal
-      if (typeof kcal !== 'number' || !Number.isInteger(kcal) || kcal < 1 || kcal > 8000) {
+      if (
+        typeof kcal !== 'number' ||
+        !Number.isInteger(kcal) ||
+        kcal < 1 ||
+        kcal > 8000
+      ) {
         throw new Error('끼니당 목표 열량을 1~8000kcal로 입력해 주세요.')
       }
       if (request.meals.length === 0) {
@@ -83,8 +130,12 @@ export function createLocalMealPlanSource(): MealPlanSource {
         .filter((id) => Number.isSafeInteger(id) && id > 0)
       const preferences = [
         request.foodType ? `선호 식품 구분: ${request.foodType}` : null,
-        request.foodKinds.length ? `선호 음식 종류: ${request.foodKinds.join(', ')}` : null,
-      ].filter(Boolean).join('; ')
+        request.foodKinds.length
+          ? `선호 음식 종류: ${request.foodKinds.join(', ')}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join('; ')
 
       // FastAPI의 목표 열량은 전체 일일 합산이 아니라 *해당 추천 요청*의 목표입니다.
       // 아침/점심/저녁을 한 번에 요청하지 않고 끼니마다 한 번씩 호출해야
@@ -107,17 +158,26 @@ export function createLocalMealPlanSource(): MealPlanSource {
           }),
           signal,
         })
-        if (!response.ok) throw new Error(`${meal} 식단 추천 요청 실패 (${response.status})`)
-        const parsed = parseDietRecommendation(await response.json() as unknown, {
-          ...request,
-          meals: [meal],
-        })
-        if (!parsed || parsed.meals.length !== 1 || parsed.meals[0].meal !== meal) {
+        if (!response.ok)
+          throw new Error(`${meal} 식단 추천 요청 실패 (${response.status})`)
+        const parsed = parseDietRecommendation(
+          (await response.json()) as unknown,
+          {
+            ...request,
+            meals: [meal],
+          },
+        )
+        if (!parsed) return null
+        if (parsed.meals.length !== 1 || parsed.meals[0].meal !== meal) {
           throw new Error(`${meal} 식단 추천 결과가 올바르지 않습니다.`)
         }
         meals.push(parsed.meals[0])
       }
-      return { requestId: `local-${Date.now()}`, targetDate: request.targetDate, meals }
+      return {
+        requestId: `local-${Date.now()}`,
+        targetDate: request.targetDate,
+        meals,
+      }
     },
   }
 }

@@ -149,7 +149,8 @@ export default function MealPlanFoodsView({
     candidates.status === 'ready' && candidates.value.count === 0
   const touched = hasAnyCondition(conditions)
   const kcal = Number(targetCalories)
-  const invalidCalories = onTargetCaloriesChange !== undefined &&
+  const invalidCalories =
+    onTargetCaloriesChange !== undefined &&
     (!Number.isInteger(kcal) || kcal < 1 || kcal > 8000)
   const blocked = noCandidates || invalidCalories
   const nextBlockedId = 'plan-foods-blocked'
@@ -171,7 +172,10 @@ export default function MealPlanFoodsView({
 
       {onTargetCaloriesChange !== undefined ? (
         <section className={mealCard} data-ai-target-calories="">
-          <label htmlFor="ai-target-kcal" className="block text-body font-semibold text-content">
+          <label
+            htmlFor="ai-target-kcal"
+            className="block text-body font-semibold text-content"
+          >
             끼니당 목표 열량 (kcal)
           </label>
           <input
@@ -187,7 +191,8 @@ export default function MealPlanFoodsView({
             className="mt-2 w-full rounded-control border border-line bg-surface px-3 py-3 text-body text-content"
           />
           <p className="mt-2 text-support text-muted">
-            선택한 각 끼니에 이 열량을 각각 적용해요. 아침·점심·저녁을 고르고 700을 입력하면 각 끼니를 700kcal로 추천해요.
+            선택한 각 끼니에 이 열량을 각각 적용해요. 아침·점심·저녁을 고르고
+            700을 입력하면 각 끼니를 700kcal로 추천해요.
           </p>
           {invalidCalories ? (
             <p role="alert" className="mt-1 text-support text-danger">
@@ -287,7 +292,9 @@ export default function MealPlanFoodsView({
           <summary
             className={`flex min-h-12 cursor-pointer flex-wrap items-center justify-between gap-x-3 rounded-control border border-line px-4 py-2 text-body ${mealFocusRing}`}
           >
-            <span className="font-semibold text-content">빼고 싶은 음식 종류</span>
+            <span className="font-semibold text-content">
+              빼고 싶은 음식 종류
+            </span>
             <span className="text-support font-normal text-muted">
               {conditions.excludedFoodGroups?.length ?? 0}개 선택
             </span>
@@ -298,11 +305,13 @@ export default function MealPlanFoodsView({
             />
           </summary>
           <p className="mt-2 text-support leading-relaxed font-normal text-muted">
-            닭고기·커피처럼 넓게 선택할 수 있어요. 메뉴 이름에 해당 재료나 종류가
-            표시된 후보를 추천 대상에서 제외합니다.
+            닭고기·커피처럼 넓게 선택할 수 있어요. 메뉴 이름에 해당 재료나
+            종류가 표시된 후보를 추천 대상에서 제외합니다.
           </p>
           <fieldset className="mt-2 min-w-0">
-            <legend className="sr-only">빼고 싶은 음식 종류(여러 개 선택)</legend>
+            <legend className="sr-only">
+              빼고 싶은 음식 종류(여러 개 선택)
+            </legend>
             <div className="grid grid-cols-1 gap-2 min-[18rem]:grid-cols-2">
               {EXCLUDED_FOOD_GROUPS.map(({ id, label }) => (
                 <Choice
@@ -316,7 +325,10 @@ export default function MealPlanFoodsView({
               ))}
             </div>
           </fieldset>
-          <p role="note" className="mt-3 text-support leading-relaxed font-normal text-muted">
+          <p
+            role="note"
+            className="mt-3 text-support leading-relaxed font-normal text-muted"
+          >
             주의: 메뉴 이름 기반 기호 필터입니다. 육수·소스·숨은 원재료까지
             확인할 수 없으므로 알레르기 안전성을 보장하지 않습니다.
           </p>
@@ -378,8 +390,8 @@ export default function MealPlanFoodsView({
           </p>
         ) : null}
         <p className="text-support leading-relaxed font-normal text-muted">
-          추천 생성 시 입력한 목표 열량과 끼니를 AI 서버로 전송합니다.
-          결과는 미리보기이며 저장되지 않습니다.
+          추천 생성 시 입력한 목표 열량과 끼니를 AI 서버로 전송합니다. 결과는
+          미리보기이며 저장되지 않습니다.
         </p>
         <Link
           to={`${PATH_AI_MEAL_MEALS}${devSearch}`}

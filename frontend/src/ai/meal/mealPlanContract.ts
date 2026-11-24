@@ -72,6 +72,8 @@ export interface MealPlanMealResult {
   items: readonly MealPlanItem[]
   /** 서버가 계산한 끼니 합계. 화면이 항목을 더해 만들지 않는다. */
   totals: MealPlanNutrients | null
+  /** 해당 끼니 요청에 대한 서버 경고. */
+  warnings?: readonly string[]
 }
 
 export interface MealPlanResult {
@@ -144,7 +146,11 @@ export async function runPlanRequest(
   if (source === null) return { status: 'unavailable' }
   try {
     const result = await source.requestPlan(request, signal)
-    if (result === null || result.meals.length === 0) {
+    if (
+      result === null ||
+      result.meals.length === 0 ||
+      result.meals.some((meal) => meal.items.length === 0)
+    ) {
       return { status: 'empty' }
     }
     return { status: 'ready', result }
