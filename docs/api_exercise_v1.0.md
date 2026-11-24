@@ -84,7 +84,7 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 | Method | URL | 권한 | 비고 |
 |---|---|---|---|
 | POST | /api/v1/workout-routines | 회원 | 201. 같은 `requestId` 재전송이면 200 |
-| GET | /api/v1/workout-routines | 비회원 가능 | 내 루틴 + public. `items` 없음 |
+| GET | /api/v1/workout-routines | 비회원 가능(`mine=true`는 회원만) | 내 루틴 + public. 기본은 `items` 없음(`includeItems=true`면 포함). 옵션은 아래 "목록 옵션" |
 | GET | /api/v1/workout-routines/{routineId} | 비회원 가능 | private은 소유자만, shared·public은 누구나 |
 | PATCH | /api/v1/workout-routines/{routineId} | 소유자 | `expectedRevision` 선택 |
 | DELETE | /api/v1/workout-routines/{routineId}?expectedRevision= | 소유자 | 운동 기록은 남고 루틴 연결만 해제. `expectedRevision` 선택 |
@@ -107,6 +107,13 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 - `routineName`, `items`(1~100개), `exerciseId`는 생성 시 필수다.
 - `items`가 100개, 항목의 `sets`가 200개를 넘으면 그 자리에서 읽기를 멈추고 400이다. 아주 큰 목록을 보내도 서버가 전부 메모리에 올리지 않는다.
 - `sequenceNumber`는 `items` 순서대로 서버가 1부터 부여한다.
+
+**목록 옵션** (2026-11-25 추가, 둘 다 기본 `false`라 지금 응답은 그대로다)
+
+- `mine=true`: 내 루틴만 준다. 다른 회원의 공개 루틴은 빠지고, 최근에 저장하거나 수정한 순서(`updatedAt` 내림차순, 같으면 `routineId` 내림차순)다. 로그인이 필요하다(비회원은 401 `LOGIN_REQUIRED`, 만료된 토큰은 401 `TOKEN_EXPIRED`). `updatedAt`은 초 단위라 같은 초에 저장된 루틴은 `routineId` 순서로 정해서 페이지를 넘겨도 순서가 흔들리지 않는다. 기본 목록은 지금처럼 `routineId` 내림차순이다.
+- `includeItems=true`: 목록의 각 루틴에 상세 조회와 같은 `items`를 넣는다. 프론트 루틴 목록이 "운동 3개 · 6세트"를 보여 주려고 루틴마다 상세를 따로 부르지 않게 하려는 옵션이다. 항목은 한 페이지 단위로 묶어서 읽으므로 루틴 수만큼 쿼리가 늘지 않는다. `revision`·`requestId`가 주인에게만 나오는 규칙은 같다.
+- `true`·`false`가 아닌 값(예: `mine=maybe`)은 400 `INVALID_REQUEST`다.
+- 예: `GET /api/v1/workout-routines?mine=true&includeItems=true&size=100`
 
 **항목은 두 가지 모양 중 하나로 보낸다** (2026-11-24 추가)
 
