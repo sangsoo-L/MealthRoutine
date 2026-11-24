@@ -7,13 +7,17 @@
 --   2) 같은 id인데 이름이 다른 운동을 즐겨찾기·루틴 항목·운동 기록·운동 추천이 참조한다. 덮어쓰면 그 참조가 다른 운동을 가리키게 된다.
 --      (예: 예전 시드의 1번 푸시업을 즐겨찾기한 회원에게 1번 밴드 로우가 보인다.)
 -- 막혔을 때는 바로 위에 막힌 운동 목록이 출력된다. 지킬 데이터가 없으면 docker compose down -v 후 docker compose up -d로 DB를 새로 만든다.
+--   지킬 데이터가 있으면 출력된 운동을 가리키는 즐겨찾기·루틴 항목·운동 기록·운동 추천을 정리(삭제하거나 새 운동 id로 바꿈)한 뒤 다시 실행한다.
 -- 참조되지 않는 운동은 이름이 달라도 덮어쓴다(가리키는 데이터가 없어 바뀌는 참조가 없다).
+-- 확인과 적용 사이에는 잠금이 없으므로 서버(앱)를 멈춘 상태에서 실행한다.
 SET NAMES utf8mb4;
+-- 확인을 끝내기 전에는 막힌 것으로 둔다(같은 세션에서 전에 실행한 값이 남아 있어도 열린 상태로 넘어가지 않게).
+SET @seed_blocked = 1;
 
 -- 1) 시드의 id와 이름
 DROP TEMPORARY TABLE IF EXISTS seed_exercise_names;
 CREATE TEMPORARY TABLE seed_exercise_names (exercise_id BIGINT NOT NULL PRIMARY KEY, name VARCHAR(160) NOT NULL)
-  DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
+  DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_bin;
 INSERT INTO seed_exercise_names (exercise_id, name) VALUES
 (1, '밴드 로우'),
 (2, '원암 덤벨 로우'),
@@ -121,7 +125,7 @@ INSERT INTO seed_exercise_names (exercise_id, name) VALUES
 (104, '폼롤러 스노 엔젤'),
 (105, '마사지볼 발바닥 이완');
 
--- 2) 적용하면 안 되는 운동(위 설명의 1·2). 이름은 대소문자·공백까지 그대로 비교한다.
+-- 2) 적용하면 안 되는 운동(위 설명의 1·2). 이름은 utf8mb4_0900_bin으로 비교해 대소문자와 끝 공백까지 다르면 다른 이름으로 본다.
 DROP TEMPORARY TABLE IF EXISTS seed_exercise_conflicts;
 CREATE TEMPORARY TABLE seed_exercise_conflicts AS
 SELECT e.exercise_id, e.name AS current_name, s.name AS seed_name,
@@ -129,7 +133,7 @@ SELECT e.exercise_id, e.name AS current_name, s.name AS seed_name,
   FROM exercises e
   LEFT JOIN seed_exercise_names s ON s.exercise_id = e.exercise_id
  WHERE s.exercise_id IS NULL
-    OR (e.name COLLATE utf8mb4_bin <> s.name
+    OR (e.name COLLATE utf8mb4_0900_bin <> s.name
         AND (EXISTS (SELECT 1 FROM preference_exercises r WHERE r.exercise_id = e.exercise_id)
          OR EXISTS (SELECT 1 FROM exercise_routine_items r WHERE r.exercise_id = e.exercise_id)
          OR EXISTS (SELECT 1 FROM workout_session_exercises r WHERE r.exercise_id = e.exercise_id)
@@ -137,13 +141,13 @@ SELECT e.exercise_id, e.name AS current_name, s.name AS seed_name,
 SELECT * FROM seed_exercise_conflicts ORDER BY exercise_id;
 SET @seed_blocked = (SELECT COUNT(*) FROM seed_exercise_conflicts);
 
--- 3) 막아야 하면 일부러 오류를 내서 멈춘다. 오류가 나도 계속 실행하는 도구에서도 아래 INSERT는 @seed_blocked = 0일 때만 행을 넣는다.
-SET @seed_guard = IF(@seed_blocked > 0, 'SELECT 1 FROM `seed_blocked__existing_exercises_conflict__see_rows_above`', 'DO 0');
+-- 3) 막아야 하면 일부러 오류를 내서 멈춘다. 오류가 나도 계속 실행하는 도구에서도 아래 INSERT는 막힌 운동이 없을 때만 행을 넣는다.
+SET @seed_guard = IF(@seed_blocked IS NULL OR @seed_blocked > 0, 'SELECT 1 FROM `seed_blocked__existing_exercises_conflict__see_rows_above`', 'DO 0');
 PREPARE seed_guard FROM @seed_guard;
 EXECUTE seed_guard;
 DEALLOCATE PREPARE seed_guard;
 
--- 4) 운동 105개. 같은 id가 있으면 내용을 덮어쓴다(created_at은 처음 값을 둔다).
+-- 4) 운동 105개. 같은 id가 있으면 내용을 덮어쓴다. 막힌 운동 표가 없거나(확인 단계가 실패함) 행이 있으면 아무것도 넣지 않는다.
 INSERT INTO exercises (exercise_id, name, instructions, difficulty, exercise_type, exercise_equipment, description, cautions, source_url, default_record_mode, allowed_record_modes, created_at, updated_at)
 SELECT * FROM (VALUES
 ROW(1, '밴드 로우', '등 근육과 견갑골 주변 근육을 사용하는 당기기 운동입니다.', 'beginner', '등', '밴드', '바닥에 앉아 무릎을 약간 굽히고 밴드를 양발에 걸칩니다. 허리를 곧게 세우고 팔꿈치를 몸통 옆으로 당긴 뒤 천천히 돌아갑니다.', '밴드가 발에서 빠지지 않도록 확인하고 어깨를 으쓱하거나 허리를 젖히지 마세요.', NULL, 'reps', '["reps"]', '2026-11-12 09:00:00', '2026-11-12 15:00:00'),
@@ -252,8 +256,8 @@ ROW(103, '폼롤러 흉추 신전', '폼롤러를 지지점으로 사용해 등 
 ROW(104, '폼롤러 스노 엔젤', '폼롤러 위에 길게 누워 팔을 움직이며 가슴과 어깨를 여는 가동성 운동입니다.', 'beginner', '스트레칭', '폼롤러', '머리부터 골반까지 지지할 수 있는 긴 폼롤러를 등뼈 방향으로 두고 눕습니다. 발을 넓게 두어 균형을 잡고 양팔을 옆으로 벌려 머리 위 방향으로 천천히 이동했다가 돌아옵니다.', '짧은 폼롤러로 머리가 지지되지 않으면 수행하지 마세요. 팔을 바닥에 억지로 누르지 마세요.', NULL, 'reps', '["reps"]', '2026-11-12 09:00:00', '2026-11-12 15:00:00'),
 ROW(105, '마사지볼 발바닥 이완', '마사지볼을 발바닥 아래에서 굴리는 자가 이완 동작입니다.', 'beginner', '스트레칭', '마사지볼', '안정된 의자에 앉아 한쪽 발바닥 아래에 마사지볼을 둡니다. 발로 가볍게 눌러 발바닥의 근육 구간을 천천히 굴린 뒤 반대 발도 수행합니다.', '단단한 공에 체중을 과하게 싣지 말고 통증이 있는 발뒤꿈치를 직접 강하게 누르지 마세요.', NULL, 'time', '["time"]', '2026-11-12 09:00:00', '2026-11-12 15:00:00')
 ) AS new (exercise_id, name, instructions, difficulty, exercise_type, exercise_equipment, description, cautions, source_url, default_record_mode, allowed_record_modes, created_at, updated_at)
-WHERE @seed_blocked = 0
-ON DUPLICATE KEY UPDATE name = new.name, instructions = new.instructions, difficulty = new.difficulty, exercise_type = new.exercise_type, exercise_equipment = new.exercise_equipment, description = new.description, cautions = new.cautions, source_url = new.source_url, default_record_mode = new.default_record_mode, allowed_record_modes = new.allowed_record_modes, updated_at = new.updated_at;
+WHERE @seed_blocked = 0 AND NOT EXISTS (SELECT 1 FROM seed_exercise_conflicts)
+ON DUPLICATE KEY UPDATE name = new.name, instructions = new.instructions, difficulty = new.difficulty, exercise_type = new.exercise_type, exercise_equipment = new.exercise_equipment, description = new.description, cautions = new.cautions, source_url = new.source_url, default_record_mode = new.default_record_mode, allowed_record_modes = new.allowed_record_modes, created_at = new.created_at, updated_at = new.updated_at;
 
 DROP TEMPORARY TABLE seed_exercise_conflicts;
 DROP TEMPORARY TABLE seed_exercise_names;

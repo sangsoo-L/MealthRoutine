@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -130,7 +132,9 @@ class ExerciseCatalogTests {
 
     @Test
     void seedLoadsWithTheFrontendIdsAndCanBeRunAgain() throws Exception {
-        assertThat(countExercises()).isZero(); // the test DB keeps no exercises between tests
+        assertThat(countExercises())
+                .as("mealthroutine_test should hold no exercises between tests (leftover rows from a crashed run?)")
+                .isZero();
         runSeed(false);
         runSeed(false); // a second run updates the same rows instead of adding new ones
 
@@ -183,6 +187,48 @@ class ExerciseCatalogTests {
                 .andExpect(jsonPath("$.data.exercises[0].exerciseName").value("푸시업"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"preference_exercises", "exercise_routine_items", "workout_session_exercises",
+        "exercise_recommendations"})
+    void eachKindOfReferenceAloneBlocksTheSeed(String table) {
+        insertOldPushUp();
+        referenceExerciseOne(table);
+
+        assertThatThrownBy(() -> runSeed(false)).isInstanceOf(ScriptStatementFailedException.class);
+        runSeed(true);
+        assertThat(countExercises()).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select e.name from " + table + " r join exercises e"
+                + " on e.exercise_id = r.exercise_id", String.class)).isEqualTo("푸시업");
+    }
+
+    @Test
+    void seedRunsAgainWhenTheReferencedExerciseKeepsItsName() {
+        // After the seed, members favorite and record seed exercises; running the seed again must not be blocked.
+        runSeed(false);
+        jdbcTemplate.update("insert into users (user_id, username, is_agreed_term) values (3302, 'new', true)");
+        jdbcTemplate.update("insert into preference_exercises (exercise_id, user_id) values (5, 3302)");
+        jdbcTemplate.update("insert into workout_sessions (workout_session_id, user_id, started_at, status)"
+                + " values (3302, 3302, '2026-01-10 10:00:00', 'completed')");
+        jdbcTemplate.update("insert into workout_session_exercises (workout_session_id, exercise_id) values (3302, 36)");
+
+        runSeed(false);
+        assertThat(countExercises()).isEqualTo(105);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"프론 y 레이즈", "프론 Y 레이즈 "})
+    void aNameDifferingOnlyInCaseOrTrailingSpaceCountsAsAnotherName(String oldName) {
+        // Seed id 36 is "프론 Y 레이즈". A referenced row whose name differs only by case or a trailing space is not
+        // proven to be the same exercise, so the seed stops (the safe side) instead of rewriting it.
+        jdbcTemplate.update("insert into exercises (exercise_id, name) values (36, ?)", oldName);
+        jdbcTemplate.update("insert into users (user_id, username, is_agreed_term) values (3303, 'case', true)");
+        jdbcTemplate.update("insert into preference_exercises (exercise_id, user_id) values (36, 3303)");
+
+        assertThatThrownBy(() -> runSeed(false)).isInstanceOf(ScriptStatementFailedException.class);
+        assertThat(jdbcTemplate.queryForObject("select name from exercises where exercise_id = 36", String.class))
+                .isEqualTo(oldName);
+    }
+
     @Test
     void oldExerciseNobodyUsesIsReplaced() throws Exception {
         insertOldPushUp();
@@ -190,6 +236,9 @@ class ExerciseCatalogTests {
         assertThat(countExercises()).isEqualTo(105);
         assertThat(jdbcTemplate.queryForObject("select name from exercises where exercise_id = 1", String.class))
                 .isEqualTo("밴드 로우");
+        // The replaced row takes the seed's dates too, so it does not look updated before it was created.
+        assertThat(jdbcTemplate.queryForObject("select created_at <= updated_at from exercises where exercise_id = 1",
+                Boolean.class)).isTrue();
     }
 
     @Test
@@ -202,9 +251,56 @@ class ExerciseCatalogTests {
         assertThat(countExercises()).isEqualTo(1);
     }
 
+    @Test
+    void unknownDefaultRecordModeIsSentAsNullInsteadOfFailing() throws Exception {
+        // Under a loose sql_mode MySQL stores an unknown ENUM value as ''. The same happens to a code added to the
+        // ENUM before the backend knows it. Either way the exercise is still served, without record modes.
+        String sqlMode = jdbcTemplate.queryForObject("select @@SESSION.sql_mode", String.class);
+        try {
+            jdbcTemplate.execute("set session sql_mode = ''");
+            jdbcTemplate.update(INSERT, 3501L, "모르는 기본 방식", "distance", "[\"reps\"]");
+        } finally {
+            jdbcTemplate.update("set session sql_mode = ?", sqlMode);
+        }
+        assertThat(jdbcTemplate.queryForObject("select default_record_mode from exercises where exercise_id = 3501",
+                String.class)).isEmpty();
+        expectNoRecordModes(3501L);
+        mockMvc.perform(get("/api/v1/exercises").param("keyword", "모르는 기본 방식"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].defaultRecordMode").value(nullValue()));
+    }
+
     private void insertOldPushUp() {
         jdbcTemplate.update("insert into exercises (exercise_id, name, difficulty, exercise_type, exercise_equipment)"
                 + " values (1, '푸시업', 'beginner', '가슴', 'body')");
+    }
+
+    /** One row in the given table that points at exercise 1, with the rows it needs. */
+    private void referenceExerciseOne(String table) {
+        jdbcTemplate.update("insert into users (user_id, username, is_agreed_term) values (3304, 'ref', true)");
+        switch (table) {
+            case "preference_exercises" ->
+                jdbcTemplate.update("insert into preference_exercises (exercise_id, user_id) values (1, 3304)");
+            case "exercise_routine_items" -> {
+                jdbcTemplate.update("insert into exercise_routines (routine_id, owner_user_id, routine_name)"
+                        + " values (3304, 3304, '예전 루틴')");
+                jdbcTemplate.update("insert into exercise_routine_items (exercise_id, routine_id, sequence_number,"
+                        + " target_sets) values (1, 3304, 1, 3)");
+            }
+            case "workout_session_exercises" -> {
+                jdbcTemplate.update("insert into workout_sessions (workout_session_id, user_id, started_at, status)"
+                        + " values (3304, 3304, '2026-01-10 10:00:00', 'completed')");
+                jdbcTemplate.update("insert into workout_session_exercises (workout_session_id, exercise_id)"
+                        + " values (3304, 1)");
+            }
+            case "exercise_recommendations" -> {
+                jdbcTemplate.update("insert into health_measurements (measurement_id, user_id, measured_at)"
+                        + " values (3304, 3304, '2026-01-10 09:00:00')");
+                jdbcTemplate.update("insert into exercise_recommendations (exercise_recommendation_id, measurement_id,"
+                        + " exercise_id, exercise_min) values (3304, 3304, 1, 30)");
+            }
+            default -> throw new IllegalArgumentException(table);
+        }
     }
 
     private int countExercises() {

@@ -73,5 +73,15 @@ public enum CatalogRecordMode {
         public DbConverter() {
             super(CatalogRecordMode.class);
         }
+
+        /**
+         * An unknown value (an empty string stored under a loose sql_mode, or a code added to the ENUM before this
+         * class knows it) reads as null, so the exercise is sent without record modes instead of failing every
+         * request that includes it. Same rule as readAllowed.
+         */
+        @Override
+        public CatalogRecordMode convertToEntityAttribute(String dbData) {
+            return dbData == null ? null : fromCode(dbData);
+        }
     }
 }

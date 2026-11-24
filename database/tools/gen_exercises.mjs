@@ -2,8 +2,8 @@
 // 실행: node database/tools/gen_exercises.mjs          SQL 파일을 다시 만든다
 //       node database/tools/gen_exercises.mjs --check  SQL 파일이 JSON과 같은지만 확인한다(다르면 종료 코드 1)
 //
-// 프론트와 서버가 같은 운동 id를 쓰도록 exercise_id를 JSON 값 그대로 넣는다. 결과 SQL은 INSERT ... ON DUPLICATE KEY UPDATE라
-// 이미 운동이 들어 있는 DB에 다시 실행해도 같은 id의 행을 JSON 내용으로 덮어쓸 뿐 중복 행을 만들지 않는다.
+// 프론트와 서버가 같은 운동 id를 쓰도록 exercise_id를 JSON 값 그대로 넣는다. 결과 SQL은 같은 id가 있으면 JSON 내용으로 덮어써서
+// 다시 실행해도 중복 행을 만들지 않는다. 단 기존 운동의 참조가 다른 운동을 가리키게 되는 DB에는 적용을 막는다(결과 SQL 머리 주석 참고).
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -116,7 +116,8 @@ const columns = [
   'created_at',
   'updated_at',
 ]
-const updates = columns.filter((c) => c !== 'exercise_id' && c !== 'created_at')
+// created_at도 JSON 값으로 맞춘다. 참조되지 않는 예전 운동을 새 운동으로 덮어쓸 때 예전 생성 시각이 남지 않게 한다.
+const updates = columns.filter((c) => c !== 'exercise_id')
 
 // 운동을 가리키는 테이블(schema/001_create_tables.sql의 exercises FK). 여기 있는 참조가 다른 운동으로 바뀌지 않게 시드 적용 전에 확인한다.
 const REFERENCING_TABLES = [
@@ -139,17 +140,21 @@ const output = [
   '--   2) 같은 id인데 이름이 다른 운동을 즐겨찾기·루틴 항목·운동 기록·운동 추천이 참조한다. 덮어쓰면 그 참조가 다른 운동을 가리키게 된다.',
   '--      (예: 예전 시드의 1번 푸시업을 즐겨찾기한 회원에게 1번 밴드 로우가 보인다.)',
   '-- 막혔을 때는 바로 위에 막힌 운동 목록이 출력된다. 지킬 데이터가 없으면 docker compose down -v 후 docker compose up -d로 DB를 새로 만든다.',
+  '--   지킬 데이터가 있으면 출력된 운동을 가리키는 즐겨찾기·루틴 항목·운동 기록·운동 추천을 정리(삭제하거나 새 운동 id로 바꿈)한 뒤 다시 실행한다.',
   '-- 참조되지 않는 운동은 이름이 달라도 덮어쓴다(가리키는 데이터가 없어 바뀌는 참조가 없다).',
+  '-- 확인과 적용 사이에는 잠금이 없으므로 서버(앱)를 멈춘 상태에서 실행한다.',
   'SET NAMES utf8mb4;',
+  '-- 확인을 끝내기 전에는 막힌 것으로 둔다(같은 세션에서 전에 실행한 값이 남아 있어도 열린 상태로 넘어가지 않게).',
+  'SET @seed_blocked = 1;',
   '',
   '-- 1) 시드의 id와 이름',
   'DROP TEMPORARY TABLE IF EXISTS seed_exercise_names;',
   'CREATE TEMPORARY TABLE seed_exercise_names (exercise_id BIGINT NOT NULL PRIMARY KEY, name VARCHAR(160) NOT NULL)',
-  '  DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;',
+  '  DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_bin;',
   'INSERT INTO seed_exercise_names (exercise_id, name) VALUES',
   values.map((v) => `(${sql(v[0])}, ${sql(v[1])})`).join(',\n') + ';',
   '',
-  '-- 2) 적용하면 안 되는 운동(위 설명의 1·2). 이름은 대소문자·공백까지 그대로 비교한다.',
+  '-- 2) 적용하면 안 되는 운동(위 설명의 1·2). 이름은 utf8mb4_0900_bin으로 비교해 대소문자와 끝 공백까지 다르면 다른 이름으로 본다.',
   'DROP TEMPORARY TABLE IF EXISTS seed_exercise_conflicts;',
   'CREATE TEMPORARY TABLE seed_exercise_conflicts AS',
   'SELECT e.exercise_id, e.name AS current_name, s.name AS seed_name,',
@@ -157,23 +162,23 @@ const output = [
   '  FROM exercises e',
   '  LEFT JOIN seed_exercise_names s ON s.exercise_id = e.exercise_id',
   ' WHERE s.exercise_id IS NULL',
-  '    OR (e.name COLLATE utf8mb4_bin <> s.name',
+  '    OR (e.name COLLATE utf8mb4_0900_bin <> s.name',
   `        AND (${referenced}));`,
   'SELECT * FROM seed_exercise_conflicts ORDER BY exercise_id;',
   'SET @seed_blocked = (SELECT COUNT(*) FROM seed_exercise_conflicts);',
   '',
-  '-- 3) 막아야 하면 일부러 오류를 내서 멈춘다. 오류가 나도 계속 실행하는 도구에서도 아래 INSERT는 @seed_blocked = 0일 때만 행을 넣는다.',
-  "SET @seed_guard = IF(@seed_blocked > 0, 'SELECT 1 FROM `seed_blocked__existing_exercises_conflict__see_rows_above`', 'DO 0');",
+  '-- 3) 막아야 하면 일부러 오류를 내서 멈춘다. 오류가 나도 계속 실행하는 도구에서도 아래 INSERT는 막힌 운동이 없을 때만 행을 넣는다.',
+  "SET @seed_guard = IF(@seed_blocked IS NULL OR @seed_blocked > 0, 'SELECT 1 FROM `seed_blocked__existing_exercises_conflict__see_rows_above`', 'DO 0');",
   'PREPARE seed_guard FROM @seed_guard;',
   'EXECUTE seed_guard;',
   'DEALLOCATE PREPARE seed_guard;',
   '',
-  '-- 4) 운동 105개. 같은 id가 있으면 내용을 덮어쓴다(created_at은 처음 값을 둔다).',
+  '-- 4) 운동 105개. 같은 id가 있으면 내용을 덮어쓴다. 막힌 운동 표가 없거나(확인 단계가 실패함) 행이 있으면 아무것도 넣지 않는다.',
   `INSERT INTO exercises (${columns.join(', ')})`,
   'SELECT * FROM (VALUES',
   values.map((v) => `ROW(${v.map(sql).join(', ')})`).join(',\n'),
   `) AS new (${columns.join(', ')})`,
-  'WHERE @seed_blocked = 0',
+  'WHERE @seed_blocked = 0 AND NOT EXISTS (SELECT 1 FROM seed_exercise_conflicts)',
   `ON DUPLICATE KEY UPDATE ${updates.map((c) => `${c} = new.${c}`).join(', ')};`,
   '',
   'DROP TEMPORARY TABLE seed_exercise_conflicts;',
