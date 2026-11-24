@@ -23,7 +23,12 @@ async function scenario(name, fn) {
     if (h.problems.length)
       console.log('  (console problems)', h.problems.slice(0, 4))
   } catch (e) {
-    check(h, `${name}: 예외 없이 진행`, false, e.message)
+    const at = await h
+      .ev(
+        `location.pathname + ' / ' + (document.querySelector('main h1')?.innerText ?? '')`,
+      )
+      .catch(() => '화면 확인 실패')
+    check(h, `${name}: 예외 없이 진행`, false, `${e.message} (현재: ${at})`)
   } finally {
     h.close()
   }
@@ -35,7 +40,7 @@ const mockEmptyPlan = (h) =>
   const original = window.fetch.bind(window);
   window.__planRequests = [];
   window.fetch = (url, options) => {
-    if (!String(url).endsWith('/internal/ai/diet-recommendations')) return original(url, options);
+    if (!String(url).endsWith('/internal/ai/diet-recommendations') || options?.method?.toUpperCase() !== 'POST') return original(url, options);
     const body = JSON.parse(options.body); window.__planRequests.push(body);
     return Promise.resolve(new Response(JSON.stringify({status:'generated', meals:[]}), {headers:{'Content-Type':'application/json'}}));
   };
@@ -45,8 +50,10 @@ const mockEmptyPlan = (h) =>
 const mockNoCandidates = (h) =>
   h.ev(`(()=>{
   const original = window.fetch.bind(window);
+  window.__noCandidatesPosts = 0;
   window.fetch = (url, options) => {
-    if (!String(url).endsWith('/internal/ai/diet-recommendations')) return original(url, options);
+    if (!String(url).endsWith('/internal/ai/diet-recommendations') || options?.method?.toUpperCase() !== 'POST') return original(url, options);
+    window.__noCandidatesPosts++;
     return Promise.resolve(new Response(JSON.stringify({detail:'선택한 음식 종류와 제외 조건에 맞는 추천 후보가 없습니다. 조건을 변경해 주세요.'}), {status:422, headers:{'Content-Type':'application/json'}}));
   };
 })()`)
@@ -64,12 +71,54 @@ const clickLabel = (h, startsWith) =>
     `(()=>{const l=[...document.querySelectorAll('main label')].find(x=>x.innerText.trim().startsWith(${JSON.stringify(startsWith)}));if(!l)return false;l.click();return true})()`,
   )
 
+// URL만 바뀐 시점의 이전 화면을 누르지 않도록 경로·화면 표식을 함께 확인한다.
+const goalPath = '/ai/meal'
+const mealsPath = '/ai/meal/meals'
+const foodsPath = '/ai/meal/foods'
+const planPath = '/ai/meal/plan'
+const markers = {
+  [goalPath]: '[data-plan-goal]',
+  [mealsPath]: '[data-plan-meal]',
+  [foodsPath]: '[data-plan-conditions]',
+  [planPath]: '[data-plan-state=empty]',
+}
+const readyExpr = (path) =>
+  `location.pathname === ${JSON.stringify(path)} && !!document.querySelector(${JSON.stringify('main ' + markers[path])})`
+const waitStep = (h, path) => mustUntil(h, readyExpr(path))
+
+// 대기와 클릭을 같은 브라우저 평가에서 수행해 이전 단계 버튼 클릭을 방지한다.
+async function clickStep(h, path, selector, label) {
+  await mustUntil(
+    h,
+    `(()=>{
+      if (!(${readyExpr(path)})) return false;
+      const button = [...document.querySelectorAll(${JSON.stringify('main ' + selector)})].find(b =>
+        b.innerText.trim() === ${JSON.stringify(label)} &&
+        !b.matches(':disabled') && b.getAttribute('aria-disabled') !== 'true' &&
+        b.getClientRects().length > 0 && getComputedStyle(b).visibility === 'visible');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`,
+  )
+}
+const chooseMeals = (h) =>
+  clickStep(h, goalPath, 'a[data-plan-next]', '추천받을 끼니 선택하기')
+const chooseFoods = (h) =>
+  clickStep(h, mealsPath, 'button[data-plan-next]', '음식 조건 선택하기')
+const generatePlan = (h) =>
+  clickStep(h, foodsPath, 'button[data-plan-next]', '추천 생성')
+const backStep = (h, path) => clickStep(h, path, 'a[data-plan-back]', '이전')
+const waitSelected = (h, meals) =>
+  mustUntil(
+    h,
+    `(${readyExpr(mealsPath)}) && ${JSON.stringify(meals)}.every(meal => document.querySelector('[data-plan-meal="'+meal+'"]')?.getAttribute('aria-pressed') === 'true')`,
+  )
 async function toMeals(h) {
   await h.go(`/ai/meal${DEV}`, 300)
-  await mustUntil(h, `!!document.querySelector('[data-plan-goal]')`, 60)
-  await mustClick(h, '추천받을 끼니 선택하기')
-  await waitPath(h, '^/ai/meal/meals$')
-  await mustUntil(h, `!!document.querySelector('[data-plan-meal]')`, 60)
+  await waitStep(h, goalPath)
+  await chooseMeals(h)
+  await waitStep(h, mealsPath)
 }
 
 // ── A. 비회원 ─────────────────────────────────────────────────────────────────
@@ -204,12 +253,13 @@ await scenario('no-candidates-422', async (h) => {
   await h.login('free')
   await toMeals(h)
   await h.ev(`document.querySelector('[data-plan-meal-all]').click()`)
-  await h.ev(`document.querySelector('[data-plan-next]').click()`)
-  await waitPath(h, '^/ai/meal/foods$')
+  await waitSelected(h, ['breakfast', 'lunch', 'dinner'])
+  await chooseFoods(h)
+  await waitStep(h, foodsPath)
   await mockNoCandidates(h)
-  await h.ev(`document.querySelector('[data-plan-next]').click()`)
-  await waitPath(h, '^/ai/meal/plan$')
-  await mustUntil(h, `!!document.querySelector('[data-plan-state=empty]')`, 80)
+  await generatePlan(h)
+  await mustUntil(h, `window.__noCandidatesPosts > 0`, 80)
+  await waitStep(h, planPath)
   check(
     h,
     '422. 추천 후보 없음은 음식 종류 및 제외 조건 변경을 안내한다',
@@ -218,8 +268,8 @@ await scenario('no-candidates-422', async (h) => {
         `!!document.querySelector('[data-plan-change]') && !document.querySelector('[data-plan-result],[data-plan-state=error]')`,
       )),
   )
-  await mustClick(h, '조건 변경하기')
-  await waitPath(h, '^/ai/meal/foods$')
+  await clickStep(h, planPath, '[data-plan-change]', '조건 변경하기')
+  await waitStep(h, foodsPath)
   check(h, '422. 조건 변경 화면으로 이동할 수 있다', true)
 })
 
@@ -292,9 +342,9 @@ await scenario('D-flow', async (h) => {
     (await pressed(h, '[data-plan-meal=dinner]')) === 'true',
   )
   await h.ev(`document.querySelector('[data-plan-meal=breakfast]').click()`)
-  await h.ev(`document.querySelector('[data-plan-next]').click()`)
-  await waitPath(h, '^/ai/meal/foods$')
-  await mustUntil(h, `!!document.querySelector('[data-plan-conditions]')`, 60)
+  await waitSelected(h, ['breakfast', 'dinner'])
+  await chooseFoods(h)
+  await waitStep(h, foodsPath)
   check(
     h,
     'D12. I03-2로 이동하고 선택 끼니 요약 유지',
@@ -349,9 +399,9 @@ await scenario('D-flow', async (h) => {
   await clickLabel(h, '식재료')
   // 추천 생성 → I03-3: 실제 어댑터에 빈 응답을 반환한다.
   await mockEmptyPlan(h)
-  await h.ev(`document.querySelector('[data-plan-next]').click()`)
-  await waitPath(h, '^/ai/meal/plan$')
-  await mustUntil(h, `!!document.querySelector('[data-plan-state=empty]')`, 80)
+  await generatePlan(h)
+  await mustUntil(h, `window.__planRequests?.length > 0`)
+  await waitStep(h, planPath)
   const t = await mainText(h)
   check(
     h,
@@ -387,17 +437,16 @@ await scenario('D-flow', async (h) => {
     ),
   )
   // 이전으로 돌아가도 조건 유지
-  await mustClick(h, '^이전$')
-  await waitPath(h, '^/ai/meal/foods$')
+  await backStep(h, planPath)
+  await waitStep(h, foodsPath)
   check(
     h,
     'D23. I03-2로 돌아와도 식품 구분·끼니 유지',
     /식품 구분\s+식재료/.test(await mainText(h)) &&
       /아침 · 저녁/.test(await mainText(h)),
   )
-  await mustClick(h, '^이전$')
-  await waitPath(h, '^/ai/meal/meals$')
-  await mustUntil(h, `!!document.querySelector('[data-plan-meal]')`, 60)
+  await backStep(h, foodsPath)
+  await waitStep(h, mealsPath)
   check(
     h,
     'D24. I03-1로 돌아와도 끼니 선택 유지',
@@ -407,11 +456,9 @@ await scenario('D-flow', async (h) => {
   )
   // 브라우저 뒤로 가기
   await h.ev(`history.back()`)
-  await waitPath(h, '^/ai/meal/foods$')
-  await mustUntil(h, `!!document.querySelector('[data-plan-conditions]')`, 60)
+  await waitStep(h, foodsPath)
   await h.ev(`history.forward()`)
-  await waitPath(h, '^/ai/meal/meals$')
-  await mustUntil(h, `!!document.querySelector('[data-plan-meal]')`, 60)
+  await waitStep(h, mealsPath)
   check(
     h,
     'D25. 브라우저 뒤로·앞으로 가기에서도 선택 유지',
@@ -439,11 +486,11 @@ await scenario('E-reload-direct', async (h) => {
   await h.login('free')
   await toMeals(h)
   await h.ev(`document.querySelector('[data-plan-meal=lunch]').click()`)
-  await h.ev(`document.querySelector('[data-plan-next]').click()`)
-  await waitPath(h, '^/ai/meal/foods$')
+  await waitSelected(h, ['lunch'])
+  await chooseFoods(h)
+  await waitStep(h, foodsPath)
   await h.go(`/ai/meal/foods${DEV}`, 300) // 새로고침과 같다(메모리 상태가 사라진다)
-  await waitPath(h, '^/ai/meal/meals$')
-  await mustUntil(h, `!!document.querySelector('[data-plan-meal]')`, 60)
+  await waitStep(h, mealsPath)
   check(
     h,
     'E1. 새로고침하면 I03-2는 앞 입력이 없어 I03-1로 돌아간다',
@@ -533,28 +580,24 @@ await scenario('H-responsive', async (h) => {
     await h.vp(w, 844)
     const results = []
     await h.go(`/ai/meal${DEV}`, 300)
-    await mustUntil(h, `!!document.querySelector('[data-plan-goal]')`, 60)
+    await waitStep(h, goalPath)
     results.push(['I03', await problems()])
-    await mustClick(h, '추천받을 끼니 선택하기')
-    await waitPath(h, '^/ai/meal/meals$')
-    await mustUntil(h, `!!document.querySelector('[data-plan-meal]')`, 60)
+    await chooseMeals(h)
+    await waitStep(h, mealsPath)
     await h.ev(`document.querySelector('[data-plan-meal-all]').click()`)
+    await waitSelected(h, ['breakfast', 'lunch', 'dinner'])
     results.push(['I03-1', await problems()])
-    await h.ev(`document.querySelector('[data-plan-next]').click()`)
-    await waitPath(h, '^/ai/meal/foods$')
+    await chooseFoods(h)
+    await waitStep(h, foodsPath)
     await h.ev(
       `document.querySelectorAll('main details').forEach(d=>d.open=true)`,
     )
     await clickLabel(h, '식재료')
     results.push(['I03-2', await problems()])
     await mockEmptyPlan(h)
-    await h.ev(`document.querySelector('[data-plan-next]').click()`)
-    await waitPath(h, '^/ai/meal/plan$')
-    await mustUntil(
-      h,
-      `!!document.querySelector('[data-plan-state=empty]')`,
-      80,
-    )
+    await generatePlan(h)
+    await mustUntil(h, `window.__planRequests?.length > 0`)
+    await waitStep(h, planPath)
     results.push(['I03-3', await problems()])
     for (const [id, p] of results) {
       check(
