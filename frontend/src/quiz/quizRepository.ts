@@ -50,7 +50,7 @@ export interface RewardTotals {
 }
 
 export interface QuizRepository {
-  readonly kind: 'local'
+  readonly kind: 'local' | 'server'
   get(localDate: string): Promise<DailyQuiz | null>
   /** 이 계정이 완료한 모든 퀴즈의 문항 id(재출제 방지용). */
   listAnsweredQuestionIds(): Promise<string[]>
