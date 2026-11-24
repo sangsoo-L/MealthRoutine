@@ -3,7 +3,14 @@
 // 기존 PIN 저장소 규칙(5회 잠금·변경·계정 정리)은 pinSettings.test.mjs가 다룬다. 대문자 드라이브(C:\)의 PowerShell에서 실행한다.
 import assert from 'node:assert/strict'
 import { webcrypto } from 'node:crypto'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, beforeEach, test } from 'node:test'
 import { createElement } from 'react'
@@ -11,6 +18,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import { createServer } from 'vite'
 
+// 모드(F4): 이 파일은 개발용 저장소·화면 본문(props)을 직접 불러와 모드와 무관하다. 그래도 개인 .env.development.local의
+// VITE_DEV_AUTH 값이 결과를 바꾸지 않도록 빈 envDir과 VITE_DEV_AUTH 미설정(= 실제 모드)으로 서버를 만든다.
+const envDir = mkdtempSync(join(tmpdir(), 'pin-verify-env-'))
 let server, policy, messages, types, local, bodyMod, display, store, notice
 let scope, VerifyBody, Summary, PinBody
 const T0 = Date.parse('2026-11-21T00:00:00.000Z')
@@ -19,7 +29,9 @@ const OTHER = '246801'
 const BODY_KEY = (owner) => `mealthroutine.dev.mock.body.${owner}`
 
 before(async () => {
+  delete process.env.VITE_DEV_AUTH
   server = await createServer({
+    envDir,
     server: { middlewareMode: true, watch: null, hmr: false, ws: false },
     appType: 'custom',
     logLevel: 'error',
@@ -42,6 +54,7 @@ before(async () => {
 })
 after(async () => {
   await server?.close()
+  rmSync(envDir, { recursive: true, force: true })
 })
 
 let data, clock

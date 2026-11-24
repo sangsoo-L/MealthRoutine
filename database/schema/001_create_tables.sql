@@ -201,7 +201,9 @@ CREATE TABLE `workout_sessions` (
 	`ended_at`	DATETIME	NULL	COMMENT '종료시간',
 	`status`	ENUM('standby','in_progress','completed','interrupted','cancelled')	NOT NULL	DEFAULT 'standby'	COMMENT '기록상태',
 	`feedback_rating`	TINYINT	NULL	COMMENT '운동 후기 (별점 시스템)',
-	`feedback_note`	VARCHAR(1000)	NULL	COMMENT '짧은 후기 메모'
+	`feedback_note`	VARCHAR(1000)	NULL	COMMENT '짧은 후기 메모',
+	`request_id`	VARCHAR(100)	CHARACTER SET utf8mb4 COLLATE utf8mb4_bin	NULL	COMMENT '완료 기록 업로드 요청 식별자(중복 저장 방지, 대소문자 구분)',
+	UNIQUE KEY `UK_SESSION_USER_REQUEST` (`user_id`, `request_id`)
 );
 
 CREATE TABLE `community_comments` (
@@ -248,7 +250,9 @@ CREATE TABLE `workout_session_exercises` (
 	`workout_session_exercises_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`workout_session_id`	BIGINT	NOT NULL,
 	`exercise_id`	BIGINT	NOT NULL	COMMENT '수행한 운동',
-	`exercise_routine_item_id`	BIGINT	NULL	COMMENT '루틴에서 시작한 운동만 연결'
+	`exercise_routine_item_id`	BIGINT	NULL	COMMENT '루틴에서 시작한 운동만 연결',
+	`record_type`	ENUM('reps','weight','time','time_reps','weight_time')	NULL	COMMENT '기록 방식(set_targets와 함께 있거나 함께 없음)',
+	`set_targets`	JSON	NULL	COMMENT '수행 당시 세트별 목표 스냅샷 [{reps,weightKg,targetSeconds}]'
 );
 
 CREATE TABLE `user_profiles` (

@@ -1,11 +1,42 @@
 import { ExerciseGoalError } from '../exercise-goal/exerciseGoalTypes.ts'
+import { PinConnectError } from './pinSource.ts'
 import { PIN_MAX_ATTEMPTS, type PinFieldName } from './pinSettingsPolicy.ts'
 
+/** 모의 모드(개발용 저장소, 5분 잠금)의 잠금 안내. P01(BodyInfoSummary)도 쓴다. */
 export const PIN_LOCKED_MESSAGE =
   '확인이 5회 일치하지 않아 잠시 제한됐어요. 5분 뒤 다시 시도해 주세요.'
 
-/** 저장소 오류를 P11·P12의 안내 문구로 바꾼다. 입력한 번호는 문구에 담지 않는다. */
+/**
+ * 서버 모드의 잠금 안내(F4-D4). 해제 시각을 계산하지 않으므로 "10분 뒤"로 단정하지 않는다
+ * (조회로 알게 된 잠금은 이미 몇 분 지났을 수 있다). 서버 잠금은 10분이다.
+ */
+export const PIN_SERVER_LOCKED_MESSAGE =
+  '확인이 5회 일치하지 않아 잠겼어요. 잠금이 풀리면 다시 시도할 수 있어요(최대 10분).'
+
+/** 잠금 오류인지(문구 대신 화면이 받은 잠금 안내를 쓰기 위해). 모의·서버 모두 `locked` 코드다. */
+export function isPinLockedError(error: unknown): boolean {
+  return error instanceof ExerciseGoalError && error.code === 'locked'
+}
+
+/** 서버 모드 전용 실패의 안내. 결과 미확인은 기존 `save` 문구("바뀌지 않았어요")를 쓰지 않는다(R4). */
+function connectMessage(error: PinConnectError): string {
+  switch (error.code) {
+    case 'connection':
+      return '서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.'
+    case 'uncertainRegister':
+      return '등록 결과를 확인하지 못했어요. 화면을 다시 열어 현재 상태를 확인해 주세요.'
+    case 'uncertainChange':
+      return '변경 결과를 확인하지 못했어요. 화면을 다시 열어 현재 상태를 확인해 주세요.'
+    case 'rateLimited':
+      return error.retryAfter === undefined
+        ? '요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.'
+        : `요청이 너무 많아요. ${error.retryAfter}초 뒤 다시 시도해 주세요.`
+  }
+}
+
+/** 저장소·서버 오류를 P11·P12의 안내 문구로 바꾼다. 입력한 번호는 문구에 담지 않는다. */
 export function pinSettingsMessage(error: unknown): string {
+  if (error instanceof PinConnectError) return connectMessage(error)
   if (!(error instanceof ExerciseGoalError))
     return '처리하지 못했어요. 잠시 후 다시 시도해 주세요.'
   switch (error.code) {

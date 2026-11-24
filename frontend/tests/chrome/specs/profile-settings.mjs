@@ -1,6 +1,6 @@
 // [chrome 회귀] P02 프로필과 개인정보 설정:
 //   비회원 차단 · P09 → P02 진입과 "이전" · 계정 정보(닉네임·이메일) 표시와 계정 전환 시 분리 · 서버 연결 전 표시("연결 전" 항목·비활성 저장·사진 변경) ·
-//   닉네임 검증(2~20자) · Enter·버튼으로 저장되지 않음 · 입력이 저장소·URL에 남지 않음 · 마이페이지·비밀번호 변경 링크 · 키보드 순서 ·
+//   닉네임 검증(가입과 같은 규칙: 한글 포함 2~8자, 그 밖 영문·숫자 2~16자) · Enter·버튼으로 저장되지 않음 · 입력이 저장소·URL에 남지 않음 · 마이페이지·비밀번호 변경 링크 · 키보드 순서 ·
 //   390/320/195/160px·320px 글자 200%·하단 탭 겹침
 // 실행: frontend에서 `npm run dev -- --port 5199 --strictPort`를 띄운 뒤 `node tests/chrome/run.mjs --only profile-settings`. 상세: tests/chrome/README.md
 // 프로필 API가 없어 서버 연결 전 상태만 브라우저에서 볼 수 있다(저장 성공·서버 값 표시는 가장하지 않는다. 값 표시 상태는 profileSettings.test.mjs가 화면 단위로 확인한다).
@@ -46,6 +46,8 @@ const blur = (h, sel) =>
   h.ev(
     `(()=>{const el=document.querySelector(${q(sel)});el.blur();el.dispatchEvent(new FocusEvent('focusout',{bubbles:true,relatedTarget:null}))})()`,
   )
+/** 닉네임 규칙 오류 문구(가입과 같은 규칙 NAME-2, F3-D2). */
+const NICKNAME_ERROR = /한글이 있으면 2~8자, 없으면 2~16자/
 const alertTexts = (h) =>
   h.ev(
     `[...document.querySelectorAll('form [role=alert]')].map(e=>e.innerText.trim()).filter(Boolean)`,
@@ -166,27 +168,39 @@ await scenario('C-content-and-form', async (h) => {
   check(
     h,
     'C6. 1자는 오류 안내가 뜨고 aria-invalid·aria-describedby로 연결된다',
-    (await alertTexts(h)).some((t) => /2자 이상 20자 이하/.test(t)) &&
+    (await alertTexts(h)).some((t) => NICKNAME_ERROR.test(t)) &&
       (await h.ev(
         `(()=>{const i=document.querySelector('[name=profileNickname]');const id=document.querySelector('form [role=alert] p')?.id;return i.getAttribute('aria-invalid')==='true'&&!!id&&i.getAttribute('aria-describedby').split(' ').includes(id)})()`,
       )),
   )
-  await setText(h, '[name=profileNickname]', '가'.repeat(21))
+  await setText(h, '[name=profileNickname]', '가'.repeat(9))
   check(
     h,
-    'C7. 21자도 오류다',
-    (await alertTexts(h)).some((t) => /2자 이상 20자 이하/.test(t)),
+    'C7. 한글이 있으면 9자도 오류다(최대 8자)',
+    (await alertTexts(h)).some((t) => NICKNAME_ERROR.test(t)),
+  )
+  await setText(h, '[name=profileNickname]', 'a'.repeat(17))
+  check(
+    h,
+    'C7-2. 영문·숫자만이면 17자도 오류다(최대 16자)',
+    (await alertTexts(h)).some((t) => NICKNAME_ERROR.test(t)),
   )
   await setText(h, '[name=profileNickname]', '  ')
   check(
     h,
     'C8. 공백만 입력해도 오류다',
-    (await alertTexts(h)).some((t) => /2자 이상 20자 이하/.test(t)),
+    (await alertTexts(h)).some((t) => NICKNAME_ERROR.test(t)),
+  )
+  await setText(h, '[name=profileNickname]', '닉네임!')
+  check(
+    h,
+    'C8-2. 기호가 들어가면 오류다',
+    (await alertTexts(h)).some((t) => NICKNAME_ERROR.test(t)),
   )
   await setText(h, '[name=profileNickname]', '새닉네임')
   check(
     h,
-    'C9. 2~20자를 입력하면 오류가 사라진다',
+    'C9. 규칙에 맞는 닉네임을 입력하면 오류가 사라진다',
     (await alertTexts(h)).length === 0 &&
       (await h.ev(
         `document.querySelector('[name=profileNickname]').getAttribute('aria-invalid')`,
