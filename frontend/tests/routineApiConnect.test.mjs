@@ -150,14 +150,12 @@ test('생성: 같은 요청을 다시 보내 서버가 created: false로 답하�
   const { request } = fakeRequest(({ body }) =>
     serverRoutine({ created: false }, body),
   )
-  const result = await api
-    .createApiRoutineRepository(OWNER, request)
-    .create({
-      requestId: 'rt-1',
-      name: '등·코어',
-      description: '',
-      draft: draft(),
-    })
+  const result = await api.createApiRoutineRepository(OWNER, request).create({
+    requestId: 'rt-1',
+    name: '등·코어',
+    description: '',
+    draft: draft(),
+  })
   assert.equal(result.created, false)
 })
 
@@ -219,14 +217,12 @@ test('생성: 같은 요청 id에 다른 내용이면 requestConflict, 없는 �
       throw error
     })
     await assert.rejects(
-      api
-        .createApiRoutineRepository(OWNER, request)
-        .create({
-          requestId: 'rt-1',
-          name: '등·코어',
-          description: '',
-          draft: draft(),
-        }),
+      api.createApiRoutineRepository(OWNER, request).create({
+        requestId: 'rt-1',
+        name: '등·코어',
+        description: '',
+        draft: draft(),
+      }),
       check,
       error.errorCode,
     )
@@ -248,7 +244,18 @@ test('목록: 내 루틴만 항목까지 한 번에 받고, 예전 방식 항목
             },
           ],
         }),
-        serverRoutine({ routineId: 41, routineName: '가'.repeat(51) }),
+        // 다른 클라이언트가 만든 루틴: 이름이 앱 규칙(50자)보다 길고 requestId가 없어도 읽는다.
+        serverRoutine({
+          routineId: 41,
+          routineName: '가'.repeat(51),
+          description: '소'.repeat(201),
+          requestId: null,
+        }),
+        // 세트 값이 맞지 않는 루틴(시간 방식인데 횟수만 있음)은 여전히 뺀다.
+        serverRoutine({
+          routineId: 38,
+          items: [{ ...serverRoutine().items[1], sets: [{ reps: 3 }] }],
+        }),
       ],
       totalPages: 2,
     },
@@ -280,9 +287,165 @@ test('목록: 내 루틴만 항목까지 한 번에 받고, 예전 방식 항목
   )
   assert.deepEqual(
     result.items.map((r) => r.id),
-    ['43', '40'],
+    ['43', '41', '40'],
   )
   assert.equal(result.skippedCount, 2)
+  const longName = result.items[1]
+  assert.equal(longName.name, '가'.repeat(51))
+  assert.equal(longName.description, '소'.repeat(201))
+  assert.equal(longName.requestId, 'server-41')
+})
+
+test('목록: 페이지 상한(20페이지)을 넘는 루틴은 받지 않고 제외한 수로 알린다', async () => {
+  const { request, calls } = fakeRequest(() => ({
+    content: [serverRoutine()],
+    totalPages: 30,
+    totalElements: 2050,
+  }))
+  const result = await api.createApiRoutineRepository(OWNER, request).list()
+  assert.equal(calls.length, 20)
+  assert.equal(result.items.length, 20)
+  assert.equal(result.skippedCount, 50)
+})
+
+test('저장: 서버가 더 좁게 막는 값(운동 100개 초과, 횟수 999 초과, 중량 999kg 초과·소수 셋째 자리)은 보내지 않는다', async () => {
+  const { request, calls } = fakeRequest(() => {
+    throw new Error('보내면 안 된다')
+  })
+  const repository = api.createApiRoutineRepository(OWNER, request)
+  // 같은 운동을 반복하면 초안 규칙(중복 운동)에 먼저 걸리므로 운동마다 다른 id를 쓴다.
+  const tooMany = Array.from({ length: 101 }, (_, i) => ({
+    ...ITEMS[1],
+    exerciseId: String(1000 + i),
+  }))
+  const drafts = [
+    draft(tooMany),
+    draft([{ ...ITEMS[0], sets: [{ reps: 1000 }] }]),
+    draft([{ ...ITEMS[0], sets: [{ reps: 10, weightKg: 1000 }] }]),
+    draft([{ ...ITEMS[0], sets: [{ reps: 10, weightKg: 22.555 }] }]),
+  ]
+  for (const value of drafts) {
+    await assert.rejects(
+      repository.create({
+        requestId: 'rt-1',
+        name: '이름',
+        description: '',
+        draft: value,
+      }),
+      storeError('validation', 'invalidDraft'),
+    )
+    await assert.rejects(
+      repository.update('41', {
+        expectedRevision: 1,
+        name: '이름',
+        description: '',
+        draft: value,
+      }),
+      storeError('validation', 'invalidDraft'),
+    )
+  }
+  assert.equal(calls.length, 0)
+  // 경계값과 소수 둘째 자리(부동소수 오차 포함)는 보낸다.
+  const ok = fakeRequest(({ body }) => serverRoutine({ created: true }, body))
+  await api.createApiRoutineRepository(OWNER, ok.request).create({
+    requestId: 'rt-1',
+    name: '이름',
+    description: '',
+    draft: draft([
+      {
+        ...ITEMS[0],
+        sets: [
+          { reps: 999, weightKg: 999 },
+          { reps: 1, weightKg: 0.07 },
+        ],
+      },
+    ]),
+  })
+  assert.equal(ok.calls.length, 1)
+})
+
+test('수정·삭제: 잘못된 id나 정수가 아닌 revision은 요청하지 않고, 서버 응답이 다른 회원 루틴이면 손상으로 본다', async () => {
+  const { request, calls } = fakeRequest(() => {
+    throw new Error('보내면 안 된다')
+  })
+  const repository = api.createApiRoutineRepository(OWNER, request)
+  const input = {
+    expectedRevision: 1,
+    name: '이름',
+    description: '',
+    draft: draft(),
+  }
+  await assert.rejects(
+    repository.update('../41', input),
+    storeError('notFound'),
+  )
+  await assert.rejects(
+    repository.update('41', { ...input, expectedRevision: 1.5 }),
+    storeError('validation'),
+  )
+  await assert.rejects(
+    repository.delete('41', { expectedRevision: 1.5 }),
+    storeError('validation'),
+  )
+  assert.equal(calls.length, 0)
+
+  const foreign = fakeRequest(({ body }) =>
+    serverRoutine({ ownerUserId: 8 }, body),
+  )
+  await assert.rejects(
+    api.createApiRoutineRepository(OWNER, foreign.request).update('41', input),
+    storeError('error', 'corruptRecord'),
+  )
+  const stale = fakeRequest(() => {
+    throw fail(409, 'REVISION_MISMATCH', { currentRevision: 4 })
+  })
+  await assert.rejects(
+    api
+      .createApiRoutineRepository(OWNER, stale.request)
+      .delete('41', { expectedRevision: 3 }),
+    (error) =>
+      storeError('conflict', 'revisionMismatch')(error) &&
+      error.currentRevision === 4,
+  )
+  const lost = fakeRequest(() => {
+    throw fail(409, 'SET_TARGETS_WOULD_BE_LOST')
+  })
+  await assert.rejects(
+    api.createApiRoutineRepository(OWNER, lost.request).update('41', input),
+    (error) =>
+      error.name === 'WorkoutStoreError' &&
+      error.reason === 'conflict' &&
+      error.code === undefined,
+  )
+  const denied = fakeRequest(() => {
+    throw fail(403, 'ACCESS_DENIED')
+  })
+  await assert.rejects(
+    api.createApiRoutineRepository(OWNER, denied.request).update('41', input),
+    storeError('notFound'),
+  )
+})
+
+test('서버 시각: 초가 없거나 소수점이 붙은 한국 시각도 UTC로 바꾸고, 시간대가 붙은 값은 받지 않는다', () => {
+  const base = serverRoutine()
+  const minute = api.toRoutine(
+    {
+      ...base,
+      createdAt: '2026-01-10T10:00',
+      updatedAt: '2026-01-10T10:00:59.5',
+    },
+    OWNER,
+  )
+  assert.equal(minute.createdAt, '2026-01-10T01:00:00.000Z')
+  assert.equal(minute.updatedAt, '2026-01-10T01:00:59.500Z')
+  assert.equal(
+    api.toRoutine({ ...base, createdAt: '2026-01-10T10:00:00Z' }, OWNER),
+    null,
+  )
+  assert.equal(
+    api.toRoutine({ ...base, createdAt: '2026-01-10 10:00:00' }, OWNER),
+    null,
+  )
 })
 
 test('상세: 없는 루틴·다른 회원의 루틴은 null, 예전 방식 항목은 손상으로 본다', async () => {

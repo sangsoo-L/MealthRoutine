@@ -5,7 +5,7 @@ import type {
 import { ManagementRow, PendingBadge, SlotError } from './DashboardParts.tsx'
 
 /**
- * W01의 "내 운동 루틴" 행. `to`가 있으면(저장된 루틴을 읽을 수 있는 개발 서버의 실제 모드) 내 운동 루틴(W06)으로 가는 링크를 보인다.
+ * W01의 "내 운동 루틴" 행. `to`가 있으면(루틴 저장소가 있는 상태: 개발 서버의 로컬 저장소, 운영 빌드의 루틴 API) 내 운동 루틴(W06)으로 가는 링크를 보인다.
  * `to`가 없으면(개발용 예시 `?sample=`·저장소가 없는 환경) 링크를 그리지 않는다.
  */
 export default function WorkoutRoutineCard({

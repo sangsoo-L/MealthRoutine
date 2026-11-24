@@ -14,12 +14,13 @@ import { sameListItems } from './workoutModel.ts'
 import type { WorkoutListItem } from './workoutTypes.ts'
 
 /**
- * 운동 루틴(W06~W08)의 저장 모델과 순수 함수(저장소·React를 부르지 않는다). 개발 서버의 IndexedDB `workoutRoutines`에 저장하는 값의 모양이다.
+ * 운동 루틴(W06~W08)의 저장 모델과 순수 함수(저장소·React를 부르지 않는다). 개발 서버의 IndexedDB `workoutRoutines`에 저장하는 값의 모양이고,
+ * 운영 빌드는 루틴 API 응답을 이 모양으로 바꿔 쓴다(api/apiRoutineRepository.ts).
  *
  * - 루틴은 날짜에 묶이지 않은 "다시 쓰는 구성"이다. 운동 줄은 운동 목록(WorkoutList)과 같은 모양(WorkoutListItem)이라 세트 목표 계산·표시를 그대로 쓴다.
  * - 오늘의 운동 초안(W02)과 별개의 데이터다. 루틴으로 운동을 준비하면 초안으로 복사해 갈 뿐(routineToDraft) 루틴 자체는 바뀌지 않는다.
  * - createdAt은 최초 저장 시각이고 수정해도 유지한다. updatedAt은 수정할 때마다 갱신하며 revision이 1씩 오른다(화면명세 W06).
- * - 백엔드 DTO가 아니며 API 계약이 아니다(운동 루틴 API의 요청·응답 구조는 미확정).
+ * - 백엔드 DTO가 아니며 API 계약이 아니다. 루틴 API(docs/api_exercise_v1.0.md "운동 루틴")와의 변환은 api/apiRoutineRepository.ts가 맡는다.
  */
 
 /** 저장 레코드의 스키마 버전. 모양을 바꾸면 올리고 exercise/local/exerciseDb.ts의 업그레이드에서 옮긴다. */
