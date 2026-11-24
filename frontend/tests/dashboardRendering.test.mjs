@@ -141,7 +141,7 @@ test('기본 화면은 제목·오늘·주간·최근·관리 순서이며 완�
   assert.doesNotMatch(html, /운동 완료한 날/)
 })
 
-test('저장소가 없으면(운영 빌드) 주간·최근은 준비 중 안내를 한 번만 통합해 보인다', () => {
+test('저장소가 없으면(계정 없음) 주간·최근은 준비 중 안내를 한 번만 통합해 보인다', () => {
   const unavailable = { status: 'unavailable' }
   const html = renderToStaticMarkup(
     createElement(

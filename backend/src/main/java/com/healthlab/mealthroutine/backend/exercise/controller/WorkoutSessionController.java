@@ -5,10 +5,12 @@ import com.healthlab.mealthroutine.backend.common.LoginUser;
 import com.healthlab.mealthroutine.backend.common.PageResponse;
 import com.healthlab.mealthroutine.backend.exercise.domain.SessionStatus;
 import com.healthlab.mealthroutine.backend.exercise.dto.SessionCreateRequest;
+import com.healthlab.mealthroutine.backend.exercise.dto.SessionRecordRequest;
 import com.healthlab.mealthroutine.backend.exercise.dto.SessionResponse;
 import com.healthlab.mealthroutine.backend.exercise.dto.SessionStatusRequest;
 import com.healthlab.mealthroutine.backend.exercise.dto.SessionSummaryResponse;
 import com.healthlab.mealthroutine.backend.exercise.dto.SessionUpdateRequest;
+import com.healthlab.mealthroutine.backend.exercise.service.WorkoutRecordService;
 import com.healthlab.mealthroutine.backend.exercise.service.WorkoutSessionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -17,6 +19,7 @@ import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,12 +36,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkoutSessionController {
 
     private final WorkoutSessionService sessionService;
+    private final WorkoutRecordService recordService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SessionResponse> create(@LoginUser Long userId,
             @Valid @RequestBody SessionCreateRequest request) {
         return ApiResponse.ok(sessionService.create(userId, request));
+    }
+
+    /** One finished workout. 201 when saved now, 200 when it repeats an earlier upload with the same requestId. */
+    @PostMapping("/records")
+    public ResponseEntity<ApiResponse<SessionResponse>> saveRecord(@LoginUser Long userId,
+            @Valid @RequestBody SessionRecordRequest request) {
+        WorkoutRecordService.SaveResult result = recordService.save(userId, request);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(ApiResponse.ok(result.session()));
     }
 
     @GetMapping
@@ -48,8 +61,9 @@ public class WorkoutSessionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ApiResponse.ok(sessionService.search(userId, status, from, to, page, size));
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "false") boolean includeExercises) {
+        return ApiResponse.ok(sessionService.search(userId, status, from, to, page, size, includeExercises));
     }
 
     @GetMapping("/summary")

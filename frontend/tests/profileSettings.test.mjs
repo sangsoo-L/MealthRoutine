@@ -1,18 +1,23 @@
-// P02 프로필과 개인정보 설정: 닉네임 검증(2~20자) · 항목별 표시 규칙(연결 전/정보 없음/값, 휴대폰 마스킹) · 조회·저장 상태 · 화면 구성 ·
-// P09 연결 · 라우트(회원 전용) · 계정 분리와 신체 정보 비침범을 확인한다. 프로필 API가 없어 저장 성공을 가장하는 테스트는 없다.
+// P02 프로필과 개인정보 설정: 닉네임 검증(가입과 같은 NAME-2, F3-D2) · 항목별 표시 규칙(연결 전/정보 없음/값, 휴대폰 마스킹) ·
+// 조회·저장 상태 · 화면 구성 · P09 연결 · 라우트(회원 전용) · 계정 분리와 신체 정보 비침범을 확인한다.
 // 서버 값이 필요한 경우(값 표시·저장)는 시험용 가짜 source/데이터를 화면에 직접 넘겨 "서버가 준 값만 보여 준다"는 규칙을 확인한다
-// (실제 개인정보가 아니다). 대문자 드라이브(C:\)의 PowerShell에서 실행한다.
+// (실제 개인정보가 아니다). 실제 서버 연결(F3)·모드 분기·늦은 응답은 tests/profileConnect.test.mjs가 확인한다.
+// 개인 .env.development.local의 VITE_DEV_AUTH 값이 결과를 바꾸지 않도록 빈 envDir을 쓴다. 대문자 드라이브(C:\)의 PowerShell에서 실행한다.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import { createServer } from 'vite'
 
+const envDir = mkdtempSync(join(tmpdir(), 'profile-env-'))
 let server, prof, View, menu
 before(async () => {
   server = await createServer({
+    envDir,
     server: { middlewareMode: true, watch: null, hmr: false, ws: false },
     appType: 'custom',
     logLevel: 'error',
@@ -27,6 +32,7 @@ before(async () => {
 })
 after(async () => {
   await server?.close()
+  rmSync(envDir, { recursive: true, force: true })
 })
 
 const signal = new AbortController().signal
@@ -54,32 +60,42 @@ const filled = {
 }
 const fakeSource = {
   getProfile: async () => filled,
-  updateNickname: async () => {},
+  updateNickname: async (nickname) => nickname,
 }
 const ready = (data) => ({ status: 'ready', data })
 
 // ── 닉네임·마스킹·표시 규칙 ───────────────────────────────────────────────
-test('닉네임은 앞뒤 공백을 뺀 글자 수가 2~20자여야 하고 그 밖의 규칙을 만들지 않는다', () => {
-  assert.equal(prof.NICKNAME_MIN, 2)
-  assert.equal(prof.NICKNAME_MAX, 20)
-  for (const bad of ['', ' ', 'a', ' a ', 'a'.repeat(21), '가'.repeat(21)])
+test('닉네임은 가입과 같은 서버 규칙(NAME-2)이고 앞뒤 공백을 뺀 값으로 판단·저장한다', () => {
+  for (const bad of [
+    '',
+    ' ',
+    'a',
+    '가',
+    'a b',
+    '닉 네임',
+    '😀😀',
+    'ab!',
+    '가'.repeat(9),
+    'a'.repeat(17),
+  ])
     assert.deepEqual(
       prof.validateNickname(bad),
-      { ok: false, error: 'length' },
+      { ok: false, error: 'invalid' },
       bad,
     )
   assert.deepEqual(prof.validateNickname(' 닉네임 '), {
     ok: true,
     nickname: '닉네임',
   })
-  assert.equal(prof.validateNickname('가나').ok, true)
-  assert.equal(prof.validateNickname('가'.repeat(20)).ok, true)
-  // 안쪽 공백·기호·이모지도 글자 하나로 센다(코드 포인트 기준).
-  assert.equal(prof.validateNickname('a b').nickname, 'a b')
-  assert.equal(prof.validateNickname('😀😀').ok, true)
-  assert.equal(prof.validateNickname('😀'.repeat(20)).ok, true)
-  assert.equal(prof.validateNickname('😀'.repeat(21)).ok, false)
-  assert.match(prof.NICKNAME_ERROR_MESSAGE.length, /2자 이상 20자 이하/)
+  for (const good of ['가나', '가'.repeat(8), 'ab', 'a'.repeat(16), '길동12'])
+    assert.equal(prof.validateNickname(good).ok, true, good)
+  assert.match(
+    prof.NICKNAME_ERROR_MESSAGE.invalid,
+    /한글이 있으면 2~8자, 없으면 2~16자/,
+  )
+  assert.match(prof.NICKNAME_HELP_TEXT, /한글이 있으면 2~8자, 없으면 2~16자/)
+  // 예전 규칙(2~20자) 상수는 남아 있지 않다.
+  assert.equal(prof.NICKNAME_MAX, undefined)
 })
 
 test('휴대폰은 일부만 보이고 짧거나 이상한 값은 전부 가린다', () => {
@@ -155,6 +171,10 @@ test('서버 값은 그대로 보이되 휴대폰은 마스킹하고 나이·성
     prof.profileFieldView(ready({ ...empty, ...patch }), key)
   assert.equal(view({ age: 30 }, 'identity').text, '30세')
   assert.equal(view({ sex: 'male' }, 'identity').text, '남성')
+  // 서버 gender 4종을 모두 표시한다(F3-D4). 만 0세도 나이다.
+  assert.equal(view({ sex: 'other' }, 'identity').text, '기타')
+  assert.equal(view({ sex: 'undisclosed' }, 'identity').text, '밝히지 않음')
+  assert.equal(view({ age: 0 }, 'identity').text, '0세')
   assert.equal(view({ age: -1, sex: null }, 'identity').status, 'empty')
   assert.equal(view({ age: 999 }, 'identity').status, 'empty')
   assert.equal(view({ allergies: [] }, 'allergies').text, '없음')
@@ -163,15 +183,14 @@ test('서버 값은 그대로 보이되 휴대폰은 마스킹하고 나이·성
 })
 
 // ── 연결(source)·상태 ─────────────────────────────────────────────────────
-test('서버 연결은 아직 없다(source는 null)이고 연결이 없으면 조회·저장을 하지 않는다', async () => {
-  assert.equal(prof.createProfileSource(), null)
+test('연결이 없으면(source null) 조회·저장을 하지 않는다', async () => {
   assert.deepEqual(await prof.runGetProfile(null, signal), {
     status: 'unavailable',
   })
   assert.equal(await prof.runUpdateNickname(null, '닉네임', signal), null)
 })
 
-test('조회·저장은 서버가 응답한 때만 성공이고 예외는 실패다', async () => {
+test('조회·저장은 서버가 응답한 때만 성공이고, 저장 결과에는 서버가 저장한 닉네임이 담기며 예외는 실패다', async () => {
   assert.deepEqual(await prof.runGetProfile(fakeSource, signal), {
     status: 'ready',
     data: filled,
@@ -185,11 +204,19 @@ test('조회·저장은 서버가 응답한 때만 성공이고 예외는 실패
     },
   }
   assert.deepEqual(await prof.runGetProfile(bad, signal), { status: 'error' })
-  assert.equal(
-    await prof.runUpdateNickname(fakeSource, '닉네임', signal),
-    'saved',
-  )
-  assert.equal(await prof.runUpdateNickname(bad, '닉네임', signal), 'failed')
+  assert.deepEqual(await prof.runUpdateNickname(fakeSource, '닉네임', signal), {
+    phase: 'saved',
+    nickname: '닉네임',
+  })
+  // 서버가 다른 값으로 저장했다고 답하면 그 값이 결과다(입력값으로 대신하지 않는다).
+  const other = { ...fakeSource, updateNickname: async () => '서버값' }
+  assert.deepEqual(await prof.runUpdateNickname(other, '닉네임', signal), {
+    phase: 'saved',
+    nickname: '서버값',
+  })
+  assert.deepEqual(await prof.runUpdateNickname(bad, '닉네임', signal), {
+    phase: 'failed',
+  })
 })
 
 // ── 화면 ──────────────────────────────────────────────────────────────────
@@ -218,7 +245,11 @@ test('P02 구성: 제목·01 프로필·02 가입 개인정보·03 건강 관리
   assert.match(html, /<label[^>]*for="[^"]*"[^>]*>[^<]*닉네임/)
   assert.match(html, /autoComplete="nickname"/)
   assert.match(html, /aria-required="true"/)
-  assert.match(html, /2~20자로 입력해 주세요/)
+  assert.match(
+    html,
+    /한글·영문·숫자로 입력해 주세요\. 한글이 있으면 2~8자, 없으면 2~16자예요\./,
+  )
+  assert.doesNotMatch(html, /2~20자/)
   assert.match(
     html,
     /data-profile-cancel[^>]*href="\/settings"|href="\/settings"[^>]*data-profile-cancel/,
@@ -290,6 +321,13 @@ test('P02 정상 조회: 서버 값이 읽기 전용으로 보이고 휴대폰�
   assert.match(html, /010-\*\*\*\*-5678/)
   assert.doesNotMatch(html, /1234-5678|010-1234/)
   assert.match(html, /29세 · 여성/)
+  // F3-R2: 항목 이름은 "나이·성별"이다(본인인증으로 확인한 값처럼 보이지 않는다).
+  assert.match(html, /data-profile-row="나이·성별"/)
+  assert.match(html, /<dt[^>]*>나이·성별</)
+  assert.doesNotMatch(
+    html,
+    /data-profile-row="본인인증[^"]*"|<dt[^>]*>본인인증/,
+  )
   assert.match(html, /시험 도로명 1/)
   assert.match(html, /땅콩, 우유/)
   assert.match(html, />동의함</)
@@ -324,7 +362,10 @@ test('P02 닉네임 오류: 안내·aria-invalid·aria-describedby가 연결되�
     state: ready(filled),
     initial: { nickname: 'a', shown: true, phase: 'invalid' },
   })
-  assert.match(html, /닉네임은 2자 이상 20자 이하로 입력해 주세요\./)
+  assert.match(
+    html,
+    /닉네임은 한글·영문·숫자로 입력해 주세요\. 한글이 있으면 2~8자, 없으면 2~16자예요\./,
+  )
   assert.match(html, /aria-invalid="true"/)
   const errorId = html.match(/id="([^"]*-nickname-error)"/)?.[1]
   assert.ok(errorId)
@@ -362,6 +403,37 @@ test('P02 저장 중·실패·완료: 중복 제출을 막고 실패는 입력 �
   assert.match(failed, /저장하지 못했어요/)
   assert.match(failed, /입력한 내용은 그대로 남아 있으니/)
   assert.doesNotMatch(failed, /data-profile-submit[^>]*disabled=""/)
+  const taken = view({
+    ...props,
+    initial: { ...props.initial, phase: 'taken' },
+  })
+  assert.match(taken, /data-profile-save="taken"/)
+  assert.match(taken, /이미 사용 중인 닉네임입니다/)
+  const rejected = view({
+    ...props,
+    initial: { ...props.initial, phase: 'rejected' },
+  })
+  assert.match(rejected, /data-profile-save="rejected"/)
+  assert.match(rejected, /요청을 처리하지 못했어요/)
+  const uncertain = view({
+    ...props,
+    initial: { ...props.initial, phase: 'uncertain' },
+  })
+  assert.match(uncertain, /data-profile-save="uncertain"/)
+  assert.match(uncertain, /저장 결과를 확인하지 못했어요/)
+  assert.doesNotMatch(uncertain, /저장하지 못했어요/)
+  // 저장 중에는 닉네임 입력이 읽기 전용이다(PR #29 P2-01)
+  const nicknameInput = (html) =>
+    html.match(/<input[^>]*name="profileNickname"[^>]*>/)?.[0] ?? ''
+  assert.match(nicknameInput(saving), /readOnly=""/i)
+  assert.doesNotMatch(nicknameInput(failed), /readOnly=""/i)
+  for (const html of [taken, rejected, failed, uncertain])
+    assert.doesNotMatch(html, /닉네임을 저장했어요/)
+  const saved = view({
+    ...props,
+    initial: { ...props.initial, phase: 'saved' },
+  })
+  assert.match(saved, /data-profile-save="saved"[^>]*>닉네임을 저장했어요\./)
   const idle = view(props)
   assert.doesNotMatch(idle, /닉네임을 저장했어요|data-profile-save=/)
   // 서버가 없으면 저장 완료 표시가 나올 경로가 없다(연결 전 화면에는 저장 상태 표시가 없다).
@@ -394,7 +466,7 @@ test('라우트: P02는 승인 경로·회원 전용(AuthGate)·하단 탭 마�
   )
 })
 
-test('P02는 계정별로 분리되고(key) 서버 호출·저장소·신체 정보·PIN 코드를 쓰지 않는다', () => {
+test('P02는 계정별로 분리되고(key) 직접 fetch·저장소·신체 정보·PIN 코드를 쓰지 않는다(서버 호출은 공통 apiRequest로만)', () => {
   const strip = (text) => text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')
   const page = strip(readFileSync('src/pages/ProfileSettingsPage.tsx', 'utf8'))
   // 계정이 바뀌면 key로 새로 시작해 이전 사용자의 입력·조회 상태가 남지 않는다.

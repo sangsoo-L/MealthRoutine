@@ -64,7 +64,7 @@ export function isTargetAllowed(
 }
 
 export type RegisterLookupFailure =
-  /** 저장소를 쓸 수 없다(운영 빌드·IndexedDB 사용 불가). */
+  /** 저장소를 쓸 수 없다(계정 없음·IndexedDB 사용 불가). */
   | 'unavailable'
   /** 조회 중 오류가 났거나 읽을 수 없는 행이 있어 목록·계획이 없다고 단정할 수 없다. */
   | 'unreadable'

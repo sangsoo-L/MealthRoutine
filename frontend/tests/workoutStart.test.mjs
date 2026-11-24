@@ -342,7 +342,7 @@ test('시작 정보 조회 중·실패·손상', () => {
   assert.match(corrupt, /데이터는\s*지우지 않았어요/)
 })
 
-test('저장소가 없으면(운영 빌드) 기존 준비 중 안내를 유지한다', () => {
+test('저장소가 없으면(계정 없음) 기존 준비 중 안내를 유지한다', () => {
   const unavailable = renderToday(
     controls({ status: 'unavailable', decision: null }),
   )

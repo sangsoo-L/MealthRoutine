@@ -4,6 +4,7 @@ import com.healthlab.mealthroutine.backend.exercise.domain.SessionStatus;
 import com.healthlab.mealthroutine.backend.exercise.domain.WorkoutSessionEntity;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -41,6 +42,16 @@ public interface WorkoutSessionRepository extends JpaRepository<WorkoutSessionEn
             """)
     BigDecimal sumVolumeKg(@Param("userId") Long userId, @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
+
+    Optional<WorkoutSessionEntity> findByUserIdAndRequestId(Long userId, String requestId);
+
+    /**
+     * Locks the member's users row (SELECT ... FOR UPDATE) until the transaction ends, so record uploads from one
+     * member run one at a time: the second one waits for the first to commit, then its requestId lookup finds the
+     * first session instead of hitting the UNIQUE key. Same approach as ExerciseRoutineRepository.lockOwner.
+     */
+    @Query(nativeQuery = true, value = "select user_id from users where user_id = :userId for update")
+    Long lockOwner(@Param("userId") Long userId);
 
     interface SessionTotals {
         long getSessionCount();

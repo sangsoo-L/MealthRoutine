@@ -10,6 +10,7 @@ import { parseIsoDate } from '../../weight-log/weightDate.ts'
  *
  * - unavailable: 몸무게 기록 저장소가 없다(운영 빌드·API 연결 전). 기능을 쓸 수 없는 상태이고 실패가 아니다.
  * - hidden: 신체 정보를 조회하지 못해(실패·연결 전) 무엇을 안내할지 알 수 없다. 섹션을 그리지 않는다.
+ *   실제 모드(`protected`, F5-D1)도 여기다: 등록 여부를 모르고 몸무게 기록은 서버에 연결되지 않았다(모의 기록으로 들어가지 않게).
  * - loading / retrying: 불러오는 중 / 사용자가 "다시 확인"으로 요청한 조회가 진행 중(안내를 유지하고 버튼을 막는다).
  * - body-missing: 키 또는 몸무게가 미등록이다. 위 신체 정보 섹션의 기존 입력 기능으로 안내한다(여기서 등록하지 않는다).
  * - error: 몸무게 기록 상태 조회 실패(재시도).
@@ -41,6 +42,9 @@ export function selectWeightLogEntry(args: {
   retrying: boolean
 }): WeightLogEntryView {
   const { body, weight, retrying } = args
+  // 실제 모드(protected)는 몸무게 기록 상태와 상관없이 섹션을 그리지 않는다(F5-C3). 운영 빌드는 몸무게 기록 저장소가 없어
+  // weight가 unavailable이므로, 이 확인이 그보다 먼저여야 "연결 전" 섹션이 남지 않는다.
+  if (body.status === 'protected') return { kind: 'hidden' }
   if (weight.status === 'unavailable') return { kind: 'unavailable' }
   if (body.status === 'error' || body.status === 'unavailable')
     return { kind: 'hidden' }

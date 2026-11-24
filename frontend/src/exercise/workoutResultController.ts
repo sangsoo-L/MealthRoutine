@@ -77,7 +77,7 @@ export type ResultStage = 'savingProgress' | 'completing'
 
 export type ResultLoad =
   | { status: 'loading' }
-  /** 저장소가 없거나(운영 빌드·계정 없음) 이 브라우저에서 쓸 수 없다. */
+  /** 저장소가 없거나(계정 없음) 이 브라우저에서 쓸 수 없다. */
   | { status: 'unavailable' }
   /** sessionId 형식이 올바르지 않다(저장소를 부르지 않았다). */
   | { status: 'invalidSessionId' }
@@ -203,7 +203,7 @@ export type ResultEditOutcome =
   ResultEditResult | { ok: false; reason: 'notReady' | 'locked' }
 
 export interface ResultControllerDeps {
-  /** null이면 저장소가 없는 환경(운영 빌드)이다. */
+  /** null이면 저장소가 없는 상태(계정 없음)다. */
   repository: Pick<
     WorkoutSessionRepository,
     'get' | 'getActive' | 'saveProgress' | 'complete'

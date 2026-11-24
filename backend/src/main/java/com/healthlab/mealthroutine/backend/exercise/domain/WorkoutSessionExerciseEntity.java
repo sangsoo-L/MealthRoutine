@@ -16,6 +16,8 @@ import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "workout_session_exercises")
@@ -39,6 +41,13 @@ public class WorkoutSessionExerciseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "exercise_routine_item_id")
     private ExerciseRoutineItemEntity routineItem;
+
+    /** Null for sessions recorded the old way. Present together with setTargets. */
+    private WorkoutRecordType recordType;
+
+    /** The per-set targets the member planned, as JSON text (SetTargetsJson). The sets below are what was done. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String setTargets;
 
     @OneToMany(mappedBy = "sessionExercise", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("setNumber")
