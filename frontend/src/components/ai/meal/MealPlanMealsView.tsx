@@ -166,8 +166,7 @@ export default function MealPlanMealsView({
             : '추천받을 끼니를 하나 이상 골라 주세요.'}
         </p>
         <p className={`mt-2 ${statusBox}`}>
-          선택한 끼니의 목표 합계와 끼니별 목표량은 서버가 계산해서 줄 값이에요.
-          지금은 연결 전이라 숫자를 보여 드리지 않아요.
+          끼니당 목표 열량은 다음 단계에서 직접 입력할 수 있어요.
         </p>
       </section>
 

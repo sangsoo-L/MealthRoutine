@@ -47,6 +47,8 @@ function Bubble({ children, label }: { children: ReactNode; label: string }) {
 }
 
 function ResultList({ result }: { result: PhotoAnalysisResult }) {
+  const calorieIncomplete =
+    result.calorieIncomplete || result.foods.some((food) => food.kcal === null)
   return (
     <div data-analysis-result="">
       <p className="text-body leading-relaxed font-normal text-content">
@@ -77,13 +79,23 @@ function ResultList({ result }: { result: PhotoAnalysisResult }) {
         data-analysis-total=""
         className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 border-t border-line pt-3 text-body font-semibold text-content"
       >
-        <span>합계</span>
+        <span>{calorieIncomplete ? '확인된 열량 합계' : '합계'}</span>
         <span className="tabular-nums">
           {result.totalKcal === null
             ? '합계를 확인하지 못했어요'
             : `약 ${result.totalKcal}kcal`}
         </span>
       </p>
+      {calorieIncomplete ? (
+        <p
+          role="note"
+          data-analysis-calorie-incomplete=""
+          className="mt-2 text-support leading-relaxed font-normal text-warning"
+        >
+          일부 음식의 열량을 확인하지 못했어요. 표시된 합계는 전체 식사의 열량이
+          아닐 수 있어요.
+        </p>
+      ) : null}
       {result.summary ? (
         <p className="mt-2 text-body leading-relaxed font-normal text-content">
           {result.summary}

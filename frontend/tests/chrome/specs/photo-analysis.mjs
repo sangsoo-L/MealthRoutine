@@ -112,9 +112,9 @@ await scenario('B-unconnected-select', async (h) => {
   const t = await main(h)
   check(
     h,
-    'B1. 연결 전: 제목·안내·올리기 버튼·형식과 용량 표시·사용 안내·촬영 팁',
+    'B1. 연결됨: 제목·안내·올리기 버튼·형식과 용량 표시·사용 안내·촬영 팁',
     /사진으로 식단을 기록해요/.test(t) &&
-      /분석 서버가 아직 연결되지 않았어요/.test(t) &&
+      !/분석 서버가 아직 연결되지 않았어요/.test(t) &&
       /음식 사진 올리기/.test(t) &&
       /JPG · PNG · WEBP · 10MB 이하/.test(t) &&
       /음식 분석에만 사용해요/.test(t) &&
@@ -186,18 +186,16 @@ await scenario('B-unconnected-select', async (h) => {
     'B8. 미리보기 주소는 blob이고 파일명이 저장소·주소·state에 없다',
     /^blob:/.test((await previewSrc(h)) ?? '') && !(await leaked(h, 'lunch')),
   )
-  // 연결 전에는 시작할 수 없다
+  // 연결된 개발 모드에서는 사진 선택 뒤 분석 시작이 가능하다.
   check(
     h,
-    'B9. 사진을 골라도 서버 연결 전이면 시작은 막히고 이유가 바뀐다',
-    (await startDisabled(h)) === 'true' &&
-      /분석 서버가 아직 연결되지 않아 시작할 수 없어요/.test(await main(h)),
+    'B9. 사진을 고르면 분석 시작이 활성화된다',
+    (await startDisabled(h)) === 'false' &&
+      !/분석 서버가 아직 연결되지 않아 시작할 수 없어요/.test(await main(h)),
   )
-  await h.ev(`document.querySelector('[data-photo-start]').click()`)
-  await h.sleep(300)
   check(
     h,
-    'B10. 막힌 분석 시작을 눌러도 이동하지 않는다',
+    'B10. 분석 시작 전에는 업로드 화면에 머문다',
     (await h.path()) === '/ai/meal/photo',
   )
   // 변경: 이전 미리보기 주소는 해제된다
@@ -235,6 +233,32 @@ await scenario('B-unconnected-select', async (h) => {
     'B14. 선택 해제: 올리기 버튼으로 돌아가고 미리보기 주소는 해제된다',
     (await h.has('음식 사진 올리기')) &&
       (await h.ev(`fetch(${JSON.stringify(second)}).then(()=>false,()=>true)`)),
+  )
+  // 실제 어댑터의 multipart 요청과 열량 누락 안내 검증. 외부 전송은 하지 않는다.
+  await attach(h, 'png', 'test.png')
+  await mustUntil(
+    h,
+    `!!document.querySelector('[data-photo-selected] img')`,
+    60,
+  )
+  await h.ev(`(()=>{const original=window.fetch.bind(window);window.fetch=(url, options)=>{
+    if(!String(url).endsWith('/internal/ai/food-analyses'))return original(url,options);
+    window.__photoSent=options.body instanceof FormData && options.body.get('file') instanceof File;
+    return Promise.resolve(new Response(JSON.stringify({foods:[{primary:'국수',estimated_calories_kcal:300},{primary:'반찬'}],estimated_total_calories_kcal:null,calorie_estimate_complete:false}),{headers:{'Content-Type':'application/json'}}));
+  }})()`)
+  await h.ev(`document.querySelector('[data-photo-start]').click()`)
+  await waitPath(h, '^/ai/meal/photo/analysis$')
+  await mustUntil(
+    h,
+    `!!document.querySelector('[data-analysis-calorie-incomplete]')`,
+    80,
+  )
+  check(
+    h,
+    'B15. multipart 요청 및 열량 누락 안내',
+    await h.ev(
+      `window.__photoSent === true && !!document.querySelector('[data-analysis-calorie-incomplete]')`,
+    ),
   )
 })
 

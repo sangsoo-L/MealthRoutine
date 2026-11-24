@@ -40,7 +40,13 @@ const fixed = (value: number | null, unit: string) =>
   value === null ? '정보 없음' : `${value.toLocaleString()}${unit}`
 
 /** 서버가 준 영양 값을 그대로 글자로. 없는 값은 0이 아니라 "정보 없음"이다(합산·환산하지 않는다). */
-function Nutrients({ nutrients }: { nutrients: MealPlanNutrients | null }) {
+function Nutrients({
+  nutrients,
+  hideUnset = false,
+}: {
+  nutrients: MealPlanNutrients | null
+  hideUnset?: boolean
+}) {
   if (nutrients === null) {
     return <p className="text-support font-normal text-muted">영양정보 없음</p>
   }
@@ -51,12 +57,17 @@ function Nutrients({ nutrients }: { nutrients: MealPlanNutrients | null }) {
         ['탄수화물', fixed(nutrients.carbG, 'g')],
         ['단백질', fixed(nutrients.proteinG, 'g')],
         ['지방', fixed(nutrients.fatG, 'g')],
-      ].map(([term, value]) => (
-        <div key={term} className="flex flex-wrap gap-x-1.5">
-          <dt className="font-normal text-muted">{term}</dt>
-          <dd className="font-semibold tabular-nums text-content">{value}</dd>
-        </div>
-      ))}
+      ]
+        .filter(
+          ([term, value]) =>
+            !hideUnset || term === '열량' || value !== '정보 없음',
+        )
+        .map(([term, value]) => (
+          <div key={term} className="flex flex-wrap gap-x-1.5">
+            <dt className="font-normal text-muted">{term}</dt>
+            <dd className="font-semibold tabular-nums text-content">{value}</dd>
+          </div>
+        ))}
     </dl>
   )
 }
@@ -84,11 +95,11 @@ function ItemCard({ item }: { item: MealPlanItem }) {
           {item.reason}
         </p>
       ) : null}
-      <p className="text-support leading-relaxed font-normal text-muted">
-        {item.allergenNotes
-          ? `원재료·알레르기: ${item.allergenNotes}`
-          : '원재료·알레르기 정보를 확인할 수 없어요. 안전하다는 뜻이 아니니 직접 확인해 주세요.'}
-      </p>
+      {item.allergenNotes ? (
+        <p className="text-support leading-relaxed font-normal text-muted">
+          원재료·알레르기: {item.allergenNotes}
+        </p>
+      ) : null}
     </article>
   )
 }
@@ -98,6 +109,13 @@ function ResultMeals({ result }: { result: MealPlanResult }) {
   const [active, setActive] = useState<MealType | null>(null)
   const meal =
     result.meals.find((item) => item.meal === active) ?? result.meals[0]
+  const targetKcal = meal.target?.kcal
+  const totalKcal = meal.totals?.kcal
+  // 서버가 반환한 두 열량의 표시용 차이만 계산한다. 영양 합계는 서버 값 그대로 사용한다.
+  const difference =
+    targetKcal != null && totalKcal != null
+      ? Number((totalKcal - targetKcal).toFixed(2))
+      : null
   return (
     <section
       aria-labelledby="plan-result-title"
@@ -129,11 +147,32 @@ function ResultMeals({ result }: { result: MealPlanResult }) {
         ))}
       </div>
       <div className="flex flex-col gap-1 text-support leading-snug">
-        <p className="font-normal text-muted">끼니 목표 · 서버 값</p>
-        <Nutrients nutrients={meal.target} />
+        <p className="font-normal text-muted">끼니 목표 열량</p>
+        <Nutrients nutrients={meal.target} hideUnset />
         <p className="mt-1 font-normal text-muted">추천 합계 · 서버 값</p>
         <Nutrients nutrients={meal.totals} />
+        {difference !== null ? (
+          <p
+            className="text-support font-normal text-muted"
+            data-plan-calorie-difference=""
+          >
+            {difference === 0
+              ? '목표 열량과 일치'
+              : `목표 대비 ${Math.abs(difference).toLocaleString()} kcal ${difference > 0 ? '초과' : '부족'}`}
+          </p>
+        ) : null}
       </div>
+      {meal.warnings?.length ? (
+        <ul
+          role="list"
+          aria-label="서버 안내"
+          className="flex flex-col gap-1 rounded-control bg-warning-soft px-3 py-2 text-support text-warning"
+        >
+          {meal.warnings.map((warning, index) => (
+            <li key={`${index}-${warning}`}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
       {meal.items.length === 0 ? (
         <p className={statusBox}>이 끼니의 추천 음식 정보가 없어요.</p>
       ) : (
@@ -149,8 +188,9 @@ function ResultMeals({ result }: { result: MealPlanResult }) {
         role="note"
         className="rounded-control bg-warning-soft px-3 py-2 text-support leading-relaxed font-normal text-warning"
       >
-        제품별 원재료와 알레르기 정보를 꼭 확인해 주세요. 원재료를 확인하지 못한
-        것은 안전하다는 뜻이 아니에요.
+        {meal.items.some((item) => !item.allergenNotes)
+          ? '일부 또는 전체 음식의 원재료·알레르기 정보를 확인할 수 없어요. 안전하다는 뜻이 아니니 제품별 원재료와 알레르기 정보를 직접 확인해 주세요.'
+          : '제품별 원재료와 알레르기 정보를 꼭 확인해 주세요.'}
       </p>
     </section>
   )
@@ -236,7 +276,7 @@ function StatusPanel({
   }
   const copy: Record<'empty' | 'error' | 'unavailable', string> = {
     empty:
-      '조건에 맞게 계산할 수 있는 음식이 충분하지 않아요. 조건을 바꿔 다시 시도해 보세요. 이번 요청은 이용 횟수를 쓰지 않았어요.',
+      '조건에 맞게 계산할 수 있는 음식이 충분하지 않아요. 음식 종류를 넓히거나 제외 음식 조건을 조정한 뒤 다시 시도해 보세요. 이번 요청은 이용 횟수를 쓰지 않았어요.',
     error:
       '추천을 받지 못했어요. 입력한 조건은 그대로 남아 있어요. 잠시 후 다시 시도해 주세요.',
     unavailable:
