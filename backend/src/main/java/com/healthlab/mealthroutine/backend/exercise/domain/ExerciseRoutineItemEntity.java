@@ -12,6 +12,8 @@ import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "exercise_routine_items")
@@ -41,6 +43,13 @@ public class ExerciseRoutineItemEntity {
     private Integer targetDurationSeconds;
 
     private Integer restSeconds;
+
+    /** Null for items saved the old way (targetSets/targetReps only). Present together with setTargets. */
+    private WorkoutRecordType recordType;
+
+    /** Per-set targets as JSON text (SetTargetsJson). The target_* columns above keep the set count and first set. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String setTargets;
 
     private LocalDateTime createdAt = LocalDateTime.now();
 }
