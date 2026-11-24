@@ -242,7 +242,7 @@ export function ActiveSessionCard({ controls }: { controls: StartControls }) {
 
 /**
  * 오늘의 운동 카드의 시작 영역. 상태에 따라 시작·이어하기·충돌 패널·완료 안내를 보여 준다.
- * 저장소가 없으면(운영 빌드) 이 컴포넌트를 쓰지 않고 호출한 쪽이 기존 "준비 중" 버튼을 유지한다.
+ * 저장소가 없으면(계정 없음) 이 컴포넌트를 쓰지 않고 호출한 쪽이 기존 "준비 중" 버튼을 유지한다.
  */
 export function StartAction({
   controls,

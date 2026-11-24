@@ -210,7 +210,7 @@ test('조회 실패는 비어 있다고 가정하지 않고 실패로 돌려준�
   const mixedResult = await Register.lookupRegisterState(mixed.deps)
   assert.equal(mixedResult.ok, true)
   assert.equal(mixedResult.lookup.todayListExists, true)
-  // 저장소 없음(운영 빌드 등)
+  // 저장소 없음(계정 없음 등)
   const none = await Register.lookupRegisterState({
     listRepository: null,
     planRepository: null,

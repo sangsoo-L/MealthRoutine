@@ -976,7 +976,7 @@ test('29. 완료 세트가 0개면 저장하지 않는다', async () => {
 })
 
 test('30. 저장소 unavailable 처리', async () => {
-  // 저장소 없음(운영 빌드)
+  // 저장소 없음(계정 없음)
   const absent = RC.createWorkoutResultController({
     repository: null,
     records: null,

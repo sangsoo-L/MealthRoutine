@@ -97,7 +97,7 @@ export function classifySessionFailure(error: unknown): SessionFailure {
 
 export type SessionLoad =
   | { status: 'loading' }
-  /** 저장소가 없거나(운영 빌드·계정 없음) 이 브라우저에서 쓸 수 없다. */
+  /** 저장소가 없거나(계정 없음) 이 브라우저에서 쓸 수 없다. */
   | { status: 'unavailable' }
   /** 진행 중인 세션이 없다. */
   | { status: 'none' }
@@ -179,7 +179,7 @@ export interface ReloadResult {
 }
 
 export interface SessionControllerDeps {
-  /** null이면 저장소가 없는 환경(운영 빌드)이다. */
+  /** null이면 저장소가 없는 상태(계정 없음)다. */
   repository: Pick<
     WorkoutSessionRepository,
     'getActive' | 'get' | 'saveProgress' | 'abandon'

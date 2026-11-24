@@ -19,7 +19,7 @@ export const PATH_SESSION = '/records/exercise/session'
 
 type Info =
   | { status: 'loading' }
-  /** 저장소가 없거나(운영 빌드) 이 브라우저에서 쓸 수 없다. W01은 기존 "준비 중" 안내를 유지한다. */
+  /** 저장소가 없거나(계정 없음) 이 브라우저에서 쓸 수 없다. W01은 기존 "준비 중" 안내를 유지한다. */
   | { status: 'unavailable' }
   /** 진행 중 세션의 저장값이 손상됐다. 시작·이어하기를 막는다. */
   | { status: 'corrupt' }

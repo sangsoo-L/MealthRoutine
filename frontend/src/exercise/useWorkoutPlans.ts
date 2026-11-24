@@ -6,7 +6,7 @@ import type { LocalDate } from './workoutTypes.ts'
 
 /**
  * 내일 운동 계획 조회 상태(W10 내일 계획 영역·W01 다음 운동 준비하기).
- * - loading: 불러오는 중. unavailable: 저장소가 없다(운영 빌드·계정 없음)거나 이 브라우저에서 IndexedDB를 쓸 수 없다("계획 없음"이 아니다).
+ * - loading: 불러오는 중. unavailable: 저장소가 없다(계정 없음)거나 이 브라우저에서 IndexedDB를 쓸 수 없다("계획 없음"이 아니다).
  * - error: 조회 실패(reload로 다시 시도). ready: plans는 계획 날짜 오름차순이고 skippedCount는 읽을 수 없는 계획 수다.
  * 계획 날짜가 오늘 이상인 계획만 읽는다(지난 날짜 계획은 보이지 않지만 지우지 않는다). 운동 목록·기록과 별개의 데이터다.
  */

@@ -32,7 +32,7 @@ export default function TodayExerciseSection({
   slot: DashboardSlot<TodayExerciseView>
   draftCount: number
   onRetry: () => void
-  /** 운동 시작·이어하기 상태. 없거나 저장소가 없으면(운영 빌드·개발용 예시) 기존 "준비 중" 버튼을 유지한다. */
+  /** 운동 시작·이어하기 상태. 없거나 저장소가 없으면(계정 없음·개발용 예시) 기존 "준비 중" 버튼을 유지한다. */
   start?: StartControls
   /** 오늘 마친 목록의 저장된 완료 기록 상세(W15 읽기 전용) 경로. 저장된 기록이 있을 때만 값이 있다. */
   recordPath?: string | null
