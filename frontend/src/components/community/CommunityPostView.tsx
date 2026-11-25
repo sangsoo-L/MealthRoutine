@@ -9,6 +9,7 @@ import { Link, useLocation } from 'react-router'
 import {
   ANSWERER_TIER_LABEL,
   COMMENT_ERROR_MESSAGE,
+  COMMENTS_UNSUPPORTED_TEXT,
   COMMUNITY_UNAVAILABLE_TEXT,
   MEDICAL_NOTE,
   QA_CATEGORY_LABEL,
@@ -16,6 +17,7 @@ import {
   formatPostDate,
   validateComment,
   type CommunityBoard,
+  type CommunitySupports,
   type PostComment,
   type PostDetail,
   type PostState,
@@ -289,6 +291,7 @@ function Ready({
   onEligibilityRetry,
   actions,
   listPath,
+  supports,
 }: {
   detail: PostDetail
   board: CommunityBoard
@@ -297,8 +300,12 @@ function Ready({
   onEligibilityRetry: () => void
   actions: PostActions
   listPath: string
+  supports: Pick<CommunitySupports, 'comments' | 'likes'> | null
 }) {
   const { post, comments } = detail
+  // 연결이 댓글·응원을 지원하지 않으면(서버 C1) 숨기고 "준비 중"을 보인다. 모르면(null) 기존처럼 연다.
+  const commentsOn = supports?.comments !== false
+  const likesOn = supports?.likes !== false
   const [likeBusy, setLikeBusy] = useState(false)
   const [likeFailed, setLikeFailed] = useState(false)
   const liked = post.likedByMe === true
@@ -357,7 +364,7 @@ function Ready({
         {post.body}
       </p>
 
-      {board === 'free' ? (
+      {board === 'free' && likesOn ? (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -396,60 +403,80 @@ function Ready({
         </div>
       ) : null}
 
-      <section aria-labelledby="community-comments-title" className={cardClass}>
-        <h2
-          id="community-comments-title"
-          className="text-section-title leading-snug font-semibold text-content"
+      {!commentsOn ? (
+        <section
+          aria-labelledby="community-comments-title"
+          className={cardClass}
         >
-          {board === 'qa' ? '답변' : '댓글'}{' '}
-          <span
-            className="tabular-nums"
-            data-community-comment-count={comments.length}
+          <h2
+            id="community-comments-title"
+            className="text-section-title leading-snug font-semibold text-content"
           >
-            {comments.length}
-          </span>
-        </h2>
-
-        {comments.length === 0 ? (
-          <p data-community-empty="" className={`mt-2 ${help}`}>
-            {board === 'qa'
-              ? '아직 답변이 없어요. 중급·고급 회원이 답변하면 여기에 보여요.'
-              : '아직 댓글이 없어요.'}
+            {board === 'qa' ? '답변' : '댓글'}
+          </h2>
+          <p data-community-unsupported="comments" className={`mt-2 ${help}`}>
+            {COMMENTS_UNSUPPORTED_TEXT}
           </p>
-        ) : (
-          <ul
-            role="list"
-            className={
-              board === 'qa'
-                ? 'mt-3 flex flex-col gap-3'
-                : 'mt-2 divide-y divide-line'
-            }
+        </section>
+      ) : (
+        <section
+          aria-labelledby="community-comments-title"
+          className={cardClass}
+        >
+          <h2
+            id="community-comments-title"
+            className="text-section-title leading-snug font-semibold text-content"
           >
-            {comments.map((comment) => (
-              <CommentItem key={comment.id} comment={comment} board={board} />
-            ))}
-          </ul>
-        )}
+            {board === 'qa' ? '답변' : '댓글'}{' '}
+            <span
+              className="tabular-nums"
+              data-community-comment-count={comments.length}
+            >
+              {comments.length}
+            </span>
+          </h2>
 
-        <div className="mt-4 border-t border-line pt-4">
-          {board === 'qa' ? (
-            <AnswerArea
-              eligibility={eligibility}
-              onRetry={onEligibilityRetry}
-              actions={actions}
-            />
-          ) : isMember ? (
-            <CommentForm kind="comment" onSubmit={actions.comment} />
-          ) : (
-            <p data-community-guide="guest" className={`${noticeClass} mt-0`}>
-              <span className="min-w-0">
-                댓글과 응원은 로그인한 회원이 남길 수 있어요.{' '}
-                <LoginLink>로그인하기</LoginLink>
-              </span>
+          {comments.length === 0 ? (
+            <p data-community-empty="" className={`mt-2 ${help}`}>
+              {board === 'qa'
+                ? '아직 답변이 없어요. 중급·고급 회원이 답변하면 여기에 보여요.'
+                : '아직 댓글이 없어요.'}
             </p>
+          ) : (
+            <ul
+              role="list"
+              className={
+                board === 'qa'
+                  ? 'mt-3 flex flex-col gap-3'
+                  : 'mt-2 divide-y divide-line'
+              }
+            >
+              {comments.map((comment) => (
+                <CommentItem key={comment.id} comment={comment} board={board} />
+              ))}
+            </ul>
           )}
-        </div>
-      </section>
+
+          <div className="mt-4 border-t border-line pt-4">
+            {board === 'qa' ? (
+              <AnswerArea
+                eligibility={eligibility}
+                onRetry={onEligibilityRetry}
+                actions={actions}
+              />
+            ) : isMember ? (
+              <CommentForm kind="comment" onSubmit={actions.comment} />
+            ) : (
+              <p data-community-guide="guest" className={`${noticeClass} mt-0`}>
+                <span className="min-w-0">
+                  댓글과 응원은 로그인한 회원이 남길 수 있어요.{' '}
+                  <LoginLink>로그인하기</LoginLink>
+                </span>
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {board === 'qa' ? <p className={help}>{MEDICAL_NOTE}</p> : null}
 
@@ -481,6 +508,7 @@ export default function CommunityPostView({
   onEligibilityRetry,
   actions,
   listPath,
+  supports = null,
 }: {
   board: CommunityBoard
   state: PostState
@@ -492,6 +520,8 @@ export default function CommunityPostView({
   actions: PostActions
   /** "목록으로"가 돌아갈 경로(진입한 목록). */
   listPath: string
+  /** 연결이 지원하는 댓글·응원. null이면 모두 연다(예시 저장소와 같은 동작). */
+  supports?: Pick<CommunitySupports, 'comments' | 'likes'> | null
 }) {
   if (state.status === 'ready')
     return (
@@ -503,6 +533,7 @@ export default function CommunityPostView({
         onEligibilityRetry={onEligibilityRetry}
         actions={actions}
         listPath={listPath}
+        supports={supports}
       />
     )
 

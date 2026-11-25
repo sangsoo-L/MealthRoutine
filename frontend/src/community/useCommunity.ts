@@ -13,19 +13,25 @@ import {
 import { createCommunitySource } from './communitySource.ts'
 
 /**
- * 현재 사용자의 커뮤니티 서버 연결. 사용자가 바뀌면 새로 만든다. 운영 빌드에서는 항상 null(연결 전)이다.
+ * 현재 사용자의 커뮤니티 연결. 사용자가 바뀌면 새로 만든다(모의 저장소가 작성자 이름에 쓴다).
+ * 연결이 이 게시판을 지원하지 않으면 null이다(실제 서버는 아직 Q&A가 없어 "연결 전" 안내가 보인다, C1-D8).
  */
-export function useCommunitySource(): CommunitySource | null {
+export function useCommunitySource(
+  board: CommunityBoard,
+): CommunitySource | null {
   const { user } = useAuth()
   const id = user?.id ?? null
   const nickname = user?.nickname ?? null
-  return useMemo(
+  const source = useMemo(
     () =>
       createCommunitySource(
         id !== null && nickname !== null ? { id, nickname } : null,
       ),
     [id, nickname],
   )
+  return source !== null && source.supports.boards.includes(board)
+    ? source
+    : null
 }
 
 /**

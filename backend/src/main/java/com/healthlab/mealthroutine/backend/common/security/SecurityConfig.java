@@ -43,6 +43,10 @@ public class SecurityConfig {
         // Guests see public routines only; RoutineController uses @LoginUser(required = false).
         "/api/v1/workout-routines",
         "/api/v1/workout-routines/*",
+        // Community posts: guests may read the list and one post (D-02). Writing still needs login.
+        // "/posts/*" does not open deeper paths such as /posts/1/comments.
+        "/api/v1/community/posts",
+        "/api/v1/community/posts/*",
     };
 
     @Bean
