@@ -8,7 +8,10 @@ import {
 } from 'react'
 import { registerAccountCleanup } from '../auth/accountScope.ts'
 import { useAuth } from '../auth/authContext.ts'
-import type { ExerciseFavoriteRepository } from './favoriteRepository.ts'
+import {
+  FavoriteSaveError,
+  type ExerciseFavoriteRepository,
+} from './favoriteRepository.ts'
 import { createFavoriteRepository } from './favoriteSource.ts'
 import {
   FavoritesContext,
@@ -93,6 +96,9 @@ function scopedFor(scoped: ScopedIds, userId: string | null) {
  *   지금과 다르면 응답을 버린다(이전 로그인의 늦은 등록·해제 성공이 새 조회 결과를 덮어쓰지 않게).
  * - 저장소가 요청마다 시간 상한을 두므로(api/apiFavoriteRepository.ts) 서버가 답하지 않아도 로딩은 error(다시 시도)로,
  *   저장은 failed로 끝나 버튼 잠금이 풀린다.
+ * - 등록·해제가 일시적인 이유로 실패하면(시간 상한·네트워크 등) 서버는 처리했는데 응답만 잃었을 수 있어서, 목록을 로딩 표시 없이 다시 읽어
+ *   서버 값으로 맞춘다. 서버 값이 하려던 상태와 같으면 실패 표시도 지운다. 다시 읽는 사이 다른 등록·해제가 시작되거나 끝났거나,
+ *   계정·조회·로그인 세대가 바뀌었으면 그 결과는 버린다(최신 상태를 덮어쓰지 않게).
  * 저장소 인터페이스(favoriteRepository)는 list/add/remove만 쓴다. 사용자 id는 인증 Context의 값만 쓴다.
  * createRepository는 Chrome 회귀 하네스가 응답 시점을 정하는 저장소를 넣을 때만 쓴다. 앱은 넘기지 않는다(기본은 favoriteSource).
  */
@@ -112,6 +118,8 @@ export default function FavoritesProvider({
   const [saving, setSaving] = useState<ScopedIds>(EMPTY_SCOPED)
   const [failed, setFailed] = useState<ScopedIds>(EMPTY_SCOPED)
   const busy = useRef<Set<string>>(new Set())
+  // 등록·해제가 시작되거나 끝날 때마다 오르는 번호. 실패 뒤 다시 읽은 목록이 그 사이의 다른 저장을 덮어쓰지 않게 한다.
+  const mutations = useRef(0)
 
   // 계정이 바뀌면 지난 계정의 값을 바로 버린다(렌더 중 상태 보정). 로그아웃 뒤 회원 데이터가 메모리에 남지 않는다.
   const [prevUserId, setPrevUserId] = useState(userId)
@@ -186,6 +194,43 @@ export default function FavoritesProvider({
     setAttempt((n) => n + 1)
   }, [userId])
 
+  /** 실패한 등록·해제 뒤 목록을 조용히 다시 읽어 서버 값으로 맞춘다. 그 사이 다른 저장이 있었으면 버린다. */
+  const resync = useCallback(
+    (
+      repository: ExerciseFavoriteRepository,
+      listKey: string,
+      generation: number,
+      exerciseId: string,
+      intended: boolean,
+    ) => {
+      if (!userId) return
+      // 이 실패의 finally가 번호를 한 번 더 올리므로 그 값을 기준으로 삼는다.
+      const seen = mutations.current + 1
+      const owner = userId
+      repository.list().then(
+        (ids) => {
+          if (generation !== accountGeneration || mutations.current !== seen)
+            return
+          const prefix = `${generation}|${owner}|`
+          if ([...busy.current].some((lock) => lock.startsWith(prefix))) return
+          const server = new Set(ids)
+          setLoaded((prev) =>
+            prev && prev.key === listKey && prev.list.status === 'ready'
+              ? { key: listKey, list: { status: 'ready', ids: server } }
+              : prev,
+          )
+          if (server.has(exerciseId) === intended) {
+            setFailed((prev) => updateScoped(prev, owner, exerciseId, false))
+          }
+        },
+        () => {
+          // 다시 읽지 못하면 실패 표시를 그대로 두고 사용자가 다시 누르거나 새로고침한다.
+        },
+      )
+    },
+    [userId],
+  )
+
   const toggle = useCallback(
     async (exerciseId: string): Promise<ToggleResult> => {
       if (!userId || key === null || readyIds === null) return 'ignored'
@@ -201,6 +246,7 @@ export default function FavoritesProvider({
         return 'failed'
       }
       busy.current.add(lock)
+      mutations.current += 1
       setSaving((prev) => updateScoped(prev, userId, exerciseId, true))
       setFailed((prev) => updateScoped(prev, userId, exerciseId, false))
       const next = !readyIds.has(exerciseId)
@@ -220,12 +266,18 @@ export default function FavoritesProvider({
           return { key, list: { status: 'ready', ids } }
         })
         return next ? 'added' : 'removed'
-      } catch {
+      } catch (error) {
         if (!current()) return 'ignored'
         setFailed((prev) => updateScoped(prev, userId, exerciseId, true))
+        if (!(
+          error instanceof FavoriteSaveError && error.reason === 'invalid'
+        )) {
+          resync(repository, key, generation, exerciseId, next)
+        }
         return 'failed'
       } finally {
         busy.current.delete(lock)
+        mutations.current += 1
         // 이전 로그인의 저장이 새 로그인에서 같은 운동을 저장 중인 표시를 지우지 않게 한다.
         const newer = `${accountGeneration}|${userId}|${exerciseId}`
         if (current() || !busy.current.has(newer)) {
@@ -233,7 +285,7 @@ export default function FavoritesProvider({
         }
       }
     },
-    [userId, key, readyIds, createRepository],
+    [userId, key, readyIds, createRepository, resync],
   )
 
   const value = useMemo<FavoritesContextValue>(
