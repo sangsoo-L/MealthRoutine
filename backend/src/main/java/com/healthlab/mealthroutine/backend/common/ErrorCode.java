@@ -63,6 +63,8 @@ public enum ErrorCode {
     PIN_EXPIRED(HttpStatus.FORBIDDEN, "PIN 확인 시간이 지났습니다. PIN을 다시 입력해 주세요."),
     // Another member's record and a missing record get the same 404 (HEALTH8-12).
     MEASUREMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "신체정보 기록을 찾을 수 없습니다."),
+    // Community (C1): a missing, hidden or deleted post and an id of 0 or less all get the same 404.
+    POST_NOT_FOUND(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다."),
     DATA_CONFLICT(HttpStatus.CONFLICT, "다른 데이터와 충돌하여 처리할 수 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 
