@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadKnowledgeLevels } from '../mypage/knowledgeSource.ts'
 import { loadQuizBank } from './quizBank.ts'
-import type {
-  DailyQuiz,
-  QuizRepository,
-  RewardEntry,
-  RewardTotals,
+import {
+  QuizDayChangedError,
+  type DailyQuiz,
+  type QuizRepository,
+  type RewardEntry,
+  type RewardTotals,
 } from './quizRepository.ts'
 import { pickQuestion, secureRandom } from './quizSelect.ts'
+import { serverQuestionMatches } from './quizView.ts'
 import { createQuizRepository } from './quizSource.ts'
 import type {
   QuizDifficulty,
@@ -80,6 +82,9 @@ async function loadState(
   const question = bank.find((item) => item.id === quiz.questionId)
   // 출제된 문항을 은행에서 찾지 못하면 다른 문제로 바꾸지 않고 오류로 둔다.
   if (!question) return { status: 'error' }
+  // 서버가 보낸 질문과 은행 문항이 다르면(매핑 어긋남) 엉뚱한 문제로 채점되지 않게 제출 전에 막는다.
+  if (!serverQuestionMatches(quiz.serverQuestion, question.question))
+    return { status: 'error' }
   const [reward, totals] = await Promise.all([
     quiz.completedAt ? repository.getReward(localDate) : Promise.resolve(null),
     repository.totals(),
@@ -161,14 +166,16 @@ export function useDailyQuiz(userId: string | null, localDate: string) {
           key,
           state: { ...state, quiz: result.quiz, reward, totals },
         })
-      } catch {
-        setSubmitFailed(true)
+      } catch (error) {
+        // 자정을 넘겨 문제가 바뀜: 이전 답은 버리고 오늘 문제를 새로 불러온다
+        if (error instanceof QuizDayChangedError) reload()
+        else setSubmitFailed(true)
       } finally {
         submittingRef.current = false
         setSubmitting(false)
       }
     },
-    [state, key],
+    [state, key, reload],
   )
 
   return { state, reload, submit, submitting, submitFailed }

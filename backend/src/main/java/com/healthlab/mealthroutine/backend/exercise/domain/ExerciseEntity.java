@@ -9,6 +9,8 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** Read-only here: exercises come from seed SQL, and the API has no way to change them. */
 @Entity
@@ -39,4 +41,11 @@ public class ExerciseEntity {
     private String cautions;
 
     private String sourceUrl;
+
+    /** Null for rows added without record-mode data. */
+    private CatalogRecordMode defaultRecordMode;
+
+    /** JSON array of catalog codes, read with CatalogRecordMode.readAllowed. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String allowedRecordModes;
 }
