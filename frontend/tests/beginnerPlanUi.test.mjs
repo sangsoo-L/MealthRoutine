@@ -743,7 +743,7 @@ test('보호: W12는 W01-2 추천 모듈을 참조하지 않고(AI 카드는 I02
   assert.match(w12, /AI 추천으로 시작하기/)
   assert.match(w12, /로컬 예시/)
   assert.doesNotMatch(w12, /recommend|PATH_PLAN|W01-2/)
-  // replaceDraft: 기존 validateDraft를 통과한 초안만 받는다
+  // replaceDraft: 기존 validateDraft를 통과한 초안만 받는다(서버 상한은 저장 전에 W02·W11이 안내하므로 여기서는 보지 않는다)
   const provider = read('../src/exercise/WorkoutDraftProvider.tsx')
   const fn = provider.slice(
     provider.indexOf('const replaceDraft'),
@@ -752,7 +752,10 @@ test('보호: W12는 W01-2 추천 모듈을 참조하지 않고(AI 카드는 I02
       ? provider.indexOf('const clearSaved')
       : undefined,
   )
-  assert.match(provider, /validateDraft\(draft\)\.ok/)
+  assert.match(
+    fn,
+    /!validateDraft\(draft, undefined, undefined, \{ serverLimits: false \}\)\.ok/,
+  )
   assert.match(fn, /userId === null/)
   // W11: "구성 수정"만 추천에서 온 경우 추천 화면으로(저장 절차는 그대로)
   const review = read('../src/pages/ExerciseReviewPage.tsx')

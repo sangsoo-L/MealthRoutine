@@ -147,9 +147,14 @@ export default function WorkoutDraftProvider({
     )
   }, [day])
   // 초급 운동 추천 확정: 초안 전체를 바꾼다. 형식이 올바르지 않은 초안은 받지 않는다(기존 validateDraft). 사용자가 바뀐 상태에는 적용하지 않는다.
+  // 서버 상한(횟수 999, 중량 999kg·소수 둘째 자리)은 보지 않는다. 그 규칙 전에 저장한 루틴·계획도 옮겨지고, 저장 전에 W02·W11이 안내한다.
   const replaceDraft = useCallback(
     (draft: WorkoutDraft): boolean => {
-      if (userId === null || draft.day !== day || !validateDraft(draft).ok)
+      if (
+        userId === null ||
+        draft.day !== day ||
+        !validateDraft(draft, undefined, undefined, { serverLimits: false }).ok
+      )
         return false
       setState((prev) =>
         prev.owner !== userId

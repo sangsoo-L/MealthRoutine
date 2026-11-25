@@ -31,6 +31,7 @@ export interface WorkoutDraftContextValue {
   /**
    * 초안 전체를 주어진 초안으로 바꾼다(기존 초안은 버려진다). 초급 운동 추천의 확정(planToDraft 결과)이 W11 검토로 넘어갈 때 쓴다.
    * 기존 validateDraft를 통과하지 못하는 초안은 받지 않고 false를 돌려준다(상태 변화 없음). 비회원(guest)에서도 false다.
+   * 서버 상한(serverLimits)은 보지 않는다. 이미 저장된 루틴·계획의 예전 값도 옮기고, 저장 전에 W02·W11이 안내한다.
    * 호출하는 쪽이 사용자 확인(구성 중인 초안이 있을 때)을 거친다. 저장·검증은 W11의 기존 절차가 그대로 맡는다.
    */
   replaceDraft: (draft: WorkoutDraft) => boolean

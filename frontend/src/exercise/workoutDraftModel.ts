@@ -27,6 +27,22 @@ export const DEFAULT_REPS = 10
 export const DEFAULT_TARGET_SECONDS = 60
 export const MIN_TARGET_SECONDS = 1
 export const MAX_TARGET_SECONDS = 3600
+/**
+ * 목표 횟수·중량의 상한과 중량 자릿수. 서버의 세트 목표 규칙(docs/api_exercise_v1.0.md: reps 1~999, weightKg 0~999·소수 둘째 자리까지)과 같다.
+ * 목록·계획·루틴은 완료 기록의 setTargets로 서버에 올라가므로, 이 규칙을 넘는 목표로 저장하면 그 목록으로 완료한 기록을 서버가 받지 않는다.
+ * 그래서 새로 저장할 때(validateDraft) 이 규칙으로 막고 안내한다. 이미 저장된 데이터를 읽는 경로(parseWorkoutList 등)는 이 규칙을 쓰지 않는다.
+ */
+export const MAX_TARGET_REPS = 999
+export const MAX_TARGET_WEIGHT_KG = 999
+
+/** 목표 중량이 서버 규칙(0~999kg, 소수 둘째 자리까지) 안인지. 부동소수 오차(0.07 * 100 = 7.000000000000001)는 허용한다. */
+export function isValidTargetWeightKg(value: number): boolean {
+  if (!Number.isFinite(value) || value < 0 || value > MAX_TARGET_WEIGHT_KG) {
+    return false
+  }
+  const cents = value * 100
+  return Math.abs(cents - Math.round(cents)) <= 1e-6
+}
 
 /** 저장·화면 보호용 상한. 정상 사용에서는 닿지 않는 값이다(손상된 저장값을 걸러 내는 기준과 같다). */
 export const MAX_ITEMS = 500
@@ -321,8 +337,8 @@ const isInt = (value: number | undefined): value is number =>
 
 export const ISSUE_MESSAGES = {
   noItems: '운동을 하나 이상 등록해 주세요.',
-  reps: '횟수는 1 이상의 정수로 입력해 주세요.',
-  weight: '중량은 0 이상의 숫자로 입력해 주세요.',
+  reps: `횟수는 1 이상의 정수(최대 ${MAX_TARGET_REPS}회)로 입력해 주세요.`,
+  weight: `중량은 0~${MAX_TARGET_WEIGHT_KG}kg, 소수점 둘째 자리까지 입력해 주세요.`,
   time: `목표 시간은 ${MIN_TARGET_SECONDS}~${MAX_TARGET_SECONDS}초의 정수로 입력해 주세요.`,
   unknownExercise:
     '이 운동의 정보를 찾을 수 없어요. 삭제한 뒤 다시 추가해 주세요.',
@@ -337,18 +353,24 @@ export const ISSUE_MESSAGES = {
 /**
  * 초안 전체를 검증한다. 오류가 있는 운동·세트를 가리키는 목록을 돌려준다.
  * - 운동 1개 이상, 운동당 세트 1개 이상, 운동 id·항목 id 중복 없음, 기록 방식은 저장 코드 5종 중 하나.
- * - 목표값은 방식의 구성값(recordMode.RECORD_COMPONENTS)에 따라 검사한다. 시간: targetSeconds 1~3600의 정수. 횟수: reps 1 이상의 정수.
- *   중량: weightKg는 비어 있어도 되지만(목표 중량은 선택) 입력했다면 0 이상의 유한한 숫자. 구성값이 아닌 값(보이지 않는 입력)은 검사하지 않는다.
+ * - 목표값은 방식의 구성값(recordMode.RECORD_COMPONENTS)에 따라 검사한다. 시간: targetSeconds 1~3600의 정수. 횟수: reps 1~999의 정수.
+ *   중량: weightKg는 비어 있어도 되지만(목표 중량은 선택) 입력했다면 0~999kg, 소수 둘째 자리까지(서버 규칙, isValidTargetWeightKg).
+ *   구성값이 아닌 값(보이지 않는 입력)은 검사하지 않는다.
  *   시간형 reps, 횟수형 targetSeconds처럼 방식과 관계없는 값은 초안에 남아 있어도 오류가 아니다(정규화에서 걸러 낸다).
  * - knownExerciseIds를 주면 그 목록에 없는 운동 id를 오류로 본다(운동 정보를 읽을 수 없을 때는 주지 않는다).
  * - allowedRecordTypes를 주면 그 운동에서 허용하지 않는 기록 방식을 오류로 본다(허용 정보가 없는 운동은 판단하지 않는다).
  *   화면에서 선택지를 제한해도 저장 직전에 이 검증을 다시 한다. 기존에 저장된 목록은 이 검증을 받지 않는다(읽기 경로에서 호출하지 않는다).
+ * - options.serverLimits가 false면 횟수 상한(999)과 중량 상한·자릿수를 보지 않는다(예전 규칙: 횟수 1 이상 정수, 중량 0 이상).
+ *   이미 저장된 루틴·계획을 초안으로 옮길 때(replaceDraft) 쓴다. 이 규칙이 생기기 전에 저장한 값(예: 22.555kg)도 W02로 옮겨지고,
+ *   W02·W11이 저장 전에 이 검증(기본값)으로 그 값을 안내한다.
  */
 export function validateDraft(
   draft: WorkoutDraft,
   knownExerciseIds?: ReadonlySet<string>,
   allowed?: AllowedRecordTypes,
+  options: { serverLimits?: boolean } = {},
 ): DraftValidation {
+  const serverLimits = options.serverLimits ?? true
   const issues: DraftIssue[] = []
   if (draft.items.length === 0) {
     issues.push({ field: 'items', message: ISSUE_MESSAGES.noItems })
@@ -419,13 +441,20 @@ export function validateDraft(
           })
         }
       }
-      if (parts.reps && (!isInt(set.reps) || set.reps < 1)) {
+      if (
+        parts.reps &&
+        (!isInt(set.reps) ||
+          set.reps < 1 ||
+          (serverLimits && set.reps > MAX_TARGET_REPS))
+      ) {
         issues.push({ ...at, field: 'reps', message: ISSUE_MESSAGES.reps })
       }
       if (
         parts.weight &&
         set.weightKg !== undefined &&
-        (!Number.isFinite(set.weightKg) || set.weightKg < 0)
+        (serverLimits
+          ? !isValidTargetWeightKg(set.weightKg)
+          : !Number.isFinite(set.weightKg) || set.weightKg < 0)
       ) {
         issues.push({
           ...at,
