@@ -261,6 +261,18 @@ export interface UploadMarks {
   omitEmpty: Set<string>
 }
 
+/**
+ * 고쳐 보내기를 골랐지만 아직 서버 저장을 확인하지 못한 기록인가(다시 보내던 중 네트워크 오류·시간 초과로 멈춤 등).
+ * 표시(localStorage)에서 읽으므로 새로고침한 뒤에도 같다. 다음 업로드는 omitEmpty 표시대로 같은 requestId·같은 본문으로 보낸다.
+ */
+export function isResendPending(marks: UploadMarks, recordId: string): boolean {
+  return (
+    marks.omitEmpty.has(recordId) &&
+    !marks.uploaded.has(recordId) &&
+    !marks.rejected.has(recordId)
+  )
+}
+
 export interface UploadMarkStore {
   read(): UploadMarks
   write(marks: UploadMarks): void

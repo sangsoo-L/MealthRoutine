@@ -129,6 +129,32 @@ function UploadStatusNotice({ upload }: { upload: RecordUploadStatus }) {
       </p>
     )
   }
+  if (!rejection && upload.resendPending) {
+    // 고쳐 보내다 네트워크 오류·시간 초과로 멈춘 기록. 표시에 남아 있어 새로고침해도 보이고, 같은 본문으로 다시 보낸다.
+    const sending = retry === 'sending'
+    return (
+      <section
+        aria-labelledby="result-upload-title"
+        className="rounded-control bg-warning-soft px-3 py-3 text-support leading-relaxed font-normal text-warning"
+      >
+        <h2 id="result-upload-title" className="font-semibold">
+          서버에 아직 저장되지 않은 기록이에요
+        </h2>
+        <p className="mt-1">
+          완료한 운동만 다시 보내던 중 연결이 끊겨 서버 저장을 확인하지
+          못했어요. 같은 내용으로 다시 보낼 수 있어요.
+        </p>
+        <button
+          type="button"
+          onClick={upload.sendFixed}
+          aria-disabled={sending || undefined}
+          className={`mt-3 ${composeSecondaryButton}`}
+        >
+          {sending ? '다시 보내는 중이에요…' : '다시 보내기'}
+        </button>
+      </section>
+    )
+  }
   if (!rejection) {
     return retry === 'later' ? (
       <p

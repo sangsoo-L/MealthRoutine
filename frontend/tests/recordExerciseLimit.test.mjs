@@ -460,6 +460,65 @@ test('다시 보내기: 보내다 시간 초과로 멈추면(서버는 저장함
   assert.equal(server.stored.size, 1)
 })
 
+test('다시 보내기: 보내다 네트워크 오류로 멈추면 새로고침 뒤에도 미동기화로 읽히고, 다시 보내면 같은 requestId·같은 본문으로 한 건만 저장된다', async () => {
+  const fixable = sessionOf('fix', 101, (i) => i < 100)
+  const storage = new Map([
+    [
+      KEY,
+      JSON.stringify({
+        uploaded: [],
+        rejected: { 'record-fix': 'tooManyExercises' },
+        bodyVersion: 2,
+      }),
+    ],
+  ])
+  const server = fakeServer()
+  const sent = []
+  let offline = true
+  const { deps } = depsOf({
+    sessions: [fixable],
+    storage,
+    request: async (method, path, options) => {
+      sent.push(structuredClone(options.body))
+      // 첫 재전송은 서버에 닿지 못한다(fetch 실패).
+      if (offline) throw new TypeError('Failed to fetch')
+      return server.request(method, path, options)
+    },
+  })
+  const first = await upload.uploadPendingRecords({
+    ...deps,
+    retry: new Set(['record-fix']),
+  })
+  assert.equal(first.stoppedBy?.name, 'TypeError')
+  assert.equal(server.stored.size, 0)
+
+  // 새로고침: 같은 localStorage를 새 표시 저장소로 다시 읽는다. 거절 이유는 없지만 미동기화(다시 보내기 대기)로 남는다.
+  const reloaded = upload
+    .createStorageMarkStore(OWNER, () => ({
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: () => {},
+    }))
+    .read()
+  assert.equal(reloaded.rejected.has('record-fix'), false)
+  assert.equal(upload.isResendPending(reloaded, 'record-fix'), true)
+
+  // 화면의 "다시 보내기"(requestRecordRetry → 같은 실행기)와 같은 호출.
+  offline = false
+  const second = await upload.uploadPendingRecords({
+    ...deps,
+    retry: new Set(['record-fix']),
+  })
+  assert.deepEqual(second, { uploaded: 1, rejected: 0, stoppedBy: undefined })
+  assert.equal(sent.length, 2)
+  assert.deepEqual(sent[1], sent[0])
+  assert.equal(sent[1].requestId, 'record-fix')
+  assert.equal(sent[1].exercises.length, 100)
+  assert.equal(server.stored.size, 1)
+  const after = deps.marks.read()
+  assert.equal(upload.isResendPending(after, 'record-fix'), false)
+  assert.equal(after.uploaded.has('record-fix'), true)
+})
+
 test('운동 수 판정: 완료한 운동만 세어도 100개를 넘으면 고칠 수 없다', () => {
   const rec = (n, completed) => ({
     exercises: Array.from({ length: n }, (_, i) => ({
@@ -544,6 +603,48 @@ test('화면: 저장된 기록(W15)은 거절 이유를 보여 주고, 고칠 �
   )
   const clean = renderResult({ rejection: null, retry: null, sendFixed: noop })
   assert.doesNotMatch(clean, /서버에 저장되지 않은|서버에 보내지/)
+})
+
+test('화면: 고쳐 보내다 멈춘 기록(W15)은 표시만으로 미동기화 안내와 다시 보내기 버튼을 그리고, 기록을 열면 업로드를 요청한다', () => {
+  const noop = () => {}
+  const pending = renderResult({
+    rejection: null,
+    resendPending: true,
+    retry: null,
+    sendFixed: noop,
+  })
+  assert.match(pending, /서버에 아직 저장되지 않은 기록이에요/)
+  assert.match(pending, /같은 내용으로 다시 보낼 수 있어요/)
+  assert.match(pending, />다시 보내기</)
+  // 새로고침 뒤처럼 retry 상태(화면 안의 값)가 없어도 보인다. 다시 보내다 또 멈춰도(later) 같은 안내와 버튼이 남는다.
+  const later = renderResult({
+    rejection: null,
+    resendPending: true,
+    retry: 'later',
+    sendFixed: noop,
+  })
+  assert.match(later, />다시 보내기</)
+  const sending = renderResult({
+    rejection: null,
+    resendPending: true,
+    retry: 'sending',
+    sendFixed: noop,
+  })
+  assert.match(sending, /aria-disabled="true"/)
+
+  const hook = source('exercise/useRecordUploadStatus.ts')
+  // 상태는 화면 안의 값이 아니라 표시(localStorage)에서 읽는다.
+  assert.match(
+    hook,
+    /recordId !== null && marks !== null && isResendPending\(marks, recordId\)/,
+  )
+  // 기록 상세를 바로 열어도 업로드를 시작한다.
+  assert.match(
+    hook,
+    /useEffect\(\(\) => \{\s*if \(userId && recordId\) requestRecordUpload\(userId\)/,
+  )
+  // W01도 다시 보내다 멈춘 기록에 표시를 붙인다.
+  assert.match(hook, /if \(isResendPending\(marks, id\)\) ids\.add\(id\)/)
 })
 
 test('화면: 최근 운동 기록(W01)은 서버가 받지 않은 기록에 표시를 붙이고, 결과 화면이 업로드 상태를 연결한다', () => {
