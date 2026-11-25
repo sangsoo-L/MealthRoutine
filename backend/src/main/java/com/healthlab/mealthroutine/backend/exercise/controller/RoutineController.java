@@ -42,9 +42,11 @@ public class RoutineController {
     @GetMapping
     public ApiResponse<PageResponse<RoutineResponse>> getVisible(
             @LoginUser(required = false) Long userId,
+            @RequestParam(defaultValue = "false") boolean mine,
+            @RequestParam(defaultValue = "false") boolean includeItems,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ApiResponse.ok(routineService.getVisible(userId, page, size));
+        return ApiResponse.ok(routineService.getVisible(userId, mine, includeItems, page, size));
     }
 
     @GetMapping("/{routineId}")
