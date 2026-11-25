@@ -821,6 +821,43 @@ test('수정: 서버 revision이 화면이 읽은 것과 다르면 줄 자리가
   )
 })
 
+test('수정: 줄을 지우고 같은 자리에 같은 운동·세트로 새 줄을 넣으면 items를 보내 새 줄에 예전 휴식 시간이 남지 않고, 줄이 그대로면 items를 보내지 않는다', async () => {
+  const replaced = restServer(withRest([60, 90]))
+  const repository = api.createApiRoutineRepository(OWNER, replaced.request)
+  const routine = await repository.get('41')
+  const edit = editDraftOf(routine)
+  // 첫 줄(운동 2)을 지우고 같은 운동·같은 세트의 새 줄을 같은 자리에 넣었다(새 항목 id).
+  const fresh = model.routineToDraft({ items: [ITEMS[0]] }).items[0]
+  await repository.update('41', {
+    expectedRevision: routine.revision,
+    name: routine.name,
+    description: routine.description,
+    draft: { ...edit.draft, items: [fresh, edit.draft.items[1]] },
+    sourceItemIndexes: edit.sourceItemIndexes,
+  })
+  assert.deepEqual(replaced.calls.at(-1).options.body.items, [
+    { exerciseId: 2, recordType: 'weight', sets: ITEMS[0].sets },
+    {
+      exerciseId: 22,
+      recordType: 'time',
+      sets: ITEMS[1].sets,
+      restSeconds: 90,
+    },
+  ])
+
+  const kept = restServer(withRest([60, 90]))
+  const keptRepository = api.createApiRoutineRepository(OWNER, kept.request)
+  const same = editDraftOf(await keptRepository.get('41'))
+  await keptRepository.update('41', {
+    expectedRevision: 1,
+    name: '새 이름',
+    description: '',
+    draft: same.draft,
+    sourceItemIndexes: same.sourceItemIndexes,
+  })
+  assert.ok(!('items' in kept.calls.at(-1).options.body))
+})
+
 test('편집 화면은 초안 항목의 원래 자리(sourceItemIndexes)를 수정 요청에 같이 넘긴다', async () => {
   const { readFile } = await import('node:fs/promises')
   const source = await readFile(
