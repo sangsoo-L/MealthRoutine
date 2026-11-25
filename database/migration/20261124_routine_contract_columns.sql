@@ -16,11 +16,16 @@
 --
 -- 여러 번 실행해도 결과가 같다: 이미 있는 컬럼·키는 건너뛴다(information_schema로 확인).
 --
--- 실행 방법: 대상 DB마다(mealthroutine, mealthroutine_test) 각각 실행한다.
---   Docker(맥·윈도우 공통, 한 줄씩. 마지막 줄의 DB 이름만 바꿔 실행, 비밀번호는 입력 요청 때 입력):
+-- 실행 방법: 대상 DB마다(mealthroutine, mealthroutine_test) 각각 실행한다. 컨테이너 이름은 docker ps로 확인한다.
+--   docker compose로 띄운 DB(컨테이너 mealthroutine-mysql-1. root 비밀번호는 무작위라 mealthroutine 계정을 쓰고,
+--   비밀번호는 .env의 DB_PASSWORD. 이 계정은 두 DB에 모든 권한이 있다):
+--     docker cp database/migration/20261124_routine_contract_columns.sql mealthroutine-mysql-1:/tmp/routine_contract.sql
+--     docker exec -it mealthroutine-mysql-1 sh -c "mysql --default-character-set=utf8mb4 -u mealthroutine -p mealthroutine < /tmp/routine_contract.sql"
+--   직접 만든 컨테이너(mysqldb 등, root 비밀번호를 아는 경우):
 --     docker cp database/migration/20261124_routine_contract_columns.sql mysqldb:/tmp/routine_contract.sql
 --     docker exec -it mysqldb sh -c "mysql --default-character-set=utf8mb4 -u root -p mealthroutine < /tmp/routine_contract.sql"
---   (컨테이너 이름은 docker ps로 확인한다. docker compose로 띄웠다면 mealthroutine-mysql-1 등일 수 있다.)
+--   (한 줄씩 실행한다. 테스트 DB에는 마지막 mealthroutine을 mealthroutine_test로 바꿔 실행한다. 비밀번호는 입력 요청 때 입력한다.
+--    Windows Git Bash에서 -it 때문에 실행되지 않으면 PowerShell에서 실행하거나 명령 앞에 winpty를 붙인다.)
 --   IntelliJ Database 콘솔 / MySQL Workbench: DB를 선택하고 파일 전체를 한 번에 실행.
 --
 -- 마지막 결과표의 값이 모두 1이면 적용된 것이다. 0이 있으면 직접 고치지 말고 운동 파트에 공유한다.

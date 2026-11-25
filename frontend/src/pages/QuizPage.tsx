@@ -6,6 +6,7 @@ import {
   QuizQuestionForm,
   QuizResult,
 } from '../components/quiz/QuizParts.tsx'
+import { rewardTimingOf } from '../quiz/quizView.ts'
 import { useLocalToday } from '../exercise/useLocalToday.ts'
 import { useDailyQuiz } from '../quiz/useDailyQuiz.ts'
 
@@ -59,7 +60,11 @@ function QuizBody() {
           }}
         />
       ) : (
-        <QuizEntry question={state.question} onStart={() => setStarted(true)} />
+        <QuizEntry
+          question={state.question}
+          rewardTiming={rewardTimingOf(state.repository)}
+          onStart={() => setStarted(true)}
+        />
       )}
     </div>
   )

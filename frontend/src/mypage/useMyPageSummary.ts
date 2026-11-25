@@ -1,21 +1,85 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext.ts'
-import { getMyPageSummary } from './mypageSource.ts'
+import type { AuthUser } from '../auth/authTypes.ts'
+import { fetchServerRewardSlots, getMyPageSummary } from './mypageSource.ts'
 import type { MyPageSummary } from './mypageTypes.ts'
+
+type ServerSlots = Pick<MyPageSummary, 'level' | 'points'>
+
+/** 한 번의 조회 결과. session은 조회할 때의 로그인 세션(로그인마다 새 user 객체), slots가 null이면 실패. */
+export interface RewardFetchResult {
+  session: AuthUser
+  slots: ServerSlots | null
+}
+
+/**
+ * 조회 상태 전이. invalidate: 새 조회를 시작하기 전(이전 조회를 그만둘 때) 이전 결과를 지운다.
+ * settled: 조회가 끝났다(성공이면 slots, 실패면 null). 지운 뒤 새 결과가 오기 전까지는 "연결 전"이다.
+ */
+export type RewardFetchEvent =
+  | { type: 'invalidate' }
+  | { type: 'settled'; session: AuthUser; slots: ServerSlots | null }
+
+export function nextRewardFetch(
+  _prev: RewardFetchResult | null,
+  event: RewardFetchEvent,
+): RewardFetchResult | null {
+  return event.type === 'invalidate'
+    ? null
+    : { session: event.session, slots: event.slots }
+}
+
+/**
+ * 지금 화면에 쓸 서버 레벨·포인트. 지금 세션의 조회 결과이고 성공했을 때만 쓴다.
+ * 다른 세션(같은 id로 다시 로그인한 경우 포함)의 결과, 실패한 조회, 아직 끝나지 않은 새 조회는 쓰지 않아 이전 값이 남지 않는다.
+ */
+export function currentRewardSlots(
+  result: RewardFetchResult | null,
+  session: AuthUser | null,
+): ServerSlots | null {
+  if (session === null || result === null || result.session !== session)
+    return null
+  return result.slots
+}
 
 /**
  * 마이페이지(P01)가 그릴 데이터. 출처와 개발용 값 규칙은 mypageSource.ts에 있다.
  * 값은 로그인한 계정 id로 고르므로 계정을 바꾸면 그 계정의 값이 바로 따라온다.
  * 검색 파라미터만 바뀌는 이동은 화면 전환이 없고 화면이 다시 마운트되지 않으므로, 예시 전환도 이 훅이 바로 따른다.
+ * 예시·개발용 값이 없는 로그인 계정은 레벨·포인트를 GET /users/me/rewards로 채운다.
+ * 로그인할 때마다 다시 조회하고(같은 id 재로그인 포함), 새 조회가 끝나기 전이나 실패하면 이전 값 대신 "연결 전"으로 둔다.
  */
 export function useMyPageSummary(): MyPageSummary {
   const [params] = useSearchParams()
   const { user } = useAuth()
   const sampleParam = params.get('sample')
   const userId = user?.id ?? null
-  return useMemo(
+  const base = useMemo(
     () => getMyPageSummary(sampleParam, userId),
     [sampleParam, userId],
   )
+  // 예시·개발용 값이 이미 채운 경우는 서버를 부르지 않는다
+  const useServer = user !== null && base.level.state === 'unavailable'
+  const [result, setResult] = useState<RewardFetchResult | null>(null)
+
+  useEffect(() => {
+    if (!useServer || user === null) return
+    let alive = true // 세션이 바뀌거나 화면을 떠나면 늦게 온 응답은 버린다
+    void fetchServerRewardSlots().then((slots) => {
+      // 실패(null)도 기록해 이전 성공 값을 지운다
+      if (alive)
+        setResult((prev) =>
+          nextRewardFetch(prev, { type: 'settled', session: user, slots }),
+        )
+    })
+    return () => {
+      alive = false
+      // 이 조회를 그만두면(예시 전환·세션 변경·화면 이탈) 결과도 지워, 다음 조회가 끝나기 전까지 이전 값을 보이지 않는다
+      setResult((prev) => nextRewardFetch(prev, { type: 'invalidate' }))
+    }
+  }, [useServer, user])
+
+  const slots = useServer ? currentRewardSlots(result, user) : null
+  return slots ? { ...base, ...slots } : base
 }

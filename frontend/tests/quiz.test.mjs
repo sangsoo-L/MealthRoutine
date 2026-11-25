@@ -416,7 +416,11 @@ test('운영 안전장치: 문항 은행과 저장소는 DEV일 때만 불러오
     code('../src/quiz/quizBank.ts'),
     /if \(!import\.meta\.env\.DEV\) return \[\]/,
   )
-  assert.match(code('../src/quiz/quizSource.ts'), /import\.meta\.env\.DEV\s*\?/)
+  // 서버 연결 후에는 개발용 체험 로그인(VITE_DEV_AUTH)일 때만 개발 저장소를 쓴다
+  assert.match(
+    code('../src/quiz/quizSource.ts'),
+    /import\.meta\.env\.DEV(\s*&&\s*import\.meta\.env\.VITE_DEV_AUTH === 'true')?\s*\?/,
+  )
   const unverified = allQuestions().slice(0, 3)
   assert.equal(Bank.usableQuestions(unverified, false).length, 0)
   assert.equal(Bank.usableQuestions(unverified, true).length, 3)

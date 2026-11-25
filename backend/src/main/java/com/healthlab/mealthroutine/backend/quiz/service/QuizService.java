@@ -37,11 +37,13 @@ public class QuizService {
     }
 
     @Transactional
-    public QuizResultResponse submit(Long userId, String answer){
+    public QuizResultResponse submit(Long userId, String answer, Long questionId){
         LocalDate today = LocalDate.now(KST);
         if(attemptRepository.findByUserIdAndAttemptDate(userId,today).isPresent())
             throw new BusinessException(ErrorCode.QUIZ_ALREADY_ATTEMPTED); // 하루 1번
         QuizQuestion q = todayQuestion(today);
+        if(questionId != null && !questionId.equals(q.getQuizQuestionId()))
+            throw new BusinessException(ErrorCode.QUIZ_CHANGED); // 자정 전에 띄운 문제를 자정 뒤에 제출 → 다른 문제로 채점하지 않음
         QuizAttempt attempt = attemptRepository.save(QuizAttempt.of(userId,q,answer,today));
         return toResult(attempt.isCorrect(),q);
     }

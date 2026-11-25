@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -73,9 +74,21 @@ public class RoutineService {
         return new CreateResult(RoutineResponse.detail(routineRepository.save(routine), userId, true), true);
     }
 
-    public PageResponse<RoutineResponse> getVisible(Long userId, int page, int size) {
-        return PageResponse.from(routineRepository.findVisible(userId, PageRequest.of(page, size))
-                .map(routine -> RoutineResponse.summary(routine, userId)));
+    /**
+     * Routines the caller may see. {@code mine} keeps only the caller's own routines (login required), newest edit first;
+     * otherwise it is the caller's routines plus public ones, newest first. {@code includeItems} adds each routine's
+     * items like the detail response; they load in batches (default_batch_fetch_size), not one query per routine.
+     */
+    public PageResponse<RoutineResponse> getVisible(Long userId, boolean mine, boolean includeItems, int page, int size) {
+        if (mine && userId == null) {
+            throw new BusinessException(ErrorCode.LOGIN_REQUIRED);
+        }
+        PageRequest pageable = PageRequest.of(page, size);
+        Page<ExerciseRoutineEntity> routines =
+                mine ? routineRepository.findOwned(userId, pageable) : routineRepository.findVisible(userId, pageable);
+        return PageResponse.from(routines.map(routine -> includeItems
+                ? RoutineResponse.detail(routine, userId)
+                : RoutineResponse.summary(routine, userId)));
     }
 
     public RoutineResponse get(Long userId, Long routineId) {
