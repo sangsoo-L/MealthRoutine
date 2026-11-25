@@ -32,7 +32,9 @@ import type { WorkoutListItem } from '../workoutTypes.ts'
  * - 화면이 쓰는 규칙은 로컬 저장소와 같다. 저장 전에 같은 검증(buildRoutine: 이름·소개, 운동 구성)을 먼저 하고, 서버가 더 좁게 막는 값
  *   (운동 100개, 횟수 999, 중량 999kg·소수 둘째 자리)도 보내기 전에 걸러 invalidDraft로 알린다. 서버 응답은 로컬 저장값과 같은 검증
  *   (parseWorkoutRoutine)을 거치고, 모양이 맞지 않는 루틴은 목록에서 빼고 개수만 알린다(skippedCount).
- * - 이 앱의 루틴 모델에는 휴식 시간(restSeconds)이 없어서, 다른 클라이언트가 넣은 휴식 시간은 이 앱에서 수정하면 사라진다.
+ * - 이 앱의 루틴 모델에는 휴식 시간(restSeconds)이 없어서 저장소가 직접 지킨다. 수정 전에 서버의 현재 루틴을 읽어, 운동 구성이
+ *   그대로면 items를 보내지 않고(이름·소개만 수정), 바뀌었으면 남은 운동의 휴식 시간을 서버 값 그대로 붙여 보낸다. 새로 넣은 운동은
+ *   휴식 시간 없이 보낸다.
  * - 목록은 내 루틴만 항목까지 한 번에 받는다(`mine=true&includeItems=true`, 최근 수정 순). 항목을 예전 방식(targetSets만)으로
  *   저장한 루틴은 세트별 목표가 없어 화면 모델로 바꿀 수 없으므로 목록에서 빼고(skippedCount), 상세 조회는 손상(corruptRecord)으로 본다.
  * - 생성은 requestId로 중복 저장을 막고(같은 요청 재전송이면 created: false), 수정·삭제는 expectedRevision으로 동시 수정을 막는다.
@@ -203,6 +205,86 @@ function toRequestBody(input: RoutineContentInput, ownerId: string) {
   return { routineName: routine.name, description: routine.description, items }
 }
 
+type RequestItem = ReturnType<typeof toRequestBody>['items'][number]
+
+/** 서버 루틴의 항목 중 수정 때 비교·보존에 쓰는 값. 모양이 맞지 않는 값은 비교에서 다른 것으로 보고 휴식 시간은 없는 것으로 본다. */
+interface ServerItem {
+  exerciseId: unknown
+  recordType: unknown
+  sets: unknown
+  restSeconds: number | undefined
+}
+
+/** 서버 루틴(GET 응답)의 항목. 내 루틴이 아니거나 항목 목록이 없으면 null(알 수 없음). */
+function serverItemsOf(raw: unknown, ownerId: string): ServerItem[] | null {
+  if (!isRecord(raw) || String(raw.ownerUserId) !== ownerId) return null
+  if (!Array.isArray(raw.items)) return null
+  return raw.items.map((item: unknown) => {
+    const value = isRecord(item) ? item : {}
+    const rest = value.restSeconds
+    return {
+      exerciseId: value.exerciseId,
+      recordType: value.recordType,
+      sets: value.sets,
+      restSeconds:
+        typeof rest === 'number' && Number.isSafeInteger(rest) && rest >= 0
+          ? rest
+          : undefined,
+    }
+  })
+}
+
+const SET_FIELDS = ['reps', 'weightKg', 'targetSeconds'] as const
+
+function sameSets(serverSets: unknown, sets: RequestItem['sets']): boolean {
+  if (!Array.isArray(serverSets) || serverSets.length !== sets.length) {
+    return false
+  }
+  return sets.every((set, index) => {
+    const serverSet: unknown = serverSets[index]
+    if (!isRecord(serverSet)) return false
+    const mine = set as Partial<Record<(typeof SET_FIELDS)[number], number>>
+    return SET_FIELDS.every(
+      (field) => (serverSet[field] ?? undefined) === mine[field],
+    )
+  })
+}
+
+/** 운동 구성(운동·기록 방식·세트 목표와 순서)이 서버의 현재 항목과 같은가. 같으면 items를 보내지 않는다. */
+function sameItems(
+  serverItems: readonly ServerItem[],
+  items: readonly RequestItem[],
+): boolean {
+  return (
+    serverItems.length === items.length &&
+    items.every((item, index) => {
+      const server = serverItems[index]
+      return (
+        server.exerciseId === item.exerciseId &&
+        server.recordType === item.recordType &&
+        sameSets(server.sets, item.sets)
+      )
+    })
+  )
+}
+
+/** 남은 운동에 서버의 휴식 시간을 붙인다. 운동 id로 앞에서부터 찾고, 서버 항목 하나는 한 번만 쓴다. */
+function withRestSeconds(
+  serverItems: readonly ServerItem[],
+  items: readonly RequestItem[],
+): (RequestItem & { restSeconds?: number })[] {
+  const used = new Set<number>()
+  return items.map((item) => {
+    const index = serverItems.findIndex(
+      (server, i) => !used.has(i) && server.exerciseId === item.exerciseId,
+    )
+    if (index < 0) return item
+    used.add(index)
+    const rest = serverItems[index].restSeconds
+    return rest === undefined ? item : { ...item, restSeconds: rest }
+  })
+}
+
 function currentRevisionOf(error: ApiError): number | undefined {
   const value = isRecord(error.data) ? error.data.currentRevision : undefined
   return typeof value === 'number' && Number.isInteger(value)
@@ -349,10 +431,24 @@ export function createApiRoutineRepository(
         throw new WorkoutStoreError('validation')
       }
       assertRoutineId(routineId)
-      const body = {
-        ...toRequestBody(input, ownerId),
-        expectedRevision: input.expectedRevision,
-      }
+      const { items, ...meta } = toRequestBody(input, ownerId)
+      // 앱 모델에 없는 휴식 시간을 지키려고 서버의 현재 항목을 먼저 읽는다. 없는 루틴·다른 회원의 비공개 루틴은 여기서
+      // PATCH와 같은 notFound가 된다. 다른 회원의 공개 루틴처럼 내 루틴이 아니면 항목을 알 수 없는 것으로 두고 예전처럼 보내,
+      // 결과(ACCESS_DENIED → notFound)는 서버가 정한다. revision이 다르면 PATCH가 expectedRevision으로 막으므로
+      // 여기서 읽은 휴식 시간은 성공하는 PATCH의 revision과 항상 같은 때의 값이다.
+      const serverItems = serverItemsOf(
+        await call<unknown>('GET', `${BASE}/${routineId}`),
+        ownerId,
+      )
+      const body =
+        serverItems && sameItems(serverItems, items)
+          ? // 운동 구성이 그대로면 items를 보내지 않는다(서버는 null·생략을 "바꾸지 않음"으로 본다).
+            { ...meta, expectedRevision: input.expectedRevision }
+          : {
+              ...meta,
+              items: serverItems ? withRestSeconds(serverItems, items) : items,
+              expectedRevision: input.expectedRevision,
+            }
       return saved(
         await call<unknown>('PATCH', `${BASE}/${routineId}`, { body }),
       )
