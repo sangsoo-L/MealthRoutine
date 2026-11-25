@@ -257,6 +257,12 @@ export interface CreateRoutineInput extends RoutineContentInput {
 export interface UpdateRoutineInput extends RoutineContentInput {
   /** 화면이 마지막으로 읽은 루틴의 revision. 다르면 다른 곳에서 먼저 수정한 것이라 conflict(revisionMismatch)다. */
   expectedRevision: number
+  /**
+   * 초안 항목 id → 그 항목이 수정 전 루틴(expectedRevision 때)의 몇 번째 항목에서 왔는지(0부터). 새로 넣은 항목은 없다.
+   * 서버 저장소가 앱 모델에 없는 값(휴식 시간)을 남긴 줄에 그대로 붙이는 데 쓴다. 같은 운동이 두 줄이어도 줄을 구분한다.
+   * 로컬 저장소는 쓰지 않는다.
+   */
+  sourceItemIndexes?: ReadonlyMap<string, number>
 }
 
 export interface SaveRoutineResult {

@@ -32,8 +32,9 @@ import type { WorkoutListItem } from '../workoutTypes.ts'
  *   (운동 100개, 횟수 999, 중량 999kg·소수 둘째 자리)도 보내기 전에 걸러 invalidDraft로 알린다. 서버 응답은 로컬 저장값과 같은 검증
  *   (parseWorkoutRoutine)을 거치고, 모양이 맞지 않는 루틴은 목록에서 빼고 개수만 알린다(skippedCount).
  * - 이 앱의 루틴 모델에는 휴식 시간(restSeconds)이 없어서 저장소가 직접 지킨다. 수정 전에 서버의 현재 루틴을 읽어, 운동 구성이
- *   그대로면 items를 보내지 않고(이름·소개만 수정), 바뀌었으면 남은 운동의 휴식 시간을 서버 값 그대로 붙여 보낸다. 새로 넣은 운동은
- *   휴식 시간 없이 보낸다.
+ *   그대로면 items를 보내지 않고(이름·소개만 수정), 바뀌었으면 남긴 줄의 휴식 시간을 서버 값 그대로 붙여 보낸다. 줄은 편집 화면이
+ *   넘긴 sourceItemIndexes(초안 항목이 수정 전 몇 번째 항목이었는지)로 찾아서, 같은 운동이 두 줄이어도 섞이지 않는다.
+ *   새로 넣은 운동은 휴식 시간 없이 보낸다.
  * - 목록은 내 루틴만 항목까지 한 번에 받는다(`mine=true&includeItems=true`, 최근 수정 순). 항목을 예전 방식(targetSets만)으로
  *   저장한 루틴은 세트별 목표가 없어 화면 모델로 바꿀 수 없으므로 목록에서 빼고(skippedCount), 상세 조회는 손상(corruptRecord)으로 본다.
  * - 생성은 requestId로 중복 저장을 막고(같은 요청 재전송이면 created: false), 수정·삭제는 expectedRevision으로 동시 수정을 막는다.
@@ -260,17 +261,32 @@ function sameItems(
   )
 }
 
-/** 남은 운동에 서버의 휴식 시간을 붙인다. 운동 id로 앞에서부터 찾고, 서버 항목 하나는 한 번만 쓴다. */
+/**
+ * 남은 줄에 서버의 휴식 시간을 붙인다. `sourceIndexes`(줄마다 수정 전 몇 번째 항목이었는지)가 있으면 그 줄을 그대로 쓴다.
+ * 같은 운동이 두 줄 있어도 남긴 줄의 값이 따라가고, 그 자리의 운동이 다르면 붙이지 않는다. 줄 정보를 주지 않은 호출만
+ * 예전처럼 운동 id로 앞에서부터 찾는다(서버 항목 하나는 한 번만 쓴다).
+ */
 function withRestSeconds(
   serverItems: readonly ServerItem[],
   items: readonly RequestItem[],
+  sourceIndexes: readonly (number | undefined)[] | null,
 ): (RequestItem & { restSeconds?: number })[] {
   const used = new Set<number>()
-  return items.map((item) => {
-    const index = serverItems.findIndex(
-      (server, i) => !used.has(i) && server.exerciseId === item.exerciseId,
-    )
-    if (index < 0) return item
+  return items.map((item, position) => {
+    let index: number
+    if (sourceIndexes) {
+      const source = sourceIndexes[position]
+      index =
+        source !== undefined &&
+        serverItems[source]?.exerciseId === item.exerciseId
+          ? source
+          : -1
+    } else {
+      index = serverItems.findIndex(
+        (server, i) => !used.has(i) && server.exerciseId === item.exerciseId,
+      )
+    }
+    if (index < 0 || used.has(index)) return item
     used.add(index)
     const rest = serverItems[index].restSeconds
     return rest === undefined ? item : { ...item, restSeconds: rest }
@@ -428,17 +444,27 @@ export function createApiRoutineRepository(
       // PATCH와 같은 notFound가 된다. 다른 회원의 공개 루틴처럼 내 루틴이 아니면 항목을 알 수 없는 것으로 두고 예전처럼 보내,
       // 결과(ACCESS_DENIED → notFound)는 서버가 정한다. revision이 다르면 PATCH가 expectedRevision으로 막으므로
       // 여기서 읽은 휴식 시간은 성공하는 PATCH의 revision과 항상 같은 때의 값이다.
-      const serverItems = serverItemsOf(
-        await call<unknown>('GET', `${BASE}/${routineId}`),
-        ownerId,
-      )
+      const current = await call<unknown>('GET', `${BASE}/${routineId}`)
+      const serverItems = serverItemsOf(current, ownerId)
+      // 줄 정보는 화면이 읽은 루틴(expectedRevision) 기준이다. 서버 revision이 다르면 자리가 맞지 않으므로 휴식 시간을 붙이지
+      // 않는다(이 PATCH는 서버가 REVISION_MISMATCH로 막는다). toRequestBody는 초안 항목을 순서 그대로 하나씩 바꾸므로
+      // items[i]는 input.draft.items[i]에서 왔다.
+      const sourceIndexes = input.sourceItemIndexes
+        ? isRecord(current) && current.revision === input.expectedRevision
+          ? input.draft.items.map((item) =>
+              input.sourceItemIndexes?.get(item.itemId),
+            )
+          : input.draft.items.map(() => undefined)
+        : null
       const body =
         serverItems && sameItems(serverItems, items)
           ? // 운동 구성이 그대로면 items를 보내지 않는다(서버는 null·생략을 "바꾸지 않음"으로 본다).
             { ...meta, expectedRevision: input.expectedRevision }
           : {
               ...meta,
-              items: serverItems ? withRestSeconds(serverItems, items) : items,
+              items: serverItems
+                ? withRestSeconds(serverItems, items, sourceIndexes)
+                : items,
               expectedRevision: input.expectedRevision,
             }
       return saved(

@@ -679,6 +679,161 @@ test('수정: 순서·세트를 바꾸거나 운동을 빼도 남은 운동의 �
   ])
 })
 
+/**
+ * 저장한 값을 기억하는 가짜 서버. PATCH는 서버처럼 expectedRevision을 확인하고, items를 보내면 받은 줄로 바꾼다(restSeconds 포함).
+ * 같은 운동(원암 덤벨 로우)이 두 줄이고 휴식 시간이 30초·90초인 루틴으로 시작한다.
+ */
+function duplicateRestServer() {
+  const first = { exerciseId: 2, recordType: 'weight', sets: ITEMS[0].sets }
+  const second = { exerciseId: 2, recordType: 'weight', sets: [{ reps: 6 }] }
+  let stored = serverRoutine(
+    {},
+    {
+      items: [
+        { ...first, restSeconds: 30 },
+        { ...second, restSeconds: 90 },
+      ],
+    },
+  )
+  const fake = fakeRequest(({ method, body }) => {
+    if (method === 'GET') return stored
+    if (body.expectedRevision !== stored.revision) {
+      throw fail(409, 'REVISION_MISMATCH', { currentRevision: stored.revision })
+    }
+    const next = serverRoutine(
+      { revision: stored.revision + 1 },
+      { ...body, requestId: stored.requestId },
+    )
+    stored = body.items ? next : { ...next, items: stored.items }
+    return stored
+  })
+  return {
+    ...fake,
+    current: () => stored,
+    /** 다른 기기에서 이름만 바꿔 revision을 올린다. */
+    bump: () => {
+      stored = { ...stored, revision: stored.revision + 1 }
+    },
+  }
+}
+
+/** 편집 화면처럼 루틴을 초안으로 바꾸고, 초안 항목마다 원래 몇 번째 항목이었는지 기억한다. */
+function editDraftOf(routine) {
+  const edit = model.routineToDraft(routine)
+  return {
+    draft: edit,
+    sourceItemIndexes: new Map(edit.items.map((item, i) => [item.itemId, i])),
+  }
+}
+
+test('수정: 같은 운동이 두 줄(휴식 30초·90초)일 때 첫 줄을 지우고 저장하면, 다시 조회한 남은 줄의 세트 목표와 휴식 시간 90초가 그대로다', async () => {
+  const fake = duplicateRestServer()
+  const repository = api.createApiRoutineRepository(OWNER, fake.request)
+  const routine = await repository.get('41')
+  assert.equal(routine.items.length, 2)
+  const edit = editDraftOf(routine)
+
+  await repository.update('41', {
+    expectedRevision: routine.revision,
+    name: routine.name,
+    description: routine.description,
+    draft: { ...edit.draft, items: [edit.draft.items[1]] },
+    sourceItemIndexes: edit.sourceItemIndexes,
+  })
+  assert.deepEqual(fake.calls.at(-1).options.body.items, [
+    {
+      exerciseId: 2,
+      recordType: 'weight',
+      sets: [{ reps: 6 }],
+      restSeconds: 90,
+    },
+  ])
+
+  const reread = await repository.get('41')
+  assert.equal(reread.revision, 2)
+  assert.deepEqual(reread.items, [
+    {
+      exerciseId: '2',
+      exerciseNameSnapshot: '원암 덤벨 로우',
+      recordType: 'weight',
+      sets: [{ reps: 6 }],
+    },
+  ])
+  assert.deepEqual(
+    fake.current().items.map((item) => item.restSeconds),
+    [90],
+  )
+})
+
+test('수정: 같은 운동 두 줄 중 둘째 줄을 지우고 다른 운동을 앞에 넣으면, 남은 첫 줄은 30초를 지키고 새 줄은 휴식 시간이 없다', async () => {
+  const fake = duplicateRestServer()
+  const repository = api.createApiRoutineRepository(OWNER, fake.request)
+  const routine = await repository.get('41')
+  const edit = editDraftOf(routine)
+  const added = model.routineToDraft({ items: [ITEMS[1]] }).items[0]
+
+  await repository.update('41', {
+    expectedRevision: routine.revision,
+    name: routine.name,
+    description: routine.description,
+    draft: { ...edit.draft, items: [added, edit.draft.items[0]] },
+    sourceItemIndexes: edit.sourceItemIndexes,
+  })
+  assert.deepEqual(
+    fake
+      .current()
+      .items.map((item) => [
+        item.exerciseId,
+        item.sets.length,
+        item.restSeconds,
+      ]),
+    [
+      [22, 1, null],
+      [2, 2, 30],
+    ],
+  )
+})
+
+test('수정: 서버 revision이 화면이 읽은 것과 다르면 줄 자리가 맞지 않으므로 휴식 시간을 붙이지 않고, 서버의 REVISION_MISMATCH를 알린다', async () => {
+  const fake = duplicateRestServer()
+  const repository = api.createApiRoutineRepository(OWNER, fake.request)
+  const routine = await repository.get('41')
+  const edit = editDraftOf(routine)
+  fake.bump()
+  await assert.rejects(
+    repository.update('41', {
+      expectedRevision: 1,
+      name: routine.name,
+      description: '',
+      draft: { ...edit.draft, items: [edit.draft.items[1]] },
+      sourceItemIndexes: edit.sourceItemIndexes,
+    }),
+    (error) =>
+      storeError('conflict', 'revisionMismatch')(error) &&
+      error.currentRevision === 2,
+  )
+  assert.deepEqual(fake.calls.at(-1).options.body.items, [
+    { exerciseId: 2, recordType: 'weight', sets: [{ reps: 6 }] },
+  ])
+  assert.deepEqual(
+    fake.current().items.map((item) => item.restSeconds),
+    [30, 90],
+  )
+})
+
+test('편집 화면은 초안 항목의 원래 자리(sourceItemIndexes)를 수정 요청에 같이 넘긴다', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const source = await readFile(
+    new URL('../src/pages/RoutineEditPage.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /sourceItemIndexes: initial\.sourceItemIndexes/)
+  assert.match(
+    source,
+    /first\.items\.map\(\(item, index\) => \[item\.itemId, index\]\)/,
+  )
+})
+
 test('수정: 먼저 읽은 루틴이 내 루틴이 아니면 예전처럼 보내 서버 판단(notFound)을 따르고, 읽기에서 막히면 PATCH를 보내지 않는다', async () => {
   const input = {
     expectedRevision: 1,
