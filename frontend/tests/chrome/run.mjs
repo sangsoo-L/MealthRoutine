@@ -42,6 +42,7 @@ export const GROUPS = {
     'e02-detail-focus',
     'favorites-app',
     'favorites-harness',
+    'favorites-relogin',
   ],
   record: [
     'w02-compose',

@@ -5,7 +5,7 @@ import type { Exercise } from './exerciseTypes.ts'
 /**
  * 운동 목록(카탈로그) 조회 상태.
  * - loading: 불러오는 중.
- * - unavailable: 운동 데이터 소스가 연결되지 않았다(운영 빌드 등). "운동 없음"이나 오류가 아니다.
+ * - unavailable: 운동 데이터 소스가 연결되지 않았다(개발 서버의 미연결 스위치). "운동 없음"이나 오류가 아니다.
  * - error: 연결은 되어 있으나 조회에 실패했다.
  * - ready: 조회 성공.
  */
@@ -27,8 +27,8 @@ interface Loaded {
  * 운동 선택 화면(W13)이 쓰는 운동 목록. 조건 없이 한 번 조회해(ExerciseRepository.list) 즐겨찾기 id와의 매칭과 직접 검색이 같은 목록을 쓴다.
  * 운동마다 getById를 부르지 않는다(N+1 없음). 마운트당 list는 한 번이고 reload로만 다시 부른다.
  *
- * 개발 서버에서는 운동 JSON 시드(105종) 전체가 오지만, 실제 API(GET /api/v1/exercises)는 페이지 단위 응답이라 한 번의 조회가 전체 운동을
- * 보장하지 않는다(페이지네이션은 이번 범위가 아니다). 운영 빌드에는 저장소가 없어 항상 unavailable이며 Mock으로 대체하지 않는다.
+ * 개발 서버에서는 운동 JSON 시드(105종) 전체가 온다. 운영 빌드의 API 저장소(api/apiExerciseRepository.ts)는 서버의 페이지 응답을 모두 받아
+ * 전체 운동을 돌려주므로 화면은 페이지를 다루지 않는다.
  */
 export function useExerciseCatalog(): {
   state: ExerciseCatalogState

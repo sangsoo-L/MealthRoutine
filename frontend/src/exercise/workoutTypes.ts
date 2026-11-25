@@ -12,7 +12,7 @@ import type { NormalizedSet, RecordType } from './workoutDraftTypes.ts'
 /** 저장 레코드의 스키마 버전. 모양을 바꾸면 올리고 exercise/local/exerciseDb.ts의 업그레이드에서 옮긴다. */
 export const WORKOUT_SCHEMA_VERSION = 1
 
-/** 개발용 Mock 운동 데이터(15종)의 카탈로그 식별자. 운영 카탈로그가 아니다. */
+/** 개발 서버의 운동 JSON 시드(exercise/seed/, 105종) 카탈로그 식별자. 값은 Mock 15종을 쓰던 때의 이름 그대로 둔다(이미 저장된 기록과 같은 값). */
 export const DEV_CATALOG_VERSION = 'dev-mock-1'
 
 /** 서버 운동 카탈로그(exercises 테이블)의 식별자. 운영 빌드에서 저장하는 목록·계획에 찍는다. */

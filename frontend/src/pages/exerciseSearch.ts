@@ -4,8 +4,9 @@
  *
  * 필터 항목과 값은 화면명세 v5.0 E01(스토리보드 v5.0)의 운동 검색 화면을 따른다.
  * 난이도·운동 부위·운동 도구는 각각 하나만 고르고(단일 선택), 서로 독립된 조건이며 "전체"는 값 없음(null)이다.
- * 운동 검색 API(GET /api/v1/exercises)는 명세서에 경로만 있고 요청·응답 구조가 정의되지 않았다(README의 API 인수인계).
- * 그래서 아래 값은 화면을 그리기 위한 것이며 API 코드값이 아니다. 백엔드와 확정되면 맞춘다.
+ * 운동 API(GET /api/v1/exercises)의 응답은 docs/api_exercise_v1.0.md에 정의되어 있고, 운영 빌드에서는
+ * exercise/api/apiExerciseRepository.ts가 그 응답을 화면 모델로 바꾼다.
+ * 아래 값은 화면을 그리기 위한 것이며 API 코드값이 아니다.
  */
 import {
   ALL_PART_FILTER_VALUES,
@@ -123,8 +124,9 @@ function toResult(exercise: Exercise): ExerciseResult {
 /**
  * 현재 연결. 운동 데이터 저장소(exercise/exerciseSource.ts)를 통해 검색한다.
  * - 개발 서버: 운동 JSON 시드(exercise/seed/, 105종)를 조회한다.
- * - 운영 빌드: 저장소가 없다(운동 검색 API·데이터 미확정). 항상 "데이터 소스 미연결"을 돌려주며 가짜 운동을 만들지 않고
- *   결과 없음·오류로도 처리하지 않는다.
+ * - 운영 빌드: 운동 API(GET /api/v1/exercises) 저장소가 받아 둔 전체 운동에서 같은 조건으로 거른다. 목록 순서는 서버 응답 순서(운동 id 순)라
+ *   개발 서버(시드 파일 순서)와 다르다.
+ * - 저장소가 없으면(개발 서버의 미연결 스위치) "데이터 소스 미연결"을 돌려주며 가짜 운동을 만들지 않고 결과 없음·오류로도 처리하지 않는다.
  * 저장소가 조회에 실패하면 error를 돌려준다(입력은 화면이 그대로 유지하고 재시도할 수 있다).
  */
 export const exerciseBackend: ExerciseBackend = {

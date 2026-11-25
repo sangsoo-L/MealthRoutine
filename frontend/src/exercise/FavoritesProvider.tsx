@@ -6,7 +6,12 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { registerAccountCleanup } from '../auth/accountScope.ts'
 import { useAuth } from '../auth/authContext.ts'
+import {
+  FavoriteSaveError,
+  type ExerciseFavoriteRepository,
+} from './favoriteRepository.ts'
 import { createFavoriteRepository } from './favoriteSource.ts'
 import {
   FavoritesContext,
@@ -16,6 +21,15 @@ import {
 } from './favoritesContext.ts'
 
 const EMPTY_IDS: ReadonlySet<string> = new Set<string>()
+
+/**
+ * 로그인 세대. 로그인 성공·로그아웃·세션 종료 때(clearAccountScopedData) 1씩 오른다.
+ * 같은 계정으로 다시 로그인해도 바뀌므로, 이전 로그인 때 보낸 조회·저장의 늦은 응답을 계정 id만으로는 가려낼 수 없는 경우를 막는다.
+ */
+let accountGeneration = 0
+registerAccountCleanup(() => {
+  accountGeneration += 1
+})
 
 type Settled =
   | { status: 'unavailable' }
@@ -78,12 +92,22 @@ function scopedFor(scoped: ScopedIds, userId: string | null) {
  * - 저장: 저장이 성공한 뒤에만 ids를 바꾼다. 실패하면 ids는 그대로이고 그 운동의 failedIds에만 표시된다.
  *   같은 운동은 저장 중에 다시 눌러도 무시한다(저장소도 멱등이라 이중으로 막는다). 다른 운동은 서로 막지 않는다.
  * - 계정 전환·로그아웃: 이전 계정의 값은 즉시 보이지 않고, 늦게 도착한 이전 계정의 조회·저장 결과는 반영하지 않는다.
+ *   같은 계정으로 다시 로그인한 경우도 같다: 조회 번호(attempt)를 0으로 되돌리지 않고 계속 올리며, 요청을 보낸 때의 로그인 세대가
+ *   지금과 다르면 응답을 버린다(이전 로그인의 늦은 등록·해제 성공이 새 조회 결과를 덮어쓰지 않게).
+ * - 저장소가 요청마다 시간 상한을 두므로(api/apiFavoriteRepository.ts) 서버가 답하지 않아도 로딩은 error(다시 시도)로,
+ *   저장은 failed로 끝나 버튼 잠금이 풀린다.
+ * - 등록·해제가 일시적인 이유로 실패하면(시간 상한·네트워크 등) 서버는 처리했는데 응답만 잃었을 수 있어서, 목록을 로딩 표시 없이 다시 읽어
+ *   서버 값으로 맞춘다. 서버 값이 하려던 상태와 같으면 실패 표시도 지운다. 다시 읽는 사이 다른 등록·해제가 시작되거나 끝났거나,
+ *   계정·조회·로그인 세대가 바뀌었으면 그 결과는 버린다(최신 상태를 덮어쓰지 않게).
  * 저장소 인터페이스(favoriteRepository)는 list/add/remove만 쓴다. 사용자 id는 인증 Context의 값만 쓴다.
+ * createRepository는 Chrome 회귀 하네스가 응답 시점을 정하는 저장소를 넣을 때만 쓴다. 앱은 넘기지 않는다(기본은 favoriteSource).
  */
 export default function FavoritesProvider({
   children,
+  createRepository = createFavoriteRepository,
 }: {
   children: ReactNode
+  createRepository?: (userId: string) => ExerciseFavoriteRepository | null
 }) {
   const { status: authStatus, user } = useAuth()
   // 인증이 확정된(authenticated) 회원일 때만 사용자 id를 쓴다. 사용자 정보가 남아 있어도 인증 상태가 확정이 아니면 비회원으로 본다(useIsMember와 같은 기준).
@@ -94,12 +118,15 @@ export default function FavoritesProvider({
   const [saving, setSaving] = useState<ScopedIds>(EMPTY_SCOPED)
   const [failed, setFailed] = useState<ScopedIds>(EMPTY_SCOPED)
   const busy = useRef<Set<string>>(new Set())
+  // 등록·해제가 시작되거나 끝날 때마다 오르는 번호. 실패 뒤 다시 읽은 목록이 그 사이의 다른 저장을 덮어쓰지 않게 한다.
+  const mutations = useRef(0)
 
   // 계정이 바뀌면 지난 계정의 값을 바로 버린다(렌더 중 상태 보정). 로그아웃 뒤 회원 데이터가 메모리에 남지 않는다.
   const [prevUserId, setPrevUserId] = useState(userId)
   if (prevUserId !== userId) {
     setPrevUserId(userId)
-    setAttempt(0)
+    // 0으로 되돌리지 않는다. 같은 계정으로 다시 로그인해도 이전 로그인 때의 조회 키와 겹치지 않게 한다.
+    setAttempt((n) => n + 1)
     setLoaded(null)
     setSaving(EMPTY_SCOPED)
     setFailed(EMPTY_SCOPED)
@@ -111,7 +138,8 @@ export default function FavoritesProvider({
     if (!userId) return
     let cancelled = false
     const effectKey = loadKey(userId, attempt)
-    const repository = createFavoriteRepository(userId)
+    const generation = accountGeneration
+    const repository = createRepository(userId)
     if (!repository) {
       Promise.resolve().then(() => {
         if (!cancelled) {
@@ -122,8 +150,15 @@ export default function FavoritesProvider({
         cancelled = true
       }
     }
+    // 요청한 뒤 로그인 세대가 바뀌었으면(같은 계정 재로그인 포함) 그 응답은 버리고 다시 조회한다.
+    const stale = () => {
+      if (generation === accountGeneration) return false
+      if (!cancelled) setAttempt((n) => n + 1)
+      return true
+    }
     repository.list().then(
       (ids) => {
+        if (stale()) return
         if (!cancelled) {
           setLoaded({
             key: effectKey,
@@ -132,6 +167,7 @@ export default function FavoritesProvider({
         }
       },
       () => {
+        if (stale()) return
         if (!cancelled) {
           setLoaded({ key: effectKey, list: { status: 'error' } })
         }
@@ -140,7 +176,7 @@ export default function FavoritesProvider({
     return () => {
       cancelled = true
     }
-  }, [userId, attempt])
+  }, [userId, attempt, createRepository])
 
   const list: Settled | null =
     key !== null && loaded !== null && loaded.key === key ? loaded.list : null
@@ -158,18 +194,59 @@ export default function FavoritesProvider({
     setAttempt((n) => n + 1)
   }, [userId])
 
+  /** 실패한 등록·해제 뒤 목록을 조용히 다시 읽어 서버 값으로 맞춘다. 그 사이 다른 저장이 있었으면 버린다. */
+  const resync = useCallback(
+    (
+      repository: ExerciseFavoriteRepository,
+      listKey: string,
+      generation: number,
+      exerciseId: string,
+      intended: boolean,
+    ) => {
+      if (!userId) return
+      // 이 실패의 finally가 번호를 한 번 더 올리므로 그 값을 기준으로 삼는다.
+      const seen = mutations.current + 1
+      const owner = userId
+      repository.list().then(
+        (ids) => {
+          if (generation !== accountGeneration || mutations.current !== seen)
+            return
+          const prefix = `${generation}|${owner}|`
+          if ([...busy.current].some((lock) => lock.startsWith(prefix))) return
+          const server = new Set(ids)
+          setLoaded((prev) =>
+            prev && prev.key === listKey && prev.list.status === 'ready'
+              ? { key: listKey, list: { status: 'ready', ids: server } }
+              : prev,
+          )
+          if (server.has(exerciseId) === intended) {
+            setFailed((prev) => updateScoped(prev, owner, exerciseId, false))
+          }
+        },
+        () => {
+          // 다시 읽지 못하면 실패 표시를 그대로 두고 사용자가 다시 누르거나 새로고침한다.
+        },
+      )
+    },
+    [userId],
+  )
+
   const toggle = useCallback(
     async (exerciseId: string): Promise<ToggleResult> => {
       if (!userId || key === null || readyIds === null) return 'ignored'
-      const lock = `${userId}|${exerciseId}`
+      const generation = accountGeneration
+      // 로그인 세대마다 따로 잠근다. 이전 로그인 때의 저장이 끝나지 않았어도 다시 로그인한 뒤에는 누를 수 있다.
+      const lock = `${generation}|${userId}|${exerciseId}`
+      const current = () => generation === accountGeneration
       if (busy.current.has(lock)) return 'ignored'
-      const repository = createFavoriteRepository(userId)
+      const repository = createRepository(userId)
       if (!repository) {
         // 조회 뒤에 저장소가 사라진 경우(개발·검수용 스위치). 아무것도 저장하지 않았음을 안내한다.
         setFailed((prev) => updateScoped(prev, userId, exerciseId, true))
         return 'failed'
       }
       busy.current.add(lock)
+      mutations.current += 1
       setSaving((prev) => updateScoped(prev, userId, exerciseId, true))
       setFailed((prev) => updateScoped(prev, userId, exerciseId, false))
       const next = !readyIds.has(exerciseId)
@@ -177,6 +254,8 @@ export default function FavoritesProvider({
         if (next) await repository.add(exerciseId)
         else await repository.remove(exerciseId)
         // 저장이 성공한 뒤에만 목록을 바꾼다. 그 사이 계정이나 조회가 바뀌었으면(key가 다르면) 반영하지 않는다.
+        // 그 사이 다시 로그인했으면(세대가 다르면) 같은 계정이라도 반영하지 않는다. 새 로그인의 조회 결과가 서버 값이다.
+        if (!current()) return 'ignored'
         setLoaded((prev) => {
           if (!prev || prev.key !== key || prev.list.status !== 'ready') {
             return prev
@@ -187,15 +266,26 @@ export default function FavoritesProvider({
           return { key, list: { status: 'ready', ids } }
         })
         return next ? 'added' : 'removed'
-      } catch {
+      } catch (error) {
+        if (!current()) return 'ignored'
         setFailed((prev) => updateScoped(prev, userId, exerciseId, true))
+        if (!(
+          error instanceof FavoriteSaveError && error.reason === 'invalid'
+        )) {
+          resync(repository, key, generation, exerciseId, next)
+        }
         return 'failed'
       } finally {
         busy.current.delete(lock)
-        setSaving((prev) => updateScoped(prev, userId, exerciseId, false))
+        mutations.current += 1
+        // 이전 로그인의 저장이 새 로그인에서 같은 운동을 저장 중인 표시를 지우지 않게 한다.
+        const newer = `${accountGeneration}|${userId}|${exerciseId}`
+        if (current() || !busy.current.has(newer)) {
+          setSaving((prev) => updateScoped(prev, userId, exerciseId, false))
+        }
       }
     },
-    [userId, key, readyIds],
+    [userId, key, readyIds, createRepository, resync],
   )
 
   const value = useMemo<FavoritesContextValue>(

@@ -3,9 +3,8 @@ import type { Exercise, ExerciseQuery } from './exerciseTypes.ts'
 /**
  * 운동(마스터) 데이터의 경계. 운동 탐색·상세가 이 인터페이스만 안다.
  *
- * 운동 데이터의 실제 출처(외부 API·자체 DB)는 아직 정해지지 않았다. 개발 환경의 Mock 구현(mock/mockExerciseRepository.ts)과
- * 나중에 만들 API 구현을 이 인터페이스로 교체한다. 운동 검색 API(GET /api/v1/exercises)의 요청·응답 구조는 명세서에 없으므로
- * 연결하지 않았다.
+ * 운영 빌드는 운동 API(GET /api/v1/exercises, docs/api_exercise_v1.0.md) 구현(api/apiExerciseRepository.ts)을, 개발 서버는 운동 JSON 시드
+ * 구현(seed/seedExerciseRepository.ts)을 쓴다. 서버 DB 시드가 같은 JSON에서 만들어져 두 구현의 운동 id와 값이 같다.
  *
  * 운동 `id`는 이후 루틴·운동 기록이 같은 값으로 참조한다. 운동 데이터는 계정과 무관한 공용 데이터라서 계정별로 나뉘지 않는다.
  */
