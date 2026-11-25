@@ -184,6 +184,7 @@ export function createDevCommunitySource(
   actor: CommunityActor | null,
 ): CommunitySource {
   return {
+    supports: { boards: ['free', 'qa'], comments: true, likes: true },
     async listPosts(board: CommunityBoard) {
       return store
         .filter((post) => post.board === board)
@@ -200,7 +201,9 @@ export function createDevCommunitySource(
       return post ? detailOf(post, actor) : null
     },
     async createPost(input: NewPostInput) {
-      const me = requireActor(actor)
+      // 비회원이면 저장하지 않는다(서버의 401처럼 확실한 거절).
+      if (actor === null) return { kind: 'rejected' }
+      const me = actor
       counter += 1
       const id = `dev-new-${counter}`
       store.push({
@@ -219,7 +222,7 @@ export function createDevCommunitySource(
         likedBy: new Set(),
         comments: [],
       })
-      return { id }
+      return { kind: 'created', id }
     },
     async addComment(postId, body) {
       const me = requireActor(actor)

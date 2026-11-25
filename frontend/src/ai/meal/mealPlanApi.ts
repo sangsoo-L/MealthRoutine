@@ -1,3 +1,4 @@
+import { ApiError, apiRequest } from '../../api/http.ts'
 import type {
   MealPlanCandidateCount,
   MealPlanRequest,
@@ -99,7 +100,15 @@ export function parseDietRecommendation(
   }
 }
 
-export function createLocalMealPlanSource(): MealPlanSource {
+const NO_CANDIDATES =
+  '선택한 음식 종류와 제외 조건에 맞는 추천 후보가 없습니다. 조건을 변경해 주세요.'
+
+function createSource(
+  send: (
+    body: Record<string, unknown>,
+    signal: AbortSignal,
+  ) => Promise<unknown>,
+): MealPlanSource {
   return {
     // 이 두 조회 API는 FastAPI에 없으므로 실제 수치를 지어내지 않습니다.
     async getTargets(_query, signal): Promise<MealPlanTargets> {
@@ -144,10 +153,8 @@ export function createLocalMealPlanSource(): MealPlanSource {
       const meals: MealPlanResult['meals'][number][] = []
       for (const meal of [...new Set(request.meals)]) {
         if (signal.aborted) throw new DOMException('취소', 'AbortError')
-        const response = await fetch(`${AI_BASE}/diet-recommendations`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const raw = await send(
+          {
             target_calories_kcal: kcal,
             meal_types: [meal],
             excluded_food_ids: excluded,
@@ -155,33 +162,14 @@ export function createLocalMealPlanSource(): MealPlanSource {
             food_type: request.foodType,
             food_kinds: request.foodKinds,
             preferences,
-          }),
-          signal,
-        })
-        if (!response.ok) {
-          // FastAPI의 후보 없음 응답만 빈 결과로 처리한다. 입력 검증 실패 등
-          // 다른 422 응답이나 서버 장애는 일반 오류로 유지한다.
-          if (response.status === 422) {
-            const body: unknown = await response.json().catch(() => null)
-            if (
-              body !== null &&
-              typeof body === 'object' &&
-              'detail' in body &&
-              body.detail ===
-                '선택한 음식 종류와 제외 조건에 맞는 추천 후보가 없습니다. 조건을 변경해 주세요.'
-            ) {
-              return null
-            }
-          }
-          throw new Error(`${meal} 식단 추천 요청 실패 (${response.status})`)
-        }
-        const parsed = parseDietRecommendation(
-          (await response.json()) as unknown,
-          {
-            ...request,
-            meals: [meal],
           },
+          signal,
         )
+        if (raw === null) return null
+        const parsed = parseDietRecommendation(raw, {
+          ...request,
+          meals: [meal],
+        })
         if (!parsed) return null
         if (parsed.meals.length !== 1 || parsed.meals[0].meal !== meal) {
           throw new Error(`${meal} 식단 추천 결과가 올바르지 않습니다.`)
@@ -195,4 +183,46 @@ export function createLocalMealPlanSource(): MealPlanSource {
       }
     },
   }
+}
+
+export function createLocalMealPlanSource(): MealPlanSource {
+  return createSource(async (body, signal) => {
+    const response = await fetch(`${AI_BASE}/diet-recommendations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    })
+    if (response.ok) return (await response.json()) as unknown
+    if (response.status === 422) {
+      const error: unknown = await response.json().catch(() => null)
+      if (
+        error &&
+        typeof error === 'object' &&
+        'detail' in error &&
+        error.detail === NO_CANDIDATES
+      )
+        return null
+    }
+    throw new Error(`식단 추천 요청 실패 (${response.status})`)
+  })
+}
+
+export function createSpringMealPlanSource(): MealPlanSource {
+  return createSource(async (body, signal) => {
+    try {
+      return await apiRequest('POST', '/ai/diet-recommendations', {
+        body,
+        signal,
+      })
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 422 &&
+        error.errorCode === 'AI_DIET_NO_CANDIDATES'
+      )
+        return null
+      throw error
+    }
+  })
 }

@@ -1088,3 +1088,32 @@ test('시작 확인의 REFRESH_INVALID 재시도 대기 중 수동 login이 시�
     1,
   )
 })
+
+test('AI 사진 multipart에 로그인 토큰을 붙이고 브라우저가 boundary를 정한다', async () => {
+  const { fake, session } = await loggedIn()
+  const body = new FormData()
+  body.set('file', new Blob(['sample'], { type: 'image/png' }), 'sample.png')
+  fake.on('POST /ai/food-analyses', ok({ foods: [] }))
+
+  const output = await session.request('POST', '/ai/food-analyses', {
+    multipart: body,
+  })
+  assert.deepEqual(output, { foods: [] })
+  assert.equal(fake.calls[0].headers.Authorization, 'Bearer access-A1')
+  assert.equal(fake.calls[0].headers['Content-Type'], undefined)
+  assert.equal(fake.calls[0].body, body)
+  await rejectsWith(
+    session.request('POST', '/ai/food-analyses', { multipart: body, body: {} }),
+    0,
+    'INVALID_REQUEST',
+  )
+  await rejectsWith(
+    session.request('POST', '/ai/food-analyses', {
+      multipart: body,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+    0,
+    'INVALID_REQUEST',
+  )
+  assert.equal(fake.calls.length, 1)
+})

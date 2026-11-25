@@ -26,6 +26,12 @@ public enum ErrorCode {
     // PATCH exercises on a record saved by POST /workout-sessions/records. PATCH cannot carry recordType, setTargets
     // or skipped set numbers, so replacing the list would lose them.
     RECORD_EXERCISES_LOCKED(HttpStatus.CONFLICT, "완료 기록으로 저장한 운동 목록은 수정할 수 없습니다."),
+    AI_REQUEST_INVALID(HttpStatus.UNPROCESSABLE_CONTENT, "AI 요청 조건을 확인해 주세요."),
+    AI_REQUEST_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "요청 크기가 허용 범위를 넘었습니다."),
+    AI_IMAGE_TYPE_UNSUPPORTED(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "JPG 또는 PNG 파일을 선택해 주세요."),
+    AI_DIET_NO_CANDIDATES(HttpStatus.UNPROCESSABLE_CONTENT, "선택한 조건에 맞는 추천 후보가 없습니다."),
+    AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI가 현재 요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요."),
+    AI_UPSTREAM_FAILED(HttpStatus.BAD_GATEWAY, "AI 결과를 받을 수 없습니다. 잠시 후 다시 시도해 주세요."),
     FOOD_NOT_FOUND(HttpStatus.NOT_FOUND, "음식을 찾을 수 없습니다."),
     MEAL_RECORD_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 기록을 찾을 수 없습니다."),
     DIET_GOAL_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 목표를 찾을 수 없습니다."),
@@ -64,6 +70,8 @@ public enum ErrorCode {
     PIN_EXPIRED(HttpStatus.FORBIDDEN, "PIN 확인 시간이 지났습니다. PIN을 다시 입력해 주세요."),
     // Another member's record and a missing record get the same 404 (HEALTH8-12).
     MEASUREMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "신체정보 기록을 찾을 수 없습니다."),
+    // Community (C1): a missing, hidden or deleted post and an id of 0 or less all get the same 404.
+    POST_NOT_FOUND(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다."),
     DATA_CONFLICT(HttpStatus.CONFLICT, "다른 데이터와 충돌하여 처리할 수 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 

@@ -18,7 +18,11 @@ FastAPI 내부 경로와 반드시 같을 필요는 없다.
 Spring Boot 담당자와 협의한 후 확정해야 한다.
 """
 
-from fastapi import FastAPI
+import hmac
+import os
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from routers.diet_catalog import router as diet_catalog_router
 
@@ -41,6 +45,16 @@ app.add_middleware(
     allow_methods=["POST"],
     allow_headers=["Content-Type"],
 )
+
+@app.middleware("http")
+async def require_internal_key(request: Request, call_next):
+    key = os.getenv("AI_INTERNAL_KEY", "")
+    if key and request.url.path.startswith("/internal/ai/"):
+        supplied = request.headers.getlist("x-internal-key")
+        if len(supplied) != 1 or not hmac.compare_digest(supplied[0].encode(), key.encode()):
+            return JSONResponse({"detail": "Internal key required"}, status_code=403)
+    return await call_next(request)
+
 
 app.include_router(exercise_router)
 app.include_router(diet_router)

@@ -116,6 +116,7 @@ export interface RawRequest {
   /** `/auth/login`처럼 API_PREFIX 뒤의 경로(checkPath를 통과한 값) */
   path: string
   body?: unknown
+  multipart?: FormData
   /** 넣으면 `Authorization: Bearer ...`로 보낸다 */
   token?: string | null
   /** refresh·logout처럼 CSRF 확인 헤더가 필요한 요청 */
@@ -166,7 +167,8 @@ export async function sendRaw(
       method: request.method,
       headers,
       body:
-        request.body === undefined ? undefined : JSON.stringify(request.body),
+        request.multipart ??
+        (request.body === undefined ? undefined : JSON.stringify(request.body)),
       credentials: 'same-origin',
       signal: request.signal,
     })

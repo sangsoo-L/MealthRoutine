@@ -18,7 +18,7 @@ export default function CommunityBoardPage({
   board: CommunityBoard
 }) {
   usePageTitle(TITLE[board])
-  const source = useCommunitySource()
+  const source = useCommunitySource(board)
   const { state, reload } = usePostList(source, board)
   return <CommunityBoardView board={board} state={state} onRetry={reload} />
 }

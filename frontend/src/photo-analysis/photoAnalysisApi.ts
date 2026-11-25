@@ -1,3 +1,4 @@
+import { apiRequest } from '../api/http.ts'
 import type {
   PhotoAnalysisResult,
   PhotoAnalysisSource,
@@ -88,19 +89,33 @@ async function normalizePhoto(file: File, signal: AbortSignal): Promise<File> {
   }
 }
 
-export function createLocalPhotoAnalysisSource(): PhotoAnalysisSource {
+function createSource(
+  send: (body: FormData, signal: AbortSignal) => Promise<unknown>,
+): PhotoAnalysisSource {
   return {
     async analyze(file, signal) {
       const body = new FormData()
       body.append('file', await normalizePhoto(file, signal))
-      const response = await fetch(`${AI_BASE}/food-analyses`, {
-        method: 'POST',
-        body,
-        signal,
-      })
-      if (!response.ok)
-        throw new Error(`사진 분석 요청 실패 (${response.status})`)
-      return parsePhotoAnalysis((await response.json()) as unknown)
+      return parsePhotoAnalysis(await send(body, signal))
     },
   }
+}
+
+export function createLocalPhotoAnalysisSource(): PhotoAnalysisSource {
+  return createSource(async (body, signal) => {
+    const response = await fetch(`${AI_BASE}/food-analyses`, {
+      method: 'POST',
+      body,
+      signal,
+    })
+    if (!response.ok)
+      throw new Error(`사진 분석 요청 실패 (${response.status})`)
+    return (await response.json()) as unknown
+  })
+}
+
+export function createSpringPhotoAnalysisSource(): PhotoAnalysisSource {
+  return createSource((multipart, signal) =>
+    apiRequest('POST', '/ai/food-analyses', { multipart, signal }),
+  )
 }

@@ -1,5 +1,8 @@
 import type { LocalDate } from '../../exercise/workoutTypes.ts'
-import { createLocalMealPlanSource } from './mealPlanApi.ts'
+import {
+  createLocalMealPlanSource,
+  createSpringMealPlanSource,
+} from './mealPlanApi.ts'
 import type { MealType } from '../../food/mealModel.ts'
 
 /**
@@ -102,12 +105,11 @@ export interface MealPlanSource {
   ): Promise<MealPlanResult | null>
 }
 
-/**
- * 로컬 개발에서는 FastAPI 직접 연결을 사용하고 운영 빌드에서는 Spring 중계 작업 전까지 null이다.
- * null이면 모든 단계 화면이 서버 값 대신 "연결 대기"를 보이고 추천 요청은 "연결 전" 상태가 된다. 가짜 결과를 만들지 않는다.
- */
-export function createMealPlanSource(): MealPlanSource | null {
-  return import.meta.env.DEV ? createLocalMealPlanSource() : null
+/** 로컬은 FastAPI, 운영은 로그인 세션을 사용하는 Spring 중계로 연결한다. */
+export function createMealPlanSource(): MealPlanSource {
+  return import.meta.env.DEV
+    ? createLocalMealPlanSource()
+    : createSpringMealPlanSource()
 }
 
 /**

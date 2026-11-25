@@ -10,7 +10,10 @@
  * API 주소·환경변수 설정은 공통 API 클라이언트가 생길 때 함께 정한다(지금 이 프로젝트에는 API 호출 코드와 환경변수가 없다).
  */
 
-import { createLocalPhotoAnalysisSource } from './photoAnalysisApi.ts'
+import {
+  createLocalPhotoAnalysisSource,
+  createSpringPhotoAnalysisSource,
+} from './photoAnalysisApi.ts'
 
 export interface AnalyzedFood {
   name: string
@@ -54,13 +57,11 @@ export class PhotoAnalysisQuotaError extends Error {
   }
 }
 
-/**
- * 로컬 개발에서는 FastAPI 직접 연결을 사용하고 운영 빌드에서는 Spring 중계 작업 전까지 null이다.
- * null이면 분석을 시작할 수 없고 화면은 "연결 전"을 보인다. 가짜 결과를 만들지 않는다.
- */
-export function createPhotoAnalysisSource(): PhotoAnalysisSource | null {
-  // Spring 중계 API가 준비되기 전에는 로컬 개발 서버에서만 FastAPI에 직접 요청합니다.
-  return import.meta.env.DEV ? createLocalPhotoAnalysisSource() : null
+/** 로컬은 FastAPI, 운영은 로그인 세션을 사용하는 Spring 중계로 연결한다. */
+export function createPhotoAnalysisSource(): PhotoAnalysisSource {
+  return import.meta.env.DEV
+    ? createLocalPhotoAnalysisSource()
+    : createSpringPhotoAnalysisSource()
 }
 
 /**

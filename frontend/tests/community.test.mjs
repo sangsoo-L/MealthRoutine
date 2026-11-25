@@ -1,22 +1,29 @@
 // 커뮤니티(C01·C01-2 목록, C05·C04 상세, C02·C02-1 작성): 검증·조회 상태·목록/상세/작성 화면 상태·로그인·답변 자격 안내·라우트(공개/회원 전용)·
 // 개발 전용 예시 저장소(탭 메모리, 저장소 미사용)·후속 화면(C01-1·C02-2·C03)과 수정·삭제·신고·삭제된 루틴 좋아요 API 미사용을 확인한다.
-// 서버 계약이 없어 시험용 가짜 서버 응답을 화면에 직접 넘겨 "서버가 준 값만 보인다"는 규칙을 확인한다(실제 서버 데이터가 아니다).
-// 대문자 드라이브(C:\)의 PowerShell에서 실행한다.
+// 화면에는 시험용 값을 직접 넘겨 "서버가 준 값만 보인다"는 규칙을 확인한다(실제 서버 데이터가 아니다). 서버 연결 자체는 communityConnect.test.mjs.
+// 예시 저장소는 모의 모드(개발 서버 + VITE_DEV_AUTH=true)에서만 쓰이므로 이 파일은 모의 모드 서버로 불러온다.
+// 개인 .env.development.local의 값이 결과를 바꾸지 않도록 빈 envDir을 쓴다. 대문자 드라이브(C:\)의 PowerShell에서 실행한다.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import { createServer } from 'vite'
 
+const envDir = mkdtempSync(join(tmpdir(), 'community-env-'))
 let server, c, Board, PostView, Compose, devModule, sourceModule
 before(async () => {
+  process.env.VITE_DEV_AUTH = 'true'
   server = await createServer({
+    envDir,
     server: { middlewareMode: true, watch: null, hmr: false, ws: false },
     appType: 'custom',
     logLevel: 'error',
   })
+  delete process.env.VITE_DEV_AUTH
   const load = (path) => server.ssrLoadModule(path)
   c = await load('/src/community/community.ts')
   Board = (await load('/src/components/community/CommunityBoardView.tsx'))
@@ -30,6 +37,7 @@ before(async () => {
 })
 after(async () => {
   await server?.close()
+  rmSync(envDir, { recursive: true, force: true })
 })
 
 const signal = new AbortController().signal
@@ -94,7 +102,7 @@ test('경로: 사용자 승인 URL이고 상세 경로는 id를 인코딩한다'
 test('작성 검증: 제목·내용은 공백만이면 막고 Q&A는 운동/식단 카테고리가 필수이며 기타 값은 차단한다', () => {
   assert.deepEqual(
     c.validateCompose('free', { category: null, title: ' ', body: '' }),
-    { ok: false, errors: ['title', 'body'] },
+    { ok: false, errors: ['title', 'body'], tooLong: [] },
   )
   assert.deepEqual(
     c.validateCompose('free', {
@@ -113,7 +121,7 @@ test('작성 검증: 제목·내용은 공백만이면 막고 Q&A는 운동/식�
   for (const category of [null, '', 'diet', 'both'])
     assert.deepEqual(
       c.validateCompose('qa', { category, title: 'a', body: 'b' }),
-      { ok: false, errors: ['category'] },
+      { ok: false, errors: ['category'], tooLong: [] },
       String(category),
     )
   assert.deepEqual(
@@ -545,10 +553,16 @@ test('개발 전용 예시 저장소: 탭 메모리 안에서만 글·댓글·�
   // 작성일 없는 글은 맨 아래다.
   assert.equal(free.at(-1).createdAt, null)
 
+  assert.deepEqual(source.supports, {
+    boards: ['free', 'qa'],
+    comments: true,
+    likes: true,
+  })
   const created = await source.createPost(
     { board: 'free', title: '새 글', body: '내용' },
     signal,
   )
+  assert.equal(created.kind, 'created')
   const got = await source.getPost('free', created.id, signal)
   assert.equal(got.post.authorName, '시험회원')
   assert.equal(c.isPostDetail(got), true)
@@ -583,6 +597,7 @@ test('개발 전용 예시 저장소: 탭 메모리 안에서만 글·댓글·�
     { board: 'qa', category: 'meal', title: '질문', body: '내용' },
     signal,
   )
+  assert.equal(q.kind, 'created')
   assert.equal(
     (await source.listPosts('qa', signal)).find((p) => p.id === q.id).answered,
     false,
@@ -594,10 +609,11 @@ test('개발 전용 예시 저장소: 탭 메모리 안에서만 글·댓글·�
     true,
   )
 
-  // 비회원 쓰기는 실패한다(서버의 401과 같은 역할).
+  // 비회원 쓰기는 실패한다(서버의 401과 같은 역할). 등록은 저장되지 않음이 확실한 rejected다.
   const guest = sourceModule.createCommunitySource(null)
-  await assert.rejects(
-    guest.createPost({ board: 'free', title: 'a', body: 'b' }, signal),
+  assert.deepEqual(
+    await guest.createPost({ board: 'free', title: 'a', body: 'b' }, signal),
+    { kind: 'rejected' },
   )
   await assert.rejects(guest.addComment(created.id, 'x', signal))
   await assert.rejects(guest.setLike(created.id, true, signal))
@@ -652,6 +668,7 @@ test('후속 화면(C01-1·C02-2·C03)과 수정·삭제 화면은 만들지 않
   const files = [
     'src/community/community.ts',
     'src/community/communitySource.ts',
+    'src/community/serverCommunitySource.ts',
     'src/community/useCommunity.ts',
     'src/community/dev/devCommunity.ts',
     'src/components/community/CommunityBoardView.tsx',
@@ -672,13 +689,17 @@ test('후속 화면(C01-1·C02-2·C03)과 수정·삭제 화면은 만들지 않
   }
 })
 
-test('홈 "커뮤니티" 바로가기는 C01(/community)로 연결되고, 개발용 저장소는 DEV 분기의 동적 import로만 불러온다', () => {
+test('홈 "커뮤니티" 바로가기는 C01(/community)로 연결되고, 개발용 저장소는 모의 모드(DEV && VITE_DEV_AUTH) 분기의 동적 import로만 불러온다', () => {
   const home = read('src/components/home/homeContent.ts')
   assert.match(home, /label: '커뮤니티'[^}]*to: '\/community'/)
   const source = strip(read('src/community/communitySource.ts'))
   assert.match(
     source,
-    /import\.meta\.env\.DEV\s*\?\s*await import\('\.\/dev\/devCommunity\.ts'\)/,
+    /const MOCK_AUTH =\s*import\.meta\.env\.DEV && import\.meta\.env\.VITE_DEV_AUTH === 'true'/,
+  )
+  assert.match(
+    source,
+    /MOCK_AUTH\s*\?\s*await import\('\.\/dev\/devCommunity\.ts'\)/,
   )
   // 운영 화면 코드는 개발용 저장소를 직접 import하지 않는다.
   for (const file of [
