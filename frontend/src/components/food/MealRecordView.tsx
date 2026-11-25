@@ -47,6 +47,9 @@ export type MealEntriesState<T extends MealEntry> =
   | { status: 'error' }
   | { status: 'ready'; records: readonly T[]; skippedCount: number }
 
+/** 음식 검색 결과를 한 번에 보여 줄 최대 개수(서버 음식은 2만 건이 넘는다). */
+const SHOWN_FOODS_LIMIT = 50
+
 const COPY = {
   record: {
     chip: '오늘 실제 기록',
@@ -259,11 +262,13 @@ export default function MealRecordView<T extends MealEntry>({
   const needle = query.trim().toLowerCase()
   const shownFoods =
     foods.status === 'ready'
-      ? foods.foods.filter(
-          (food) =>
-            (tab === 'search' || favoriteIds.has(food.id)) &&
-            (needle === '' || food.name.toLowerCase().includes(needle)),
-        )
+      ? foods.foods
+          .filter(
+            (food) =>
+              (tab === 'search' || favoriteIds.has(food.id)) &&
+              (needle === '' || food.name.toLowerCase().includes(needle)),
+          )
+          .slice(0, SHOWN_FOODS_LIMIT)
       : []
 
   const editFor = (record: T): MealEditAction => ({

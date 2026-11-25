@@ -1,2 +1,7 @@
 * text=auto
 ai-server/food_model/weights/*.pt filter=lfs diff=lfs merge=lfs -text
+
+# Server-side files under deploy/ run on Linux: keep LF even on Windows checkouts.
+deploy/*.sh text eol=lf
+deploy/Caddyfile text eol=lf
+deploy/compose.yml text eol=lf

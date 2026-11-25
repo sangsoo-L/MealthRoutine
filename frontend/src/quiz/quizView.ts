@@ -1,4 +1,8 @@
-import { QUIZ_REWARD } from './quizPolicy.ts'
+import {
+  QUIZ_REWARD,
+  SERVER_QUIZ_REWARD,
+  type QuizRewardTiming,
+} from './quizPolicy.ts'
 import type { RewardEntry, RewardTotals } from './quizRepository.ts'
 import {
   QUIZ_CATEGORIES,
@@ -20,8 +24,32 @@ export function categoryLabel(question: QuizQuestion): string {
   return spec?.label ?? QUIZ_DOMAIN_LABEL[question.domain]
 }
 
-/** 정답일 때 받는 보상 안내 문구(정책 상수에서 만든다). */
-export function rewardNotice(): string {
+/**
+ * 서버가 보낸 질문이 은행 문항과 같은지(공백 차이는 무시). 서버 질문이 없으면(로컬 모드) 확인하지 않는다.
+ * 다르면 DB id → 은행 id 매핑이 어긋난 것이라, 화면은 제출을 막고 오류로 둔다.
+ */
+export function serverQuestionMatches(
+  serverQuestion: string | undefined,
+  bankQuestion: string,
+): boolean {
+  if (serverQuestion === undefined) return true
+  const norm = (text: string) => text.replace(/\s+/g, ' ').trim()
+  return norm(serverQuestion) === norm(bankQuestion)
+}
+
+/** 저장소 종류로 보상이 들어가는 방식을 정한다(서버 = 다음 날 정산). */
+export function rewardTimingOf(repository: {
+  kind: 'local' | 'server'
+}): QuizRewardTiming {
+  return repository.kind === 'server' ? 'nextDay' : 'instant'
+}
+
+/** 보상 안내 문구(정책 상수에서 만든다). 서버 모드는 다음 날 정산되는 실제 몫을 안내한다. */
+export function rewardNotice(timing: QuizRewardTiming = 'instant'): string {
+  if (timing === 'nextDay') {
+    const { correct, wrong } = SERVER_QUIZ_REWARD
+    return `맞히면 ${correct.points}PT·${correct.experience}XP, 틀려도 ${wrong.points}PT·${wrong.experience}XP를 받아요. 보상은 다음 날 00:05에 정산돼요.`
+  }
   return `정답을 맞히면 ${QUIZ_REWARD.points}PT와 ${QUIZ_REWARD.experience}XP를 받아요.`
 }
 
@@ -90,7 +118,17 @@ export function summarizeReward(
   outcome: QuizOutcome,
   reward: RewardEntry | null,
   totals: RewardTotals,
+  timing: QuizRewardTiming = 'instant',
 ): RewardSummary {
+  if (timing === 'nextDay') {
+    // 서버 모드: 이번 몫은 아직 지급 전(정산 예정), 아래 숫자는 지금까지 정산된 값
+    return {
+      thisTime: reward
+        ? `정산 예정 ${reward.points}PT · ${reward.experience}XP (다음 날 00:05)`
+        : '정산 예정 보상을 확인하지 못했어요',
+      cumulative: `보유 ${totals.points}PT · 누적 ${totals.experience}XP (정산된 값)`,
+    }
+  }
   const thisTime = reward
     ? `이번 보상 ${reward.points}PT · ${reward.experience}XP`
     : outcome === 'correct'

@@ -267,6 +267,11 @@ export default function MealRecordPage() {
               ? active.food.per100g
               : active.record.nutritionSnapshot
           }
+          servingGrams={
+            active.mode === 'new'
+              ? active.food.servingGrams
+              : active.record.servingGrams
+          }
           initialPortion={
             active.mode === 'new' ? 'normal' : active.record.portion
           }

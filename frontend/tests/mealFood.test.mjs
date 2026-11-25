@@ -129,7 +129,12 @@ test('운영 빌드 안전장치: 음식·식단 소스는 import.meta.env.DEV�
     '../src/food/mealSource.ts',
     '../src/food/foodFavoriteSource.ts',
   ]) {
-    assert.match(read(file), /import\.meta\.env\.DEV\s*\?/, file)
+    // 서버 연결 후에는 개발용 체험 로그인(VITE_DEV_AUTH)일 때만 개발 모듈을 쓴다
+    assert.match(
+      read(file),
+      /import\.meta\.env\.DEV(\s*&&\s*import\.meta\.env\.VITE_DEV_AUTH === 'true')?\s*\?/,
+      file,
+    )
   }
 })
 

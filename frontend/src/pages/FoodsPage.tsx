@@ -218,6 +218,9 @@ function NutritionForm({
  * 결과 한 건. 카드 본문은 음식 영양정보(F02)로 가는 링크이고(이 검색 화면을 진입 경로로 넘긴다), 즐겨찾기 별은 회원에게만 따로 둔 버튼이다(링크 안에 버튼을 두지 않는다).
  * 있는 정보만 보여 주고 없는 값은 0으로 바꾸지 않는다. 개발용 예시 데이터이면 출처 표시를 그대로 보여 실제 운영 데이터와 구분한다.
  */
+/** 한 번에 그리는 검색 결과 수(전체 음식이 2만 건이 넘어 한꺼번에 그리면 화면이 느려진다) */
+const SHOWN_RESULTS_LIMIT = 50
+
 function FoodCard({ item }: { item: FoodResult }) {
   const location = useLocation()
   const label = [item.type, item.kind, item.category].filter(
@@ -355,10 +358,16 @@ function ResultView({ outcome, hasNutrition, onRetry }: ResultViewProps) {
         </p>
       ) : null}
       <ul className="mt-3 flex flex-col gap-3">
-        {outcome.items.map((item) => (
+        {outcome.items.slice(0, SHOWN_RESULTS_LIMIT).map((item) => (
           <FoodCard key={item.id} item={item} />
         ))}
       </ul>
+      {outcome.items.length > SHOWN_RESULTS_LIMIT ? (
+        <p className="mt-3 text-support font-normal text-muted">
+          앞의 {SHOWN_RESULTS_LIMIT}개만 보여 드려요. 검색어나 조건을 더 좁혀
+          보세요.
+        </p>
+      ) : null}
     </>
   )
 }
