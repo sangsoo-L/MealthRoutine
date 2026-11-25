@@ -1,6 +1,7 @@
 import {
   ApiError,
   INVALID_RESPONSE,
+  INVALID_REQUEST,
   checkBody,
   checkExpectStatus,
   checkHeaders,
@@ -62,6 +63,8 @@ export type AuthMode = 'required' | 'optional' | 'none'
 export interface ApiRequestOptions {
   /** 일반 객체·배열만. JSON으로 보낸다 */
   body?: unknown
+  /** Multipart는 body와 함께 보낼 수 없으며 브라우저가 Content-Type을 설정한다. */
+  multipart?: FormData
   /** required(기본): 로그인 필요 / optional: 로그인했으면 토큰을 붙임 / none: 토큰·세션을 쓰지 않음 */
   auth?: AuthMode
   /** 추가 헤더(예: X-Pin-Token). Authorization·X-Requested-With·(본문이 있을 때) Content-Type은 넣을 수 없다 */
@@ -514,13 +517,26 @@ export function createAuthSession(deps: SessionDeps) {
   ): Promise<T> {
     checkPath(path)
     checkBody(options.body)
-    checkHeaders(options.headers, options.body !== undefined)
+    if (
+      options.multipart !== undefined &&
+      (options.body !== undefined || !(options.multipart instanceof FormData))
+    )
+      throw new ApiError(
+        0,
+        INVALID_REQUEST,
+        'multipart 요청 본문이 올바르지 않습니다.',
+      )
+    checkHeaders(
+      options.headers,
+      options.body !== undefined || options.multipart !== undefined,
+    )
     checkExpectStatus(options.expectStatus)
     const mode = options.auth ?? 'required'
     const base = {
       method,
       path,
       body: options.body,
+      multipart: options.multipart,
       headers: options.headers,
       signal: options.signal,
       expectStatus: options.expectStatus,

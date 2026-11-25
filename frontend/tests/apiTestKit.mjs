@@ -75,7 +75,10 @@ export function createFakeServer() {
       path,
       method: init.method,
       headers: { ...init.headers },
-      body: init.body === undefined ? undefined : JSON.parse(init.body),
+      body:
+        init.body instanceof FormData || init.body === undefined
+          ? init.body
+          : JSON.parse(init.body),
       credentials: init.credentials,
       signal: init.signal,
     }

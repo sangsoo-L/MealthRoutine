@@ -12,6 +12,7 @@ const DIST =
 
 /** 운영 번들에 있으면 안 되는 문자열. reason은 실패 시 알려 줄 이유다. */
 const FORBIDDEN = [
+  [/127\.0\.0\.1:8000|\/internal\/ai\//, '개발용 FastAPI 주소와 내부 API 경로'],
   // 추천 규칙의 개발자용 근거(ruleEvidence.ts)와 시드 파일명
   [/exercise_routine_items/, '내부 시드 파일명(개발자용 근거)'],
   [/exercise_routines/, '내부 시드 파일명'],
