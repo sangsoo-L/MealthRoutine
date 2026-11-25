@@ -293,7 +293,8 @@ test('즐겨찾기 목록: 서버의 최근 등록 순을 등록한 순으로 �
   const repository = favorites.createApiFavoriteRepository(request)
   assert.equal(repository.kind, 'api')
   assert.deepEqual(await repository.list(), ['2', '1', '3'])
-  assert.deepEqual(calls[0].options, undefined, '로그인 필요(기본)')
+  assert.equal(calls[0].options.auth, undefined, '로그인 필요(기본)')
+  assert.ok(calls[0].options.signal instanceof AbortSignal, '시간 상한')
   await assert.rejects(repository.list())
   await assert.rejects(repository.list())
 })
@@ -323,6 +324,46 @@ test('즐겨찾기 등록·해제: PUT·DELETE, 없는 운동은 invalid, 그 �
     await assert.rejects(repository.add(id), reason('invalid'))
   }
   assert.equal(calls.length, 5)
+})
+
+test('즐겨찾기: 서버가 답하지 않으면 시간 상한 뒤 조회는 실패, 등록·해제는 failed로 끝난다(#39 리뷰 P2-02)', async () => {
+  const methods = []
+  // 응답하지 않는 서버. signal이 끊기면 그 요청만 실패한다(apiRequest와 같다).
+  const request = (method, path, options) => {
+    methods.push(`${method} ${path}`)
+    return new Promise((_, reject) => {
+      options.signal.addEventListener('abort', () =>
+        reject(options.signal.reason),
+      )
+    })
+  }
+  const repository = favorites.createApiFavoriteRepository(request, {
+    timeoutMs: 30,
+  })
+  const reason = (r) => (error) =>
+    error.name === 'FavoriteSaveError' && error.reason === r
+  await assert.rejects(repository.list())
+  await assert.rejects(repository.add('2'), reason('failed'))
+  await assert.rejects(repository.remove('2'), reason('failed'))
+  assert.deepEqual(methods, [`GET ${FAV}`, `PUT ${FAV}/2`, `DELETE ${FAV}/2`])
+})
+
+test('즐겨찾기 상태: 같은 계정 재로그인 뒤 이전 로그인의 응답을 버린다(#39 리뷰 P2-01, 동작은 Chrome favorites-relogin)', () => {
+  const source = readFileSync(
+    new URL('../src/exercise/FavoritesProvider.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    source,
+    /registerAccountCleanup\(\(\) => \{\s*accountGeneration \+= 1/,
+  )
+  // 계정이 바뀔 때 조회 번호를 0으로 되돌리지 않는다(같은 계정 재로그인 때 이전 조회 키와 겹치지 않게).
+  assert.doesNotMatch(source, /setAttempt\(0\)/)
+  assert.match(
+    source,
+    /const lock = `\$\{generation\}\|\$\{userId\}\|\$\{exerciseId\}`/,
+  )
+  assert.match(source, /if \(!current\(\)\) return 'ignored'\s*setLoaded/)
 })
 
 // ── 저장소 출처(운영 빌드·개발 서버) ──────────────────────────
