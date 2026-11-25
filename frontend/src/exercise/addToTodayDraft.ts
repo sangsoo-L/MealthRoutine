@@ -4,14 +4,14 @@ import {
   addExercisesToDraft,
   createEmptyDraft,
   hasDraftContent,
-  MAX_ITEMS,
+  MAX_SAVED_ITEMS,
 } from './workoutDraftModel.ts'
 import type { WorkoutDraft } from './workoutDraftTypes.ts'
 
 /**
  * E02(운동 상세)의 "오늘 기록에 추가"를 W02 초안에 연결하는 순수 판단 함수(화면·저장소와 무관, 입력을 바꾸지 않는다).
  * 운동명·기록 방식·기본 목표는 W02·W13이 쓰는 `addExercisesToDraft`(createDraftItem)를 그대로 쓰므로 새 규칙·기본값이 없다.
- * 중복 운동·상한(500개) 처리도 같은 함수의 결과를 그대로 따른다(이미 있는 운동은 건너뛴다).
+ * 중복 운동·상한(MAX_SAVED_ITEMS, 100개) 처리도 같은 함수의 결과를 그대로 따른다(이미 있는 운동은 건너뛴다).
  */
 
 export type AddToTodayRejection =
@@ -104,7 +104,7 @@ export function planAddToToday(input: {
     )
     return {
       kind: 'blocked',
-      reason: duplicate || itemCount < MAX_ITEMS ? 'duplicate' : 'full',
+      reason: duplicate || itemCount < MAX_SAVED_ITEMS ? 'duplicate' : 'full',
       fresh,
       itemCount,
     }

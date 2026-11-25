@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import {
   LEGACY_ALLOWED_RECORD_TYPES,
-  MAX_ITEMS,
+  MAX_SAVED_ITEMS,
 } from '../../exercise/workoutDraftModel.ts'
 import type {
   DraftIssue,
@@ -175,7 +175,7 @@ export default function RoutineEditView({
             id={ROUTINE_ADD_ID}
             type="button"
             onClick={onAddExercises}
-            aria-disabled={draft.items.length >= MAX_ITEMS || undefined}
+            aria-disabled={draft.items.length >= MAX_SAVED_ITEMS || undefined}
             className={composeSecondaryButton}
           >
             ＋ 운동 추가

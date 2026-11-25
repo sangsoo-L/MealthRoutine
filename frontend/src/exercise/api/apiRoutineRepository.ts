@@ -20,6 +20,7 @@ import {
   ROUTINE_SCHEMA_VERSION,
   buildRoutine,
   parseWorkoutRoutine,
+  validateRoutineMeta,
   type WorkoutRoutine,
 } from '../workoutRoutineModel.ts'
 import type { WorkoutListItem } from '../workoutTypes.ts'
@@ -143,7 +144,10 @@ export function toRoutine(
   return checked ? { ...checked, name, description } : null
 }
 
-/** 서버(SetTargetValidator, RoutineCreateRequest)가 앱의 초안 규칙보다 좁게 막는 값. 넘으면 서버에 보내지 않고 invalidDraft다. */
+/**
+ * 서버(SetTargetValidator, RoutineCreateRequest)가 앱의 초안 규칙보다 좁게 막는 값. 넘으면 서버에 보내지 않고 invalidDraft다.
+ * 횟수·중량 상한과 중량 자릿수는 이제 초안 검증(validateDraft)도 같은 규칙으로 막는다. 여기서는 한 번 더 확인한다.
+ */
 const SERVER_MAX_ITEMS = 100
 const SERVER_MAX_REPS = 999
 const SERVER_MAX_WEIGHT_KG = 999
@@ -178,7 +182,11 @@ function toRequestBody(input: RoutineContentInput, ownerId: string) {
     now: new Date(),
   })
   if (!routine) {
-    throw new WorkoutStoreError('validation', { code: 'invalidRoutineMeta' })
+    // 이름·소개가 맞으면 초안(세트 목표 등)이 틀린 것이다.
+    const metaOk = validateRoutineMeta(input.name, input.description).ok
+    throw new WorkoutStoreError('validation', {
+      code: metaOk ? 'invalidDraft' : 'invalidRoutineMeta',
+    })
   }
   if (!withinServerLimits(routine.items)) {
     throw new WorkoutStoreError('validation', { code: 'invalidDraft' })

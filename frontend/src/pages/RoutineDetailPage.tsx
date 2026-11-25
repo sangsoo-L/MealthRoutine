@@ -59,10 +59,16 @@ function RoutineDetailBody({ routineId }: { routineId: string }) {
     )
   }
 
-  /** 루틴을 오늘의 운동 구성(W02 초안)으로 복사해 W02로 간다. 루틴은 바꾸지 않는다. */
+  /**
+   * 루틴을 오늘의 운동 구성(W02 초안)으로 복사해 W02로 간다. 루틴은 바꾸지 않는다.
+   * 서버 상한(횟수 999, 중량 999kg·소수 둘째 자리)은 여기서 보지 않는다. 그 규칙 전에 저장한 루틴도 옮겨지고 W02가 저장 전에 안내한다.
+   */
   function applyToDraft(target: WorkoutRoutine) {
     const draft = routineToDraft(target)
-    if (!validateDraft(draft).ok || !draftCtx.replaceDraft(draft)) {
+    if (
+      !validateDraft(draft, undefined, undefined, { serverLimits: false }).ok ||
+      !draftCtx.replaceDraft(draft)
+    ) {
       setStartError('이 루틴으로 운동을 준비하지 못했어요. 다시 시도해 주세요.')
       return
     }

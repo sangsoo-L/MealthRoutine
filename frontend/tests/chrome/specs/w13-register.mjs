@@ -150,32 +150,33 @@ check(
   { s, stay },
 )
 
-console.log('\n===== C. 500개 상한 =====')
+console.log('\n===== C. 100개 상한(서버가 받는 운동 수) =====')
 const seed = (n) =>
   ev(
     `(async()=>{const S=await import('/src/exercise/workoutDraftStorage.ts');const items=Array.from({length:${n}},(_,i)=>({itemId:'seed'+i,exerciseId:'seed-ex-'+i,name:'기존 '+i,recordType:'reps',sets:[{reps:i===0?33:10}]}));const d={v:1,day:'today',items,updatedAt:new Date().toISOString()};return S.saveWorkoutDraft('free',d)})()`,
   )
 await h.open('', '/records/exercise/compose')
-check('C0 테스트용 초안 499개 저장', (await seed(499)) === true)
+check('C0 테스트용 초안 99개 저장', (await seed(99)) === true)
 await openPicker()
 await clickRow('푸시업')
 await clickRow('맨몸 스쿼트')
 await register()
-// 500개 카드를 그리는 W02가 안내를 그릴 때까지 기다린다(고정 대기만 쓰면 렌더 전에 읽는다).
+// 100개 카드를 그리는 W02가 안내를 그릴 때까지 기다린다(고정 대기만 쓰면 렌더 전에 읽는다).
 await until(
   `/추가했어요/.test(document.querySelector('main p[role=status]')?.textContent??'')`,
   100,
 )
 s = await state()
-const names499 = await draftNames()
-const items500 = await draftItems()
+const names99 = await draftNames()
+const items100 = await draftItems()
 check(
-  'C1 499개 + 2개 선택 → 1개만 추가(500개), "운동 1개를 추가했어요. 이미 있는 운동 1개는 건너뛰었어요."(상한 초과분 안내), 첫 운동 세트값(33) 보존',
-  names499.length === 500 &&
-    names499[499] === '푸시업' &&
-    s.status === '운동 1개를 추가했어요. 이미 있는 운동 1개는 건너뛰었어요.' &&
-    items500[0].sets[0].reps === 33,
-  JSON.stringify({ n: names499.length, s }),
+  'C1 99개 + 2개 선택 → 1개만 추가(100개), "운동 1개를 추가했어요. 이미 있거나 최대 100개를 넘는 운동 1개는 건너뛰었어요."(상한 초과분 안내), 첫 운동 세트값(33) 보존',
+  names99.length === 100 &&
+    names99[99] === '푸시업' &&
+    s.status ===
+      '운동 1개를 추가했어요. 이미 있거나 최대 100개를 넘는 운동 1개는 건너뛰었어요.' &&
+    items100[0].sets[0].reps === 33,
+  JSON.stringify({ n: names99.length, s }),
 )
 await openPicker()
 await clickRow('플랭크')
@@ -185,10 +186,10 @@ const foot = await ev(
   `[...document.querySelectorAll('main [aria-live=polite]')].map(e=>e.innerText).join('|')`,
 )
 check(
-  'C2 이미 500개 → 이동하지 않고 W13에서 "운동은 최대 500개까지 담을 수 있어요." 안내, 초안 500개 유지',
+  'C2 이미 100개 → 이동하지 않고 W13에서 "운동은 최대 100개까지 담을 수 있어요." 안내, 초안 100개 유지',
   s.path === '/records/exercise/select' &&
-    foot.includes('운동은 최대 500개까지 담을 수 있어요.') &&
-    (await draftNames()).length === 500,
+    foot.includes('운동은 최대 100개까지 담을 수 있어요.') &&
+    (await draftNames()).length === 100,
   { s, foot },
 )
 

@@ -24,10 +24,13 @@ export default function RecentRecordsSection({
   sharedUnavailable,
   onRetry,
   showAllLink = true,
+  notSavedIds,
 }: {
   slot: DashboardSlot<RecentRecordsView>
   sharedUnavailable: boolean
   onRetry: () => void
+  /** 서버가 받지 않은 기록 id(업로드 거절). 이 기록에는 "서버에 저장되지 않았어요"를 붙이고 이유는 W15(기록 자세히 보기)에서 보여 준다. */
+  notSavedIds?: ReadonlySet<string>
   /** false이면 "전체 기록 보기"(W10)를 그리지 않는다. 개발용 예시(?sample=) 화면은 실제 운동 기록 화면으로 보내지 않는다. 기본은 true다. */
   showAllLink?: boolean
 }) {
@@ -96,6 +99,12 @@ export default function RecentRecordsSection({
                     <li>{record.completedSetCount}세트 수행</li>
                     {duration !== null ? <li>측정 {duration}</li> : null}
                   </ul>
+                  {notSavedIds?.has(record.id) ? (
+                    <p className="mt-1 text-support leading-relaxed font-normal break-keep text-warning">
+                      서버에 저장되지 않았어요. 기록 자세히 보기에서 이유를
+                      확인해 주세요.
+                    </p>
+                  ) : null}
                   {record.sessionId ? (
                     <Link
                       to={resultPathFor(record.sessionId)}

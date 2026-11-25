@@ -28,6 +28,7 @@ import {
   addSetToItem,
   buildAllowedRecordTypes,
   createEmptyDraft,
+  MAX_SAVED_ITEMS,
   moveItemInDraft,
   removeItemFromDraft,
   removeSetFromItem,
@@ -212,9 +213,14 @@ function RoutineEditor({ routine }: { routine: WorkoutRoutine | null }) {
       }
     }
     const skipped = exercises.length - added
+    // 상한(100개)에 닿았으면 건너뛴 운동에 이미 있는 운동이 아닌 것도 섞여 있다.
+    const skippedLabel =
+      draft.items.length + added >= MAX_SAVED_ITEMS
+        ? `이미 있거나 최대 ${MAX_SAVED_ITEMS}개를 넘는 운동`
+        : '이미 있는 운동'
     editDraft((d) => addExercisesToDraft(d, exercises))
     setNotice(
-      `운동 ${added}개를 추가했어요.${skipped > 0 ? ` 이미 있는 운동 ${skipped}개는 건너뛰었어요.` : ''}`,
+      `운동 ${added}개를 추가했어요.${skipped > 0 ? ` ${skippedLabel} ${skipped}개는 건너뛰었어요.` : ''}`,
     )
     setPickMode(false)
     return { ok: true }

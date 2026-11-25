@@ -4,6 +4,7 @@ import {
   type ResultSnapshot,
   type WorkoutResultController,
 } from './workoutResultController.ts'
+import { requestRecordUpload } from './recordUploadSource.ts'
 import {
   createWorkoutRecordRepository,
   createWorkoutSessionRepository,
@@ -35,6 +36,7 @@ export function hasLeaveRisk(snapshot: ResultSnapshot): boolean {
  * - userId·sessionId마다 컨트롤러를 따로 만든다. 계정이나 세션이 바뀌면 이전 컨트롤러를 비활성화하므로 이전 응답은 모두 버려진다.
  *   (StrictMode처럼 effect를 다시 실행해도 안전하다: 비활성화한 컨트롤러는 다시 활성화할 수 있다.)
  * - 저장소가 없으면(계정 없음) 컨트롤러가 unavailable 상태가 된다. 가짜 기록을 만들지 않는다.
+ * - 완료하면(success) 기록을 서버에 올리도록 요청한다(recordUploadSource.ts). 업로드 결과는 이 화면의 성공·실패와 상관없다.
  * - beforeunload: 저장되지 않은 수정이 있거나 저장 중일 때만 브라우저 경고를 띄운다. 브라우저 종료·새로고침에서 저장을 보장하지 않으며
  *   미저장 수정은 새로고침 뒤 자동으로 복원하지 않는다.
  */
@@ -74,5 +76,11 @@ export function useWorkoutResult(
     controller.getSnapshot,
     controller.getSnapshot,
   )
+  // 완료 기록을 저장하면 서버에도 올리도록 요청한다(운영 빌드만). 실패해도 이 화면은 그대로 성공이고, 다음 요청 때 다시 보낸다.
+  const completed = snapshot.phase === 'success'
+  useEffect(() => {
+    if (completed && userId) requestRecordUpload(userId)
+  }, [completed, userId])
+
   return { snapshot, controller }
 }

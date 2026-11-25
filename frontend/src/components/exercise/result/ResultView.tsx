@@ -2,6 +2,7 @@ import { RECORD_COMPONENTS } from '../../../exercise/recordMode.ts'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { deriveRecordResultStatus } from '../../../exercise/workoutResult.ts'
+import type { RecordUploadStatus } from '../../../exercise/useRecordUploadStatus.ts'
 import type { ResultSnapshot } from '../../../exercise/workoutResultController.ts'
 import {
   cardsFromRecord,
@@ -112,18 +113,101 @@ function NoticeCard({
  * - completed: 저장된 완료 기록의 읽기 전용 화면. 수정·저장 버튼이 없다.
  * - 그 밖(불러오는 중·준비 중·잘못된 주소·없음·손상·오류·종료)은 안내만 한다.
  */
+/**
+ * 이미 저장된 기록이 서버에 올라가지 못한 이유(업로드 거절)와 다시 보내기 결과. 기록 자체는 이 기기에 그대로 있다.
+ * 고칠 수 있는 거절(운동 100개 초과, 완료한 운동은 100개 이하)에만 "완료한 운동만 다시 보내기"를 보인다.
+ */
+function UploadStatusNotice({ upload }: { upload: RecordUploadStatus }) {
+  const { rejection, retry } = upload
+  if (retry === 'saved') {
+    return (
+      <p
+        role="status"
+        className="rounded-control bg-exercise-soft px-3 py-2 text-support leading-relaxed font-normal text-exercise"
+      >
+        완료한 운동만 다시 보내 서버에 저장했어요.
+      </p>
+    )
+  }
+  if (!rejection && upload.resendPending) {
+    // 고쳐 보내다 네트워크 오류·시간 초과로 멈춘 기록. 표시에 남아 있어 새로고침해도 보이고, 같은 본문으로 다시 보낸다.
+    const sending = retry === 'sending'
+    return (
+      <section
+        aria-labelledby="result-upload-title"
+        className="rounded-control bg-warning-soft px-3 py-3 text-support leading-relaxed font-normal text-warning"
+      >
+        <h2 id="result-upload-title" className="font-semibold">
+          서버에 아직 저장되지 않은 기록이에요
+        </h2>
+        <p className="mt-1">
+          완료한 운동만 다시 보내던 중 연결이 끊겨 서버 저장을 확인하지
+          못했어요. 같은 내용으로 다시 보낼 수 있어요.
+        </p>
+        <button
+          type="button"
+          onClick={upload.sendFixed}
+          aria-disabled={sending || undefined}
+          className={`mt-3 ${composeSecondaryButton}`}
+        >
+          {sending ? '다시 보내는 중이에요…' : '다시 보내기'}
+        </button>
+      </section>
+    )
+  }
+  if (!rejection) {
+    // 다시 보내다 멈추면 보통 위의 미동기화 안내가 보인다. 표시를 저장하지 못한 경우(localStorage 사용 불가 등)를 위한 안내다.
+    return retry === 'later' ? (
+      <p
+        role="status"
+        className="rounded-control bg-warning-soft px-3 py-2 text-support leading-relaxed font-normal text-warning"
+      >
+        지금은 서버에 보내지 못했어요. 다음에 운동 기록을 열 때 다시 보내요.
+      </p>
+    ) : null
+  }
+  const sending = retry === 'sending'
+  return (
+    <section
+      aria-labelledby="result-upload-title"
+      className="rounded-control bg-warning-soft px-3 py-3 text-support leading-relaxed font-normal text-warning"
+    >
+      <h2 id="result-upload-title" className="font-semibold">
+        서버에 저장되지 않은 기록이에요
+      </h2>
+      <p className="mt-1">{rejection.message}</p>
+      <p className="mt-1">
+        이 기록은 이 기기에 그대로 남아 있지만 서버 통계에는 들어가지 않아요.
+      </p>
+      {rejection.fixable ? (
+        <button
+          type="button"
+          onClick={upload.sendFixed}
+          aria-disabled={sending || undefined}
+          className={`mt-3 ${composeSecondaryButton}`}
+        >
+          {sending ? '다시 보내는 중이에요…' : '완료한 운동만 다시 보내기'}
+        </button>
+      ) : null}
+    </section>
+  )
+}
+
 export default function ResultView({
   snapshot,
   editor,
   panel,
   failureDismissed,
   actions,
+  upload,
 }: {
   snapshot: ResultSnapshot
   editor: ResultEditorState | null
   panel: ResultPanel | null
   failureDismissed: boolean
   actions: ResultActions
+  /** 이미 저장된 기록(load.status === 'completed')의 서버 업로드 상태. 없으면 그리지 않는다. */
+  upload?: RecordUploadStatus
 }) {
   const { load } = snapshot
   if (load.status === 'loading') {
@@ -265,6 +349,7 @@ export default function ResultView({
         >
           이미 저장된 운동 기록이에요. 수정하거나 다시 저장할 수 없어요.
         </p>
+        {upload ? <UploadStatusNotice upload={upload} /> : null}
         {cardsFromRecord(record).map((card) => (
           <ExerciseCard
             key={card.exerciseId + card.itemIndex}
