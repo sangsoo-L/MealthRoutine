@@ -6,6 +6,7 @@
 -- 회원 테이블 변경(회원 파트): users에 최신 ERD의 토큰·PIN 컬럼 6개 반영(refresh_token_hash·refresh_token_expires_at·reset_token_hash·reset_token_expires_at·pin_failed_count·pin_locked_until). 기존 DB는 database/migration/20261118_users_token_pin_columns.sql 참고.
 -- 출석 테이블 추가(정민재): attendances, (user_id, attend_date) UNIQUE로 하루 1회.
 -- 회원 테이블 변경(회원 파트): health_measurements.measurement_id·health_goals.health_goal_id AUTO_INCREMENT(인라인 PK, PK_HEALTH_MEASUREMENTS·PK_HEALTH_GOALS ALTER 제거). 기존 DB는 database/migration/20261123_health_pk_auto_increment.sql 참고.
+-- 회원 파트(커뮤니티) 변경: community_posts.post_id AUTO_INCREMENT(인라인 PK, PK_COMMUNITY_POSTS ALTER 제거). 기존 DB는 database/migration/20261125_community_posts_pk_auto_increment.sql 참고.
 SET NAMES utf8mb4;
 
 CREATE TABLE `meal_record_items` (
@@ -489,7 +490,7 @@ CREATE TABLE `attendances` (
 );
 
 CREATE TABLE `community_posts` (
-	`post_id`	BIGINT	NOT NULL,
+	`post_id`	BIGINT	NOT NULL	AUTO_INCREMENT	PRIMARY KEY,
 	`user_id`	BIGINT	NOT NULL,
 	`post_type`	ENUM('general','routine','question','notice')	NOT NULL	DEFAULT 'general'	COMMENT '게시물 유형',
 	`title`	VARCHAR(250)	NOT NULL	COMMENT '제목',
@@ -612,10 +613,6 @@ ALTER TABLE `audit_logs` ADD CONSTRAINT `PK_AUDIT_LOGS` PRIMARY KEY (
 
 ALTER TABLE `diet_recommendations` ADD CONSTRAINT `PK_DIET_RECOMMENDATIONS` PRIMARY KEY (
 	`diet_recommendation_id`
-);
-
-ALTER TABLE `community_posts` ADD CONSTRAINT `PK_COMMUNITY_POSTS` PRIMARY KEY (
-	`post_id`
 );
 
 ALTER TABLE `report_actions` ADD CONSTRAINT `PK_REPORT_ACTIONS` PRIMARY KEY (
