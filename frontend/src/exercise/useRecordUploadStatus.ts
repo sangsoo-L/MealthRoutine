@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import {
   describeUploadRejection,
   isResendPending,
+  unsyncedRecordIds,
   type UploadRejectionView,
 } from './api/recordUpload.ts'
 import {
@@ -50,11 +51,7 @@ export function useRejectedRecordIds(
     recordUploadMarksVersion,
   )
   if (!userId) return NONE
-  const marks = readRecordUploadMarks(userId)
-  const ids = new Set(marks.rejected.keys())
-  for (const id of marks.omitEmpty) {
-    if (isResendPending(marks, id)) ids.add(id)
-  }
+  const ids = unsyncedRecordIds(readRecordUploadMarks(userId))
   return ids.size === 0 ? NONE : ids
 }
 

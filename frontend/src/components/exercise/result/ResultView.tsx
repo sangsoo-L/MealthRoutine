@@ -156,6 +156,7 @@ function UploadStatusNotice({ upload }: { upload: RecordUploadStatus }) {
     )
   }
   if (!rejection) {
+    // 다시 보내다 멈추면 보통 위의 미동기화 안내가 보인다. 표시를 저장하지 못한 경우(localStorage 사용 불가 등)를 위한 안내다.
     return retry === 'later' ? (
       <p
         role="status"

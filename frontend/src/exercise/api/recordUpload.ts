@@ -273,6 +273,15 @@ export function isResendPending(marks: UploadMarks, recordId: string): boolean {
   )
 }
 
+/** W01에 "서버에 저장되지 않았어요"를 붙일 기록 id: 서버가 받지 않은 기록과, 고쳐 다시 보내다 멈춘 기록(isResendPending). */
+export function unsyncedRecordIds(marks: UploadMarks): Set<string> {
+  const ids = new Set(marks.rejected.keys())
+  for (const id of marks.omitEmpty) {
+    if (isResendPending(marks, id)) ids.add(id)
+  }
+  return ids
+}
+
 export interface UploadMarkStore {
   read(): UploadMarks
   write(marks: UploadMarks): void
@@ -370,7 +379,8 @@ export interface RecordUploadDeps {
   timeoutMs?: number
   /**
    * 사용자가 "완료한 운동만 다시 보내기"를 누른 기록 id. 거절 코드가 tooManyExercises인 기록만 받아들여(고칠 수 있는 기록)
-   * 거절 표시를 지우고 omitEmpty 표시를 단 뒤 이번 실행에서 같은 requestId로 보낸다. 다른 기록은 무시한다.
+   * 거절 표시를 지우고 omitEmpty 표시를 단 뒤 이번 실행에서 같은 requestId로 보낸다. 거절이 아닌 다른 기록(다시 보내다 멈춘
+   * 기록 등)은 표시를 바꾸지 않는다. 여기 있는 기록 중 보낼 대상은 오래된 기록보다 먼저 보낸다.
    */
   retry?: ReadonlySet<string>
 }
@@ -441,12 +451,19 @@ export async function uploadPendingRecords(
     }
     marks.bodyVersion = RECORD_BODY_VERSION
   }
-  const pending = items.filter(
+  const waiting = items.filter(
     (record) =>
       record.catalogVersion === SERVER_CATALOG_VERSION &&
       !marks.uploaded.has(record.id) &&
       !marks.rejected.has(record.id),
   )
+  // 사용자가 다시 보내기를 누른 기록을 먼저 보낸다. 실행은 나중에 될 수 있는 실패에서 멈추므로, 더 오래된 기록이 계속 실패해도
+  // 누른 기록은 이번 실행에서 보내기 위해서다. 나머지는 오래된 순서 그대로다.
+  const requested = deps.retry ?? new Set<string>()
+  const pending = [
+    ...waiting.filter((record) => requested.has(record.id)),
+    ...waiting.filter((record) => !requested.has(record.id)),
+  ]
   try {
     for (const record of pending) {
       if (!isCurrent()) break

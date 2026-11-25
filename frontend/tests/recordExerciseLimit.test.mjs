@@ -519,6 +519,46 @@ test('다시 보내기: 보내다 네트워크 오류로 멈추면 새로고침 
   assert.equal(after.uploaded.has('record-fix'), true)
 })
 
+test('다시 보내기: 더 오래된 기록이 계속 서버 오류(500)로 실패해도 누른 기록을 먼저 보내 저장한다', async () => {
+  const older = sessionOf('old', 2)
+  const fixable = sessionOf('fix', 101, (i) => i < 100)
+  const storage = new Map([
+    [
+      KEY,
+      JSON.stringify({
+        uploaded: [],
+        rejected: {},
+        bodyVersion: 2,
+        omitEmpty: ['record-fix'],
+      }),
+    ],
+  ])
+  const server = fakeServer()
+  const { deps } = depsOf({
+    sessions: [older, fixable],
+    storage,
+    request: async (method, path, options) => {
+      if (options.body.requestId === 'record-old') {
+        throw new http.ApiError(500, 'INTERNAL_SERVER_ERROR', '서버 오류')
+      }
+      return server.request(method, path, options)
+    },
+  })
+  // 자동 업로드는 오래된 기록에서 멈춘다.
+  const auto = await upload.uploadPendingRecords(deps)
+  assert.equal(auto.uploaded, 0)
+  assert.equal(server.stored.size, 0)
+  assert.equal(upload.isResendPending(deps.marks.read(), 'record-fix'), true)
+  // 다시 보내기는 누른 기록을 먼저 보낸다.
+  const retried = await upload.uploadPendingRecords({
+    ...deps,
+    retry: new Set(['record-fix']),
+  })
+  assert.equal(retried.uploaded, 1)
+  assert.deepEqual([...server.stored.keys()], ['record-fix'])
+  assert.equal(upload.isResendPending(deps.marks.read(), 'record-fix'), false)
+})
+
 test('운동 수 판정: 완료한 운동만 세어도 100개를 넘으면 고칠 수 없다', () => {
   const rec = (n, completed) => ({
     exercises: Array.from({ length: n }, (_, i) => ({
@@ -643,8 +683,29 @@ test('화면: 고쳐 보내다 멈춘 기록(W15)은 표시만으로 미동기�
     hook,
     /useEffect\(\(\) => \{\s*if \(userId && recordId\) requestRecordUpload\(userId\)/,
   )
-  // W01도 다시 보내다 멈춘 기록에 표시를 붙인다.
-  assert.match(hook, /if \(isResendPending\(marks, id\)\) ids\.add\(id\)/)
+  // W01 표시는 표시 저장소의 순수 함수로 고른다(아래 테스트).
+  assert.match(hook, /unsyncedRecordIds\(readRecordUploadMarks\(userId\)\)/)
+})
+
+test('미동기화 판정: 거절된 기록과 다시 보내다 멈춘 기록만 고르고, 올렸거나 다시 거절된 기록과 고쳐 보내지 않은 기록은 다시 보내기 대기가 아니다', () => {
+  const marks = {
+    uploaded: new Set(['done', 'fixed-done']),
+    rejected: new Map([
+      ['too-many', 'tooManyExercises'],
+      ['fixed-again', 'EXERCISE_NOT_FOUND'],
+    ]),
+    bodyVersion: 2,
+    omitEmpty: new Set(['fixed-pending', 'fixed-done', 'fixed-again']),
+  }
+  assert.equal(upload.isResendPending(marks, 'fixed-pending'), true)
+  assert.equal(upload.isResendPending(marks, 'fixed-done'), false)
+  assert.equal(upload.isResendPending(marks, 'fixed-again'), false)
+  assert.equal(upload.isResendPending(marks, 'never-sent'), false)
+  assert.deepEqual([...upload.unsyncedRecordIds(marks)].sort(), [
+    'fixed-again',
+    'fixed-pending',
+    'too-many',
+  ])
 })
 
 test('화면: 최근 운동 기록(W01)은 서버가 받지 않은 기록에 표시를 붙이고, 결과 화면이 업로드 상태를 연결한다', () => {
