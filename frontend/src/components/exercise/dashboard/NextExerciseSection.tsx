@@ -16,7 +16,7 @@ import {
   dashboardSectionTitle,
 } from './DashboardParts.tsx'
 
-/** W01이 내일 운동 계획 항목에 쓰는 값. 계획 저장소가 없으면(운영 빌드·개발용 예시) 넘기지 않고 기존 "준비 중" 항목을 그대로 둔다. */
+/** W01이 내일 운동 계획 항목에 쓰는 값. 계획 저장소가 없으면(계정 없음·개발용 예시) 넘기지 않고 기존 "준비 중" 항목을 그대로 둔다. */
 export interface NextPlanInfo {
   state: WorkoutPlansState
   today: LocalDate

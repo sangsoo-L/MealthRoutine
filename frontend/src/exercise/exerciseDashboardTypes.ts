@@ -118,7 +118,7 @@ export interface RecentRecordsView {
 
 /**
  * 대시보드 전체의 영역별 상태.
- * weekly·recent는 완료 기록의 표시 영역이다. 개발 서버에서는 저장된 완료 기록(IndexedDB)을 조회해 채운다(useDashboardRecords). 운영 빌드는 저장소가 없어 준비 중이다.
+ * weekly·recent는 완료 기록의 표시 영역이다. 저장된 완료 기록(IndexedDB)을 조회해 채운다(useDashboardRecords). 개발 서버와 운영 빌드가 같고, 저장소가 없을 때(계정 없음)만 준비 중이다.
  * statistics·next는 상세 통계·날짜별 계획·주간 리포트의 준비 상태다. PendingOnlySlot이라 ready·empty가 불가능하다.
  */
 export interface ExerciseDashboardSlots {

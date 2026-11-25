@@ -1,3 +1,9 @@
+import {
+  createIndexedDbWorkoutListRepository,
+  createIndexedDbWorkoutRecordRepository,
+  createIndexedDbWorkoutRoutineRepository,
+  createIndexedDbWorkoutSessionRepository,
+} from './local/indexedDbWorkoutRepositories.ts'
 import type {
   WorkoutListRepository,
   WorkoutRecordRepository,
@@ -6,51 +12,45 @@ import type {
 } from './workoutRepositories.ts'
 
 /**
- * 운동 목록·수행 세션·완료 기록 저장소의 출처. 지금은 개발 서버에서만 IndexedDB 로컬 저장소(kind 'local')를 쓰고, 그 외(운영 빌드)에는 null이다.
- * null은 "이 빌드에서는 저장 수단이 연결되어 있지 않다"는 뜻이며 화면은 이를 "준비 중"으로 안내한다(기록 없음·오류와 구분).
- * 운영 빌드는 로그인 자체가 동작하지 않으므로(auth/unavailableBackend) 운영에서는 이 저장소를 만들 일도 없다.
+ * 운동 목록·수행 세션·완료 기록·루틴 저장소의 출처.
  *
- * - 로컬 저장소는 개발용 Mock(kind 'mock', 코드 상수)과 다르다: 사용자가 입력한 값을 이 브라우저의 IndexedDB에 실제로 저장한다.
+ * - 오늘 운동 목록, 수행 세션, 완료 기록은 개발 서버와 운영 빌드 모두 이 브라우저의 IndexedDB 로컬 저장소(kind 'local')를 쓴다.
+ *   오늘 목록과 진행 중인 세션은 서버에 두지 않는다. 완료 기록은 서버에도 테이블과 업로드 API(POST /workout-sessions/records)가 있고,
+ *   그 업로드 연결은 다음 단계에서 한다(그 전까지 완료 기록은 이 브라우저에만 있다).
+ * - 루틴은 서버에 저장하기로 해서 운영 빌드에서는 로컬 저장소를 쓰지 않는다. 서버 연결 전까지 운영에서는 null이고
+ *   화면은 "준비 중"으로 안내한다(운영 사용자가 로컬에만 루틴을 쌓았다가 서버 연결 때 갈 곳이 없어지는 일을 막는다).
+ * - 로컬 저장소는 개발용 Mock(kind 'mock', 코드 상수)과 다르다: 사용자가 입력한 값을 IndexedDB에 실제로 저장한다.
  *   단, 이 브라우저에만 있는 사본이며 서버 보관이 아니다(기기·브라우저를 바꾸면 없고, 브라우저가 지울 수 있다).
- * - import.meta.env.DEV는 빌드 때 상수로 바뀌어 운영 빌드에서는 이 분기와 로컬 저장소 청크가 제거된다(exerciseSource.ts와 같은 방식).
- * - 저장소는 계정 id로만 만든다. id는 인증 Context(useAuth)가 인증을 확인한 사용자의 값이며 임의로 만들지 않는다.
+ * - 저장소는 계정 id로만 만든다. id는 인증 Context(useAuth)가 서버에서 확인한 회원 id이며 임의로 만들지 않는다.
+ *   모든 조회·쓰기는 계정 id로 범위를 좁혀서, 같은 브라우저에서 계정을 바꿔도 다른 계정의 값은 보이지 않는다.
  *   로그아웃해도 IndexedDB의 값은 지우지 않는다(이 브라우저의 유일한 사본). 로그아웃 뒤 화면 접근은 라우트의 AuthGate가 막는다.
- *
- * 서버 연동이 정해지면 같은 인터페이스를 구현한 객체로 아래 반환을 교체한다(화면은 그대로).
  */
-const localModule = import.meta.env.DEV
-  ? await import('./local/indexedDbWorkoutRepositories.ts')
-  : null
-
 export function createWorkoutListRepository(
   ownerId: string,
 ): WorkoutListRepository | null {
-  return localModule
-    ? localModule.createIndexedDbWorkoutListRepository(ownerId)
-    : null
+  return createIndexedDbWorkoutListRepository(ownerId)
 }
 
 export function createWorkoutSessionRepository(
   ownerId: string,
 ): WorkoutSessionRepository | null {
-  return localModule
-    ? localModule.createIndexedDbWorkoutSessionRepository(ownerId)
-    : null
+  return createIndexedDbWorkoutSessionRepository(ownerId)
 }
 
 export function createWorkoutRecordRepository(
   ownerId: string,
 ): WorkoutRecordRepository | null {
-  return localModule
-    ? localModule.createIndexedDbWorkoutRecordRepository(ownerId)
-    : null
+  return createIndexedDbWorkoutRecordRepository(ownerId)
 }
 
-/** 운동 루틴(W06~W08) 저장소. 운영 빌드에는 저장 수단이 없어 null이며 화면은 "준비 중"으로 안내한다(가짜 루틴을 만들지 않는다). */
+/**
+ * 운동 루틴(W06~W08) 저장소. 개발 서버에서만 로컬 저장소를 쓰고, 운영 빌드에는 서버 연결 전이라 null이며 화면은 "준비 중"으로 안내한다
+ * (가짜 루틴을 만들지 않는다). import.meta.env.DEV는 빌드 때 상수로 바뀐다.
+ */
 export function createWorkoutRoutineRepository(
   ownerId: string,
 ): WorkoutRoutineRepository | null {
-  return localModule
-    ? localModule.createIndexedDbWorkoutRoutineRepository(ownerId)
+  return import.meta.env.DEV
+    ? createIndexedDbWorkoutRoutineRepository(ownerId)
     : null
 }

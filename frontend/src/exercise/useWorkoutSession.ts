@@ -11,7 +11,7 @@ import { createWorkoutSessionRepository } from './workoutSource.ts'
  *
  * - userId마다 컨트롤러를 따로 만든다. 계정이 바뀌면 이전 컨트롤러를 비활성화하므로 이전 계정의 비동기 응답은 모두 버려진다.
  *   (effect를 다시 실행해도 안전하다: 비활성화한 컨트롤러는 다시 활성화할 수 있다.)
- * - 저장소가 없으면(운영 빌드·계정 없음) 컨트롤러가 unavailable 상태가 된다.
+ * - 저장소가 없으면(계정 없음) 컨트롤러가 unavailable 상태가 된다.
  * - 탭 숨김(visibilitychange hidden)과 pagehide: 측정 중이면 일시정지하고 저장을 시도한다. 돌아오면(visible) 저장소의 최신 상태를 확인하되
  *   미저장 변경이 없을 때만 반영하고 자동으로 재개하지 않는다.
  *   pagehide·탭 닫기에서는 저장 성공을 보장할 수 없다. 마지막 성공 저장 이후의 측정 시간은 사라질 수 있다.

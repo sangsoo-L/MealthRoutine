@@ -3,7 +3,7 @@ import type { ExerciseDashboardSlots } from './exerciseDashboardTypes.ts'
 /**
  * 운동 대시보드(W01)의 기본 데이터 출처. 지금은 수행 기록·루틴·통계 등이 연결되지 않아 이 함수가 돌려주는 모든 영역은 "준비 중(unavailable)"이다.
  * 단 "오늘의 운동"(today)은 저장된 운동 목록(IndexedDB)을(useTodayWorkoutList), "이번 주 운동"(weekly)과 "최근 운동 기록"(recent)은 저장된 완료 기록
- * (IndexedDB)을(useDashboardRecords) useExerciseDashboard가 조회해 이 값을 덮어쓴다. 저장소가 없는 운영 빌드에서는 덮어쓴 값도 준비 중(unavailable)이다.
+ * (IndexedDB)을(useDashboardRecords) useExerciseDashboard가 조회해 이 값을 덮어쓴다. 두 저장소는 운영 빌드에서도 있으며, 저장소가 없을 때만 덮어쓴 값도 준비 중(unavailable)이다.
  * 기록이 없는 것(empty)과 기록 기능이 연결되지 않은 것(unavailable)은 다른 상태이며, 여기서는 후자만 돌려준다. 가짜 기록이나 0 같은 값으로 채우지 않는다.
  * 저장소·API를 부르지 않으므로 loading·error도 만들지 않는다.
  *

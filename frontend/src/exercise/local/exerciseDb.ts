@@ -1,8 +1,8 @@
 import { WorkoutStoreError } from '../workoutRepositories.ts'
 
 /**
- * [개발 전용] 운동 로컬 MVP의 IndexedDB 연결·트랜잭션 도구. 개발 서버에서만 불러온다(exercise/workoutSource.ts가 import.meta.env.DEV로
- * 동적 import). 운영 빌드에는 포함되지 않는다. 브라우저 기본 IndexedDB API만 쓴다.
+ * 운동 로컬 저장소의 IndexedDB 연결·트랜잭션 도구. 오늘 운동 목록·수행 세션·완료 기록·내일 계획 저장소(exercise/workoutSource.ts,
+ * workoutPlanSource.ts)가 개발 서버와 운영 빌드 모두에서 쓴다. 브라우저 기본 IndexedDB API만 쓴다.
  *
  * - DB 하나(mealthroutine-exercise)에 Object Store 아홉 개(workoutLists·workoutSessions·workoutRecords, v2에서 workoutRoutines, v3에서 mealRecords, v4에서 mealPlans, v5에서 workoutPlans, v6에서 dailyQuizzes·rewardLedger 추가). 운동 카탈로그는 넣지 않는다.
  * - 연결은 하나를 만들어 재사용한다. 다른 탭이 버전을 올리거나 DB를 지우면(versionchange, 개발자 도구의 DB 삭제 포함) 이 연결을

@@ -15,6 +15,9 @@ export const WORKOUT_SCHEMA_VERSION = 1
 /** 개발용 Mock 운동 데이터(15종)의 카탈로그 식별자. 운영 카탈로그가 아니다. */
 export const DEV_CATALOG_VERSION = 'dev-mock-1'
 
+/** 서버 운동 카탈로그(exercises 테이블)의 식별자. 운영 빌드에서 저장하는 목록·계획에 찍는다. */
+export const SERVER_CATALOG_VERSION = 'server-1'
+
 /** 로컬 날짜(YYYY-MM-DD). */
 export type LocalDate = string
 

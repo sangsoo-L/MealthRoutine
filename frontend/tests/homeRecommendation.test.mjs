@@ -453,7 +453,7 @@ test('추천 조회 훅은 PIN 보호 데이터·검증·열람 권한 API를 �
   assert.match(source, /\.getSummary\(\)/)
   assert.match(source, /loadExerciseGoalContext/)
 })
-test('운영 환경(NODE_ENV=production)에서는 기록·목표 저장소가 없어 모든 사실이 연결 전이다', () => {
+test('운영 환경(NODE_ENV=production)에서는 운동 기록은 로컬 저장소, 식단 기록은 서버 저장소가 있고 목표 저장소는 없다. 저장소가 없는 사실은 연결 전이다', () => {
   const script = `
     import { createServer } from 'vite'
     const server = await createServer({
@@ -466,7 +466,7 @@ test('운영 환경(NODE_ENV=production)에서는 기록·목표 저장소가 �
     const goal = await server.ssrLoadModule('/src/exercise-goal/exerciseGoalSource.ts')
     console.log(JSON.stringify({
       env: process.env.NODE_ENV,
-      workout: workout.createWorkoutRecordRepository('u'),
+      workout: workout.createWorkoutRecordRepository('u') !== null,
       meal: meal.createMealRecordRepository('u')?.kind ?? null,
       goal: goal.createExerciseGoalRepository('u'),
     }))
@@ -484,11 +484,11 @@ test('운영 환경(NODE_ENV=production)에서는 기록·목표 저장소가 �
   const result = JSON.parse(out.trim().split('\n').at(-1))
   assert.deepEqual(result, {
     env: 'production',
-    workout: null,
+    workout: true, // 운동 완료 기록은 운영 빌드에서도 IndexedDB 로컬 저장소
     meal: 'server', // 식단 기록은 백엔드에 연결됨
     goal: null,
   })
-  // 저장소가 없으면 훅은 세 사실 모두 unavailable로 만들고, 규칙은 기본 추천을 고른다(위 테스트).
+  // 저장소가 없는 사실(운영 빌드의 목표)은 훅이 unavailable로 만든다. 아래는 세 사실 모두 저장소가 없을 때 규칙이 기본 추천을 고르는지 본다(위 테스트).
   const unavailable = { status: 'unavailable' }
   assert.equal(
     policy.selectHomeRecommendation({

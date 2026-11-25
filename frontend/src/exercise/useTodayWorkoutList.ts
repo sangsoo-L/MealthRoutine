@@ -19,7 +19,7 @@ interface Loaded {
 /**
  * W01 "오늘의 운동"의 데이터. 오늘 날짜(기기 로컬)에 저장한 목록을 IndexedDB에서 조회해 가장 최근 저장본을 보여 준다.
  *
- * - 저장소가 없으면(운영 빌드·계정 없음) unavailable. 기록 없음(empty)이나 오류와 다르다.
+ * - 저장소가 없으면(계정 없음) unavailable. 기록 없음(empty)이나 오류와 다르다.
  * - 조회 중 loading, 실패 error(reload로 다시 시도), 이 브라우저가 IndexedDB를 쓸 수 없으면 unavailable, 오늘 목록이 없으면 empty.
  * - 계정·날짜가 바뀌면 지난 값을 버리고 다시 조회한다(날짜가 바뀌면 어제 목록은 오늘의 운동에서 빠진다).
  * - enabled가 false이면(개발용 예시를 쓰는 중) 조회하지 않는다.

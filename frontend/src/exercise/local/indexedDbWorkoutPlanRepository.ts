@@ -21,7 +21,7 @@ import {
   WorkoutStoreError,
   type ListQueryResult,
 } from '../workoutRepositories.ts'
-import { DEV_CATALOG_VERSION, type LocalDate } from '../workoutTypes.ts'
+import type { LocalDate } from '../workoutTypes.ts'
 import {
   INDEX,
   STORE_WORKOUT_PLANS,
@@ -30,6 +30,7 @@ import {
   runTransaction,
 } from './exerciseDb.ts'
 import {
+  CURRENT_CATALOG_VERSION,
   assertOwner,
   assertWritable,
   parseOwned,
@@ -43,7 +44,7 @@ function byPlanDate(a: WorkoutPlan, b: WorkoutPlan): number {
 }
 
 /**
- * [개발 전용] 내일 운동 계획 IndexedDB 저장소(DB v5의 workoutPlans). 개발 서버에서만 불러온다(exercise/workoutPlanSource.ts).
+ * 내일 운동 계획 IndexedDB 저장소(DB v5의 workoutPlans). 개발 서버와 운영 빌드 모두 쓴다(exercise/workoutPlanSource.ts).
  * 계정 격리·무결성 규칙은 다른 운동 저장소와 같다: 모든 조회는 ownerId로 시작하는 인덱스 범위만 쓰고, id로 읽은 값도 ownerId가 다르면 없는 것으로 본다.
  * 모든 쓰기는 같은 트랜잭션 안에서 소유자와 revision을 다시 확인한다. 이 저장소는 운동 목록·세션·기록·루틴 저장소를 읽지도 쓰지도 않는다.
  *
@@ -77,7 +78,7 @@ export function createIndexedDbWorkoutPlanRepository(
         draft: input.draft,
         knownExerciseIds: input.knownExerciseIds,
         allowedRecordTypes: input.allowedRecordTypes,
-        catalogVersion: DEV_CATALOG_VERSION,
+        catalogVersion: CURRENT_CATALOG_VERSION,
         now: at,
       })
       if (!candidate) {
@@ -214,7 +215,7 @@ export function createIndexedDbWorkoutPlanRepository(
           draft: input.draft,
           knownExerciseIds: input.knownExerciseIds,
           allowedRecordTypes: input.allowedRecordTypes,
-          catalogVersion: DEV_CATALOG_VERSION,
+          catalogVersion: CURRENT_CATALOG_VERSION,
           now: at,
         })
         if (!next) {
