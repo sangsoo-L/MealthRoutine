@@ -63,7 +63,13 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 | GET | /api/v1/exercises | `keyword`, `difficulty`, `exerciseType`, `equipment`, `page`, `size` | 운동 페이지 |
 | GET | /api/v1/exercises/{exerciseId} | | 운동 |
 
-운동: `exerciseId, name, instructions, difficulty, exerciseType, exerciseEquipment, description, cautions, sourceUrl`
+운동: `exerciseId, name, instructions, difficulty, exerciseType, exerciseEquipment, description, cautions, sourceUrl, defaultRecordMode, allowedRecordModes`
+
+운동 데이터는 `database/seed/001_insert_exercises.sql`이고, 이 파일은 프론트 시드 `frontend/src/exercise/seed/exercises.json`에서 `database/tools/gen_exercises.mjs`로 만든다. `exerciseId`는 프론트 시드와 같은 값이다. 기존 DB에 이 시드를 실행할 때 즐겨찾기·루틴·기록·추천이 참조하는 운동의 이름이 시드와 다르거나 시드에 없는 운동이 있으면, 참조가 다른 운동을 가리키지 않도록 아무것도 바꾸지 않고 멈춘다. 멈추면 출력된 운동 목록을 보고, 지킬 데이터가 없으면 `docker compose down -v`로 DB를 새로 만든다. 지킬 데이터가 있으면 시드 적용을 보류하고 운동 파트에 알린 뒤 검증된 별도 이관 절차를 거친다. 참조의 운동 id만 먼저 바꾸면, 적용 전에는 새 id에 아직 예전 운동이 들어 있어서 참조가 다른 운동을 가리키고 시드도 다시 막힌다(자세한 내용은 `database/migration/20261124_exercise_record_mode_columns.sql` 머리 주석). `exerciseType`은 운동 부위(등, 가슴, 어깨, 팔, 엉덩이, 허벅지, 종아리, 복부, 허리, 유산소, 스트레칭), `exerciseEquipment`는 도구 이름(맨몸, 덤벨, 밴드, 폼롤러, 마사지볼, 풀업바)이다.
+
+`defaultRecordMode`는 이 운동을 처음 담을 때의 기록 방식, `allowedRecordModes`는 고를 수 있는 기록 방식 목록이다. 값은 카탈로그 코드 `time`, `reps`, `weight_reps`, `time_reps`, `weight_time` 중 하나다. 중량+횟수는 여기서만 `weight_reps`이고 루틴·기록의 `recordType`에서는 `weight`다. 기록 방식 데이터가 없거나, 저장된 목록이 위 코드 문자열만으로 된 중복 없는 배열이 아니거나(숫자, 숫자 문자열, 대문자 코드가 섞인 경우 포함), 기본값이 목록에 없는 운동은 두 필드가 함께 `null`이다.
+
+`size`는 최대 100이라 운동 전체(105개)를 받으려면 페이지를 두 번 요청한다.
 
 ## 즐겨찾기 (회원)
 
@@ -78,7 +84,7 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 | Method | URL | 권한 | 비고 |
 |---|---|---|---|
 | POST | /api/v1/workout-routines | 회원 | 201. 같은 `requestId` 재전송이면 200 |
-| GET | /api/v1/workout-routines | 비회원 가능 | 내 루틴 + public. `items` 없음 |
+| GET | /api/v1/workout-routines | 비회원 가능(`mine=true`는 회원만) | 내 루틴 + public. 기본은 `items` 없음(`includeItems=true`면 포함). 옵션은 아래 "목록 옵션" |
 | GET | /api/v1/workout-routines/{routineId} | 비회원 가능 | private은 소유자만, shared·public은 누구나 |
 | PATCH | /api/v1/workout-routines/{routineId} | 소유자 | `expectedRevision` 선택 |
 | DELETE | /api/v1/workout-routines/{routineId}?expectedRevision= | 소유자 | 운동 기록은 남고 루틴 연결만 해제. `expectedRevision` 선택 |
@@ -91,9 +97,9 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
   "visibility": "private",
   "requestId": "rt-7f3a9c",
   "items": [
-    { "exerciseId": 1, "recordType": "weight", "restSeconds": 60,
+    { "exerciseId": 2, "recordType": "weight", "restSeconds": 60,
       "sets": [{ "reps": 12, "weightKg": 40 }, { "reps": 10, "weightKg": 50 }] },
-    { "exerciseId": 2, "targetSets": 3, "targetReps": 10, "targetDurationSeconds": null, "restSeconds": 60 }
+    { "exerciseId": 1, "targetSets": 3, "targetReps": 10, "targetDurationSeconds": null, "restSeconds": 60 }
   ]
 }
 ```
@@ -101,6 +107,13 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
 - `routineName`, `items`(1~100개), `exerciseId`는 생성 시 필수다.
 - `items`가 100개, 항목의 `sets`가 200개를 넘으면 그 자리에서 읽기를 멈추고 400이다. 아주 큰 목록을 보내도 서버가 전부 메모리에 올리지 않는다.
 - `sequenceNumber`는 `items` 순서대로 서버가 1부터 부여한다.
+
+**목록 옵션** (2026-11-25 추가, 둘 다 기본 `false`라 지금 응답은 그대로다)
+
+- `mine=true`: 내 루틴만 준다. 다른 회원의 공개 루틴은 빠지고, 최근에 저장하거나 수정한 순서(`updatedAt` 내림차순, 같으면 `routineId` 내림차순)다. 로그인이 필요하다(비회원은 401 `LOGIN_REQUIRED`, 만료된 토큰은 401 `TOKEN_EXPIRED`). `updatedAt`은 초 단위라 같은 초에 저장된 루틴은 `routineId` 순서로 정해서 페이지를 넘겨도 순서가 흔들리지 않는다. 기본 목록은 지금처럼 `routineId` 내림차순이다.
+- `includeItems=true`: 목록의 각 루틴에 상세 조회와 같은 `items`를 넣는다. 프론트 루틴 목록이 "운동 3개 · 6세트"를 보여 주려고 루틴마다 상세를 따로 부르지 않게 하려는 옵션이다. 항목은 한 페이지 단위로 묶어서 읽으므로 루틴 수만큼 쿼리가 늘지 않는다. `revision`·`requestId`가 주인에게만 나오는 규칙은 같다.
+- 값은 `true` 또는 `false`를 쓴다. 불리언으로 해석할 수 없는 값(예: `mine=maybe`)은 400 `INVALID_REQUEST`다. `mine=1`, `includeItems=yes`처럼 불리언으로 해석되는 값은 `true`로 받는다.
+- 예: `GET /api/v1/workout-routines?mine=true&includeItems=true&size=100`
 
 **항목은 두 가지 모양 중 하나로 보낸다** (2026-11-24 추가)
 
@@ -160,7 +173,7 @@ PATCH에서 `null`이거나 생략한 필드는 바뀌지 않는다. `items`, `e
   "startedAt": "2026-11-05T10:00:00",
   "exercises": [
     {
-      "exerciseId": 1,
+      "exerciseId": 2,
       "exerciseRoutineItemId": 1,
       "sets": [{ "reps": 10, "weightKg": 20, "durationSeconds": null, "distanceM": null, "restSeconds": 60 }]
     }

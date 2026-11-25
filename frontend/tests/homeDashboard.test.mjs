@@ -689,7 +689,7 @@ test('비회원 랜딩 전체: Hero·가입 CTA·로그인 링크가 그대로�
 })
 
 // ── 운영 환경 ────────────────────────────────────────────────────────────
-test('운영 환경(NODE_ENV=production)에서는 운동 기록은 로컬 저장소를 쓰고 식단 기록 저장소는 없다. 저장소가 없는 영역은 연결 전이다', () => {
+test('운영 환경(NODE_ENV=production)에서는 운동 기록은 로컬 저장소, 식단 기록은 서버 저장소를 쓴다. 저장소가 없는 영역은 연결 전이다', () => {
   const script = `
     import { createServer } from 'vite'
     const server = await createServer({
@@ -702,7 +702,7 @@ test('운영 환경(NODE_ENV=production)에서는 운동 기록은 로컬 저장
     console.log(JSON.stringify({
       env: process.env.NODE_ENV,
       workout: workout.createWorkoutRecordRepository('u') !== null,
-      meal: meal.createMealRecordRepository('u'),
+      meal: meal.createMealRecordRepository('u')?.kind ?? null,
     }))
     await server.close()
   `
@@ -717,10 +717,10 @@ test('운영 환경(NODE_ENV=production)에서는 운동 기록은 로컬 저장
   )
   assert.deepEqual(JSON.parse(out.trim().split('\n').at(-1)), {
     env: 'production',
-    workout: true,
-    meal: null,
+    workout: true, // 운동 완료 기록은 운영 빌드에서도 IndexedDB 로컬 저장소
+    meal: 'server', // 식단 기록은 백엔드에 연결됨
   })
-  // 저장소가 없는 영역(운영 빌드의 식단)은 훅이 unavailable로 만들고 화면은 0일·기록 없음 대신 연결 전 안내를 보인다.
+  // 저장소가 없는 영역은 훅이 unavailable로 만들고 화면은 0일·기록 없음 대신 연결 전 안내를 보인다.
   // 아래는 두 영역 모두 저장소가 없을 때의 규칙이다.
   const w = week({ status: 'unavailable' }, { status: 'unavailable' })
   assert.deepEqual(
