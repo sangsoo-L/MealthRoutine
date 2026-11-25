@@ -191,6 +191,48 @@ check(
     !(await A()).failed,
 )
 
+console.log(
+  '\n===== R3. 응답만 잃은 경우: 실패 뒤 목록을 조용히 다시 읽어 서버 값으로 맞춤 =====',
+)
+await ev(`window.__h.setTimeoutMs(400)`)
+await ev(`window.__h.reset()`)
+// 운동 2는 등록돼 있다(R2). 해제 요청을 서버가 처리했지만 응답이 오지 않는 경우.
+const lost = ev(`window.__h.cur.A.toggle()`)
+await until(`window.__h.open().some(x=>x.startsWith('DELETE'))`)
+const lr = await lost
+check('시간 상한 뒤 failed', lr === 'failed')
+check(
+  '실패 뒤 목록을 다시 읽음(로딩 표시 없음)',
+  (await until(`window.__h.open().some(x=>x.startsWith('GET'))`, 20)) &&
+    (await A()).status === 'ready',
+)
+await answer('GET', [])
+check(
+  '서버 값(해제됨)으로 맞추고 실패 표시를 지움',
+  await until(
+    `window.__h.cur.A.ids.length===0 && !window.__h.cur.A.saveFailed`,
+    20,
+  ),
+  JSON.stringify(await A()),
+)
+// 다시 읽는 사이 사용자가 다시 누르면 그 결과는 버린다.
+const lost2 = ev(`window.__h.cur.A.toggle()`)
+await until(`window.__h.open().some(x=>x.startsWith('PUT'))`)
+await lost2
+await until(`window.__h.open().some(x=>x.startsWith('GET'))`, 20)
+await ev(`window.__h.setTimeoutMs(60000)`)
+const fresh = ev(`window.__h.cur.A.toggle()`)
+await until(`window.__h.open().some(x=>x.startsWith('PUT'))`)
+await answer('PUT')
+const fr = await fresh
+await answer('GET', [])
+await sleep(200)
+check(
+  '다시 읽은 결과가 그 뒤의 등록을 덮어쓰지 않음',
+  fr === 'added' && same((await A()).ids, ['2']),
+  JSON.stringify({ fr, a: await A() }),
+)
+
 const bad = t.problems.filter((p) => !/Download the React DevTools/.test(p))
 check('콘솔 오류·경고 없음', bad.length === 0, JSON.stringify(bad.slice(0, 3)))
 const fails = t.res.filter((x) => !x.ok)
