@@ -61,7 +61,7 @@ function serverRoutine(overrides = {}, body = undefined) {
     targetSets: item.sets.length,
     targetReps: item.sets[0].reps ?? null,
     targetDurationSeconds: item.sets[0].targetSeconds ?? null,
-    restSeconds: null,
+    restSeconds: item.restSeconds ?? null,
     recordType: item.recordType,
     sets: item.sets,
   }))
@@ -407,7 +407,8 @@ test('수정·삭제: 잘못된 id나 정수가 아닌 revision은 요청하지 
       storeError('conflict', 'revisionMismatch')(error) &&
       error.currentRevision === 4,
   )
-  const lost = fakeRequest(() => {
+  const lost = fakeRequest(({ method }) => {
+    if (method === 'GET') return serverRoutine()
     throw fail(409, 'SET_TARGETS_WOULD_BE_LOST')
   })
   await assert.rejects(
@@ -507,8 +508,10 @@ test('상세: 없는 루틴·다른 회원의 루틴은 null, 예전 방식 항�
 })
 
 test('수정: expectedRevision을 같이 보내고, 서버의 현재 revision이 다르면 revisionMismatch와 그 값을 알린다', async () => {
-  const { request, calls } = fakeRequest(({ body }) =>
-    serverRoutine({ revision: 3 }, { ...body, requestId: 'rt-1' }),
+  const { request, calls } = fakeRequest(({ method, body }) =>
+    method === 'GET'
+      ? serverRoutine({ revision: 2 })
+      : serverRoutine({ revision: 3 }, { ...body, requestId: 'rt-1' }),
   )
   const repository = api.createApiRoutineRepository(OWNER, request)
   const updated = await repository.update('41', {
@@ -517,9 +520,12 @@ test('수정: expectedRevision을 같이 보내고, 서버의 현재 revision이
     description: '소개',
     draft: draft([ITEMS[1]]),
   })
-  assert.equal(calls[0].method, 'PATCH')
-  assert.equal(calls[0].path, '/workout-routines/41')
-  assert.deepEqual(calls[0].options.body, {
+  // 휴식 시간을 지키려고 현재 루틴을 먼저 읽고 PATCH한다.
+  assert.deepEqual(
+    calls.map((c) => `${c.method} ${c.path}`),
+    ['GET /workout-routines/41', 'PATCH /workout-routines/41'],
+  )
+  assert.deepEqual(calls[1].options.body, {
     routineName: '새 이름',
     description: '소개',
     items: [
@@ -530,7 +536,9 @@ test('수정: expectedRevision을 같이 보내고, 서버의 현재 revision이
   assert.equal(updated.revision, 3)
   assert.equal(updated.name, '새 이름')
 
-  const stale = fakeRequest(() => {
+  // 먼저 읽은 루틴의 revision이 달라도 판단은 서버(PATCH의 expectedRevision)에 맡겨 예전과 같은 오류를 알린다.
+  const stale = fakeRequest(({ method }) => {
+    if (method === 'GET') return serverRoutine({ revision: 5 })
     throw fail(409, 'REVISION_MISMATCH', { currentRevision: 5 })
   })
   await assert.rejects(
@@ -556,6 +564,150 @@ test('수정: expectedRevision을 같이 보내고, 서버의 현재 revision이
     }),
     storeError('notFound'),
   )
+  // 없는 루틴은 먼저 읽을 때 알 수 있으므로 PATCH를 보내지 않는다.
+  assert.deepEqual(
+    gone.calls.map((c) => c.method),
+    ['GET'],
+  )
+})
+
+/** 휴식 시간이 있는 서버 루틴(다른 클라이언트가 넣은 값). */
+const withRest = (rests = [90, 90]) =>
+  serverRoutine({
+    items: serverRoutine().items.map((item, index) => ({
+      ...item,
+      restSeconds: rests[index],
+    })),
+  })
+
+/** GET은 rested 루틴, PATCH는 보낸 본문대로 저장한 루틴을 돌려주는 가짜 서버. 생략한 items는 그대로 둔다. */
+function restServer(rested = withRest()) {
+  return fakeRequest(({ method, body }) => {
+    if (method === 'GET') return rested
+    const saved = serverRoutine({ revision: 2 }, body)
+    return body.items ? saved : { ...saved, items: rested.items }
+  })
+}
+
+test('수정: 이름·소개만 바꾸면 items를 보내지 않아 서버의 휴식 시간(90초)이 남는다', async () => {
+  const { request, calls } = restServer()
+  const updated = await api
+    .createApiRoutineRepository(OWNER, request)
+    .update('41', {
+      expectedRevision: 1,
+      name: '새 이름',
+      description: '새 소개',
+      draft: draft(),
+    })
+  assert.deepEqual(
+    calls.map((c) => `${c.method} ${c.path}`),
+    ['GET /workout-routines/41', 'PATCH /workout-routines/41'],
+  )
+  assert.deepEqual(calls[1].options.body, {
+    routineName: '새 이름',
+    description: '새 소개',
+    expectedRevision: 1,
+  })
+  assert.equal(updated.name, '새 이름')
+  assert.deepEqual(updated.items, ITEMS)
+})
+
+test('수정: 운동을 더하면 남은 운동은 휴식 시간 90초를 그대로 보내고, 새 운동은 휴식 시간 없이 보낸다', async () => {
+  const { request, calls } = restServer()
+  const added = {
+    exerciseId: '5',
+    exerciseNameSnapshot: '스쿼트',
+    recordType: 'reps',
+    sets: [{ reps: 15 }],
+  }
+  await api.createApiRoutineRepository(OWNER, request).update('41', {
+    expectedRevision: 1,
+    name: '등·코어',
+    description: '',
+    draft: draft([...ITEMS, added]),
+  })
+  assert.deepEqual(calls[1].options.body.items, [
+    {
+      exerciseId: 2,
+      recordType: 'weight',
+      sets: ITEMS[0].sets,
+      restSeconds: 90,
+    },
+    {
+      exerciseId: 22,
+      recordType: 'time',
+      sets: ITEMS[1].sets,
+      restSeconds: 90,
+    },
+    { exerciseId: 5, recordType: 'reps', sets: [{ reps: 15 }] },
+  ])
+  assert.ok(!('restSeconds' in calls[1].options.body.items[2]))
+})
+
+test('수정: 순서·세트를 바꾸거나 운동을 빼도 남은 운동의 휴식 시간은 운동별로 따라가고, 서버에 없던 휴식 시간은 넣지 않는다', async () => {
+  const reordered = restServer(withRest([60, 90]))
+  await api.createApiRoutineRepository(OWNER, reordered.request).update('41', {
+    expectedRevision: 1,
+    name: '등·코어',
+    description: '',
+    draft: draft([ITEMS[1], { ...ITEMS[0], sets: [{ reps: 8 }] }]),
+  })
+  assert.deepEqual(reordered.calls[1].options.body.items, [
+    {
+      exerciseId: 22,
+      recordType: 'time',
+      sets: ITEMS[1].sets,
+      restSeconds: 90,
+    },
+    {
+      exerciseId: 2,
+      recordType: 'weight',
+      sets: [{ reps: 8 }],
+      restSeconds: 60,
+    },
+  ])
+
+  const removed = restServer(withRest([null, 45]))
+  await api.createApiRoutineRepository(OWNER, removed.request).update('41', {
+    expectedRevision: 1,
+    name: '등·코어',
+    description: '',
+    draft: draft([ITEMS[0]]),
+  })
+  assert.deepEqual(removed.calls[1].options.body.items, [
+    { exerciseId: 2, recordType: 'weight', sets: ITEMS[0].sets },
+  ])
+})
+
+test('수정: 먼저 읽은 루틴이 내 루틴이 아니면 예전처럼 보내 서버 판단(notFound)을 따르고, 읽기에서 막히면 PATCH를 보내지 않는다', async () => {
+  const input = {
+    expectedRevision: 1,
+    name: '이름',
+    description: '',
+    draft: draft(),
+  }
+  const foreign = fakeRequest(({ method }) => {
+    if (method === 'GET') return { ...withRest(), ownerUserId: 8 }
+    throw fail(403, 'ACCESS_DENIED')
+  })
+  await assert.rejects(
+    api.createApiRoutineRepository(OWNER, foreign.request).update('41', input),
+    storeError('notFound'),
+  )
+  assert.deepEqual(foreign.calls[1].options.body.items, [
+    { exerciseId: 2, recordType: 'weight', sets: ITEMS[0].sets },
+    { exerciseId: 22, recordType: 'time', sets: ITEMS[1].sets },
+  ])
+
+  const denied = fakeRequest(({ method }) => {
+    if (method === 'GET') throw fail(403, 'ACCESS_DENIED')
+    throw new Error('보내면 안 된다')
+  })
+  await assert.rejects(
+    api.createApiRoutineRepository(OWNER, denied.request).update('41', input),
+    storeError('notFound'),
+  )
+  assert.equal(denied.calls.length, 1)
 })
 
 test('삭제: expectedRevision을 쿼리로 보내고, 없는 루틴은 notFound, 잘못된 id는 요청하지 않는다', async () => {
