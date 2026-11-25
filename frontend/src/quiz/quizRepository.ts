@@ -18,6 +18,16 @@ export interface DailyQuiz {
   selectedAnswerId: QuizAnswerId | null
   isCorrect: boolean | null
   completedAt: string | null
+  /** 서버 모드에서 서버가 보낸 질문 원문. 프론트 문제 은행과 다르면 제출을 막는다(매핑 검증). */
+  serverQuestion?: string
+}
+
+/** 화면에 띄운 문제의 날짜가 지나 제출할 수 없다(자정을 넘김). 화면은 새 문제를 다시 불러온다. */
+export class QuizDayChangedError extends Error {
+  constructor() {
+    super('오늘의 퀴즈가 바뀌었습니다.')
+    this.name = 'QuizDayChangedError'
+  }
 }
 
 export interface RewardEntry {
@@ -50,7 +60,7 @@ export interface RewardTotals {
 }
 
 export interface QuizRepository {
-  readonly kind: 'local'
+  readonly kind: 'local' | 'server'
   get(localDate: string): Promise<DailyQuiz | null>
   /** 이 계정이 완료한 모든 퀴즈의 문항 id(재출제 방지용). */
   listAnsweredQuestionIds(): Promise<string[]>
