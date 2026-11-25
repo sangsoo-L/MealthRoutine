@@ -464,8 +464,13 @@ export function createApiRoutineRepository(
             )
           : input.draft.items.map(() => undefined)
         : null
+      // 줄 정보가 있으면 모든 줄이 제자리의 원래 줄일 때만 "그대로"다. 줄을 지우고 같은 자리에 같은 운동·세트로 새 줄을 넣으면
+      // 값은 같아도 새 줄이므로 items를 보내 새 줄에 예전 휴식 시간이 남지 않게 한다.
+      const sameLines =
+        sourceIndexes === null ||
+        sourceIndexes.every((source, position) => source === position)
       const body =
-        serverItems && sameItems(serverItems, items)
+        serverItems && sameLines && sameItems(serverItems, items)
           ? // 운동 구성이 그대로면 items를 보내지 않는다(서버는 null·생략을 "바꾸지 않음"으로 본다).
             { ...meta, expectedRevision: input.expectedRevision }
           : {
