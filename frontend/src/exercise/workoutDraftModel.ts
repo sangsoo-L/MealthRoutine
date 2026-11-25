@@ -44,8 +44,19 @@ export function isValidTargetWeightKg(value: number): boolean {
   return Math.abs(cents - Math.round(cents)) <= 1e-6
 }
 
-/** 저장·화면 보호용 상한. 정상 사용에서는 닿지 않는 값이다(손상된 저장값을 걸러 내는 기준과 같다). */
+/**
+ * 저장된 값을 읽을 때의 보호용 상한. 손상된 저장값을 걸러 내는 기준이다(parseWorkoutList·초안 저장값 등).
+ * 새로 담고 저장하는 운동 수는 아래 MAX_SAVED_ITEMS(100)로 막는다. 이 값을 100으로 내리지 않는 것은,
+ * 그 규칙이 생기기 전에 100개를 넘게 저장한 목록·계획·초안을 읽지 못하게 되면 안 되기 때문이다.
+ */
 export const MAX_ITEMS = 500
+/**
+ * 목록·계획·루틴 하나에 담고 저장할 수 있는 운동 수. 서버가 받는 운동 수와 같다(docs/api_exercise_v1.0.md:
+ * 완료 기록 exercises 1~100개, 루틴 items 1~100개). 목록으로 완료한 기록은 목록의 운동 전부를 서버에 올리므로(api/recordUpload.ts),
+ * 101개 목록을 저장하게 두면 그 목록으로 완료한 기록을 서버가 400으로 거절한다. 그래서 운동을 담을 때(addExercisesToDraft)와
+ * 새로 저장할 때(validateDraft) 이 값으로 막고 안내한다. 이미 저장된 값을 초안으로 옮길 때(serverLimits: false)는 보지 않는다.
+ */
+export const MAX_SAVED_ITEMS = 100
 export const MAX_SETS_PER_ITEM = 200
 
 const nowIso = () => new Date().toISOString()
@@ -162,6 +173,7 @@ function touch(draft: WorkoutDraft, items: DraftItem[], now: () => string) {
 
 /**
  * 운동을 초안 끝에 추가한다. 이미 있는 운동 id와 입력 안의 중복은 건너뛰고, 입력 순서를 유지한다.
+ * 운동이 MAX_SAVED_ITEMS(100)개가 되면 더 담지 않는다(저장할 수 있는 수까지만).
  * 추가할 것이 없으면 같은 초안을 돌려준다(불필요한 갱신·저장을 만들지 않는다).
  */
 export function addExercisesToDraft(
@@ -174,7 +186,7 @@ export function addExercisesToDraft(
   const added: DraftItem[] = []
   for (const exercise of exercises) {
     if (present.has(exercise.id)) continue
-    if (draft.items.length + added.length >= MAX_ITEMS) break
+    if (draft.items.length + added.length >= MAX_SAVED_ITEMS) break
     present.add(exercise.id)
     added.push(createDraftItem(exercise, idFactory))
   }
@@ -337,6 +349,7 @@ const isInt = (value: number | undefined): value is number =>
 
 export const ISSUE_MESSAGES = {
   noItems: '운동을 하나 이상 등록해 주세요.',
+  tooManyItems: `운동은 한 목록에 최대 ${MAX_SAVED_ITEMS}개까지 저장할 수 있어요. ${MAX_SAVED_ITEMS}개 이하가 되도록 운동을 삭제해 주세요.`,
   reps: `횟수는 1 이상의 정수(최대 ${MAX_TARGET_REPS}회)로 입력해 주세요.`,
   weight: `중량은 0~${MAX_TARGET_WEIGHT_KG}kg, 소수점 둘째 자리까지 입력해 주세요.`,
   time: `목표 시간은 ${MIN_TARGET_SECONDS}~${MAX_TARGET_SECONDS}초의 정수로 입력해 주세요.`,
@@ -360,7 +373,9 @@ export const ISSUE_MESSAGES = {
  * - knownExerciseIds를 주면 그 목록에 없는 운동 id를 오류로 본다(운동 정보를 읽을 수 없을 때는 주지 않는다).
  * - allowedRecordTypes를 주면 그 운동에서 허용하지 않는 기록 방식을 오류로 본다(허용 정보가 없는 운동은 판단하지 않는다).
  *   화면에서 선택지를 제한해도 저장 직전에 이 검증을 다시 한다. 기존에 저장된 목록은 이 검증을 받지 않는다(읽기 경로에서 호출하지 않는다).
- * - options.serverLimits가 false면 횟수 상한(999)과 중량 상한·자릿수를 보지 않는다(예전 규칙: 횟수 1 이상 정수, 중량 0 이상).
+ * - 운동은 MAX_SAVED_ITEMS(100)개까지다(서버가 받는 완료 기록의 운동 수). 넘으면 운동 단위가 아닌 목록 오류(field: items)로 알린다.
+ *   W02·W08은 이 오류에서 "운동 등록하기"·"운동 추가"로 포커스를 옮긴다(itemId가 없는 오류).
+ * - options.serverLimits가 false면 운동 수 상한(100), 횟수 상한(999)과 중량 상한·자릿수를 보지 않는다(예전 규칙: 횟수 1 이상 정수, 중량 0 이상).
  *   이미 저장된 루틴·계획을 초안으로 옮길 때(replaceDraft) 쓴다. 이 규칙이 생기기 전에 저장한 값(예: 22.555kg)도 W02로 옮겨지고,
  *   W02·W11이 저장 전에 이 검증(기본값)으로 그 값을 안내한다.
  */
@@ -374,6 +389,9 @@ export function validateDraft(
   const issues: DraftIssue[] = []
   if (draft.items.length === 0) {
     issues.push({ field: 'items', message: ISSUE_MESSAGES.noItems })
+  }
+  if (serverLimits && draft.items.length > MAX_SAVED_ITEMS) {
+    issues.push({ field: 'items', message: ISSUE_MESSAGES.tooManyItems })
   }
   const exerciseIds = new Set<string>()
   const itemIds = new Set<string>()

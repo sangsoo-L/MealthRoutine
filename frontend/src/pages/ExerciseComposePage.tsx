@@ -15,6 +15,7 @@ import {
 import { useExerciseCatalog } from '../exercise/useExerciseCatalog.ts'
 import {
   LEGACY_ALLOWED_RECORD_TYPES,
+  MAX_SAVED_ITEMS,
   buildAllowedRecordTypes,
   normalizeDraft,
   validateDraft,
@@ -319,7 +320,9 @@ function ComposeBody() {
             >
               운동 {pickerResult.added}개를 추가했어요.
               {pickerResult.skipped > 0
-                ? ` 이미 있는 운동 ${pickerResult.skipped}개는 건너뛰었어요.`
+                ? draft.items.length >= MAX_SAVED_ITEMS
+                  ? ` 이미 있거나 최대 ${MAX_SAVED_ITEMS}개를 넘는 운동 ${pickerResult.skipped}개는 건너뛰었어요.`
+                  : ` 이미 있는 운동 ${pickerResult.skipped}개는 건너뛰었어요.`
                 : ''}
             </p>
           ) : null}

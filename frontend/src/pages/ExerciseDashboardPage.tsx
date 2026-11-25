@@ -16,6 +16,7 @@ import type {
 } from '../exercise/exerciseDashboardTypes.ts'
 import { PATH_EXERCISE_STATS, PATH_ROUTINES } from '../exercise/routinePaths.ts'
 import { useExerciseDashboard } from '../exercise/useExerciseDashboard.ts'
+import { useRejectedRecordIds } from '../exercise/useRecordUploadStatus.ts'
 import { useRoutines, type RoutinesState } from '../exercise/useRoutines.ts'
 import { useWorkoutPlans } from '../exercise/useWorkoutPlans.ts'
 import { resultPathFor } from '../exercise/useWorkoutResult.ts'
@@ -51,6 +52,8 @@ function DashboardBody() {
     useExerciseDashboard()
   const { draft, hasContent } = useWorkoutDraft()
   const { user } = useAuth()
+  // 서버가 받지 않은 완료 기록. 최근 기록에 표시하고 이유는 기록 자세히 보기(W15)에서 보여 준다.
+  const notSavedIds = useRejectedRecordIds(user?.id ?? null)
   // 운동 시작·이어하기: 저장된 오늘 목록이 있을 때만 시작할 수 있다. 개발용 예시(?sample=)에서는 조회하지 않는다.
   const list =
     slots.today.status === 'ready' &&
@@ -145,6 +148,7 @@ function DashboardBody() {
             sharedUnavailable={sharedUnavailable}
             onRetry={reload}
             showAllLink={sampleNotice === null}
+            notSavedIds={sampleNotice === null ? notSavedIds : undefined}
           />
           <ExerciseManagementSection
             slots={{ ...slots, routines: routinesSlot }}

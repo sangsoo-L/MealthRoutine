@@ -11,7 +11,7 @@ import { useDayWorkoutDraft } from '../exercise/workoutDraftContext.ts'
 import type { DraftDay } from '../exercise/workoutDraftTypes.ts'
 import {
   addExercisesToDraft,
-  MAX_ITEMS,
+  MAX_SAVED_ITEMS,
 } from '../exercise/workoutDraftModel.ts'
 
 /** 선택한 운동을 담는 W02(운동 목록 구성). 등록이 끝나면 항상 이 화면으로 돌아간다. */
@@ -93,8 +93,8 @@ export default function ExercisePickerPage() {
         return {
           ok: false,
           message:
-            draft.items.length >= MAX_ITEMS
-              ? `운동은 최대 ${MAX_ITEMS}개까지 담을 수 있어요.`
+            draft.items.length >= MAX_SAVED_ITEMS
+              ? `운동은 최대 ${MAX_SAVED_ITEMS}개까지 담을 수 있어요.`
               : '선택한 운동이 모두 이미 목록에 있어요.',
         }
       }

@@ -8,7 +8,7 @@ import type {
   WorkoutRecordRepository,
   WorkoutSessionRepository,
 } from '../workoutRepositories.ts'
-import { MAX_TARGET_WEIGHT_KG } from '../workoutDraftModel.ts'
+import { MAX_SAVED_ITEMS, MAX_TARGET_WEIGHT_KG } from '../workoutDraftModel.ts'
 import {
   SERVER_CATALOG_VERSION,
   type WorkoutRecord,
@@ -34,6 +34,10 @@ import {
  *   다음 실행에서 같은 requestId로 다시 보내면 서버가 새로 만들지 않고 200(created: false)으로 답하므로 기록이 겹치지 않는다.
  * - 개발용 카탈로그로 만든 기록(catalogVersion이 서버 카탈로그가 아님)은 운동 id가 서버와 달라서 보내지 않는다.
  * - 측정 시간은 밀리초를 초로 반올림해 보낸다(서버는 초 단위로 저장한다).
+ * - 서버는 기록 하나에 운동을 100개(MAX_RECORD_EXERCISES)까지만 받는다. 지금은 목록을 저장할 때 100개로 막지만(validateDraft),
+ *   그 전에 저장한 101개 이상 목록으로 완료한 기록이 있다. 이런 기록은 보내지 않고 그 자리에서 거절 표시한다(아래 "운동 수 상한").
+ *   예전에 보내서 INVALID_REQUEST로 거절된 기록도 업로드할 때 같은 이유로 다시 분류해 화면이 이유를 보여 줄 수 있게 한다.
+ * - 거절 이유는 표시에 남고 결과 화면(W15)이 보여 준다(describeUploadRejection, useRecordUploadStatus).
  */
 
 type Request = <T>(
@@ -56,6 +60,16 @@ const EXERCISE_ID = /^[1-9][0-9]{0,15}$/
 /** 모든 기록을 읽는 날짜 범위(로컬 저장소의 listByDateRange는 날짜 범위로만 읽는다). */
 const ALL_FROM = '1970-01-01'
 const ALL_TO = '9999-12-31'
+/** 서버가 받는 기록 한 건의 운동 수(SessionRecordRequest exercises 1~100개). 목록 저장 상한(MAX_SAVED_ITEMS)과 같은 값이다. */
+export const MAX_RECORD_EXERCISES = MAX_SAVED_ITEMS
+/**
+ * 운동 수 상한 때문에 보내지 않은 기록의 거절 코드(이 앱이 붙이는 코드, 서버 코드가 아니다).
+ * - tooManyExercises: 운동이 100개를 넘지만 완료한 세트가 있는 운동은 100개 이하다. 사용자가 고르면 완료한 세트가 없는 운동을 빼고
+ *   다시 보낼 수 있다("수정 가능", retry).
+ * - tooManyCompletedExercises: 완료한 세트가 있는 운동만 남겨도 100개를 넘는다. 실제로 한 운동을 빼야 해서 고칠 수 없다.
+ */
+export const TOO_MANY_EXERCISES = 'tooManyExercises'
+export const TOO_MANY_COMPLETED_EXERCISES = 'tooManyCompletedExercises'
 /** 다시 보내도 결과가 같은 서버 거절 코드. */
 const PERMANENT_CODES = new Set([
   'INVALID_REQUEST',
@@ -120,10 +134,13 @@ function toCompletedSet(set: WorkoutRecordSet): UploadCompletedSet {
 /**
  * 완료 기록과 그 세션으로 업로드 본문을 만든다. 세션이 그 기록의 것이 아니거나 목록 사본이 기록과 맞지 않으면 null이다.
  * 기록의 운동은 세션 목록 사본과 같은 순서·개수로 만들어진다(buildWorkoutRecord). 완료한 세트가 없는 운동도 계획대로 함께 보낸다.
+ * options.omitEmptyExercises가 true면 완료한 세트가 없는 운동을 뺀다. 운동이 100개를 넘어 거절된 기록을 사용자가 고쳐 다시 보낼 때만 쓴다.
+ * 남은 운동의 목표·완료 세트·세트 번호는 그대로이고(세트 번호는 그 운동 안의 위치다), 서버 통계·보상은 완료한 세트로 계산하므로 결과가 같다.
  */
 export function toRecordUploadBody(
   record: WorkoutRecord,
   session: WorkoutSession,
+  options: { omitEmptyExercises?: boolean } = {},
 ): RecordUploadBody | null {
   if (session.id !== record.sessionId || session.ownerId !== record.ownerId) {
     return null
@@ -141,6 +158,9 @@ export function toRecordUploadBody(
     ) {
       return null
     }
+    if (options.omitEmptyExercises && exercise.completedSets.length === 0) {
+      continue
+    }
     exercises.push({
       exerciseId: Number(exercise.exerciseId),
       recordType: exercise.recordType,
@@ -153,6 +173,70 @@ export function toRecordUploadBody(
     startedAt: record.startedAt,
     endedAt: record.completedAt,
     exercises,
+  }
+}
+
+// ─── 운동 수 상한 ──────────────────────────────────────────
+
+/**
+ * 운동 수 때문에 서버가 받지 않을 기록이면 그 거절 코드, 아니면 null. 세션 없이 기록만 보고 정한다(본문의 운동 수는 기록의 운동 수와 같다).
+ * omitEmpty는 사용자가 완료한 세트가 없는 운동을 빼고 보내기로 한 기록인지다. 완료 기록은 바뀌지 않으므로 같은 기록의 판정은 늘 같다.
+ */
+export function exerciseLimitRejection(
+  record: Pick<WorkoutRecord, 'exercises'>,
+  omitEmpty: boolean,
+): string | null {
+  const completed = record.exercises.filter(
+    (exercise) => exercise.completedSets.length > 0,
+  ).length
+  const sent = omitEmpty ? completed : record.exercises.length
+  if (sent <= MAX_RECORD_EXERCISES) return null
+  return !omitEmpty && completed <= MAX_RECORD_EXERCISES
+    ? TOO_MANY_EXERCISES
+    : TOO_MANY_COMPLETED_EXERCISES
+}
+
+/** 화면에 보여 줄 거절 이유. fixable이면 "완료한 운동만 다시 보내기"를 보여 준다(requestRecordRetry). */
+export interface UploadRejectionView {
+  message: string
+  fixable: boolean
+}
+
+/** 거절 코드를 사용자에게 보여 줄 이유로 바꾼다. 모르는 코드는 일반 문구다. */
+export function describeUploadRejection(code: string): UploadRejectionView {
+  switch (code) {
+    case TOO_MANY_EXERCISES:
+      return {
+        message: `운동이 ${MAX_RECORD_EXERCISES}개를 넘어 서버에 저장하지 못했어요. 완료한 세트가 없는 운동을 빼면 ${MAX_RECORD_EXERCISES}개 이하라 다시 보낼 수 있어요.`,
+        fixable: true,
+      }
+    case TOO_MANY_COMPLETED_EXERCISES:
+      return {
+        message: `완료한 운동이 ${MAX_RECORD_EXERCISES}개를 넘어 서버에 저장할 수 없어요. 서버는 기록 하나에 운동을 ${MAX_RECORD_EXERCISES}개까지만 받아요.`,
+        fixable: false,
+      }
+    case 'EXERCISE_NOT_FOUND':
+      return {
+        message: '서버에 없는 운동이 들어 있어 서버에 저장하지 못했어요.',
+        fixable: false,
+      }
+    case 'REQUEST_CONFLICT':
+      return {
+        message:
+          '같은 기록이 다른 내용으로 이미 서버에 있어 다시 저장하지 않았어요.',
+        fixable: false,
+      }
+    case 'sessionMissing':
+    case 'sessionMismatch':
+      return {
+        message: '이 기록의 운동 목록 정보를 찾지 못해 서버에 보내지 못했어요.',
+        fixable: false,
+      }
+    default:
+      return {
+        message: '기록 내용이 서버 규칙에 맞지 않아 서버에 저장하지 못했어요.',
+        fixable: false,
+      }
   }
 }
 
@@ -169,6 +253,12 @@ export interface UploadMarks {
    * 기록마다 두지 않고 하나만 두는 것은, 올리는 실행에서 지운 거절이 다시 생기면 그것은 항상 지금 버전으로 받은 판정이기 때문이다.
    */
   bodyVersion: number
+  /**
+   * 사용자가 "완료한 운동만 다시 보내기"를 고른 기록 id. 이 기록은 완료한 세트가 없는 운동을 빼고 보낸다(toRecordUploadBody).
+   * 한 번 보내고 끝이 아니라 표시로 남기는 것은, 보내다 네트워크 오류·시간 초과로 멈춘 뒤 다음 업로드도 같은 본문으로 보내야 하기 때문이다.
+   * 서버가 이미 저장했다면 같은 requestId·같은 본문이라 200(created: false)이고 기록이 겹치지 않는다.
+   */
+  omitEmpty: Set<string>
 }
 
 export interface UploadMarkStore {
@@ -180,7 +270,8 @@ const MARK_KEY_PREFIX = 'mealthroutine.recordUploads.v1.'
 
 /**
  * 표시를 localStorage에 계정별로 둔다. 읽을 수 없거나 모양이 틀리면 빈 표시로 본다(다시 보내도 서버가 중복을 막는다).
- * 저장 모양은 { uploaded: [id], rejected: { id: 이유 코드 }, bodyVersion }이다. 키는 그대로 두고 bodyVersion만 더했다.
+ * 저장 모양은 { uploaded: [id], rejected: { id: 이유 코드 }, bodyVersion, omitEmpty: [id] }이다. 키는 그대로 두고 bodyVersion·omitEmpty를 더했다.
+ * omitEmpty가 없는 예전 표시는 빈 목록으로 읽는다.
  * bodyVersion이 없는 예전 표시는 1로 읽어서, 다음 업로드가 그때 INVALID_REQUEST로 거절된 기록을 다시 보낸다.
  * 계정별 임시 데이터 접두어(mealthroutine.account.)는 sessionStorage용이라 쓰지 않는다. 로그아웃해도 이 브라우저의 기록은 남으므로 표시도 남긴다.
  */
@@ -195,22 +286,25 @@ export function createStorageMarkStore(
         uploaded: new Set(),
         rejected: new Map(),
         bodyVersion: RECORD_BODY_VERSION,
+        omitEmpty: new Set(),
       }
+      const ids = (value: unknown) =>
+        new Set(
+          Array.isArray(value)
+            ? value.filter((id): id is string => typeof id === 'string')
+            : [],
+        )
       try {
         const raw = getStorage()?.getItem(key)
         if (!raw) return empty
         const parsed: unknown = JSON.parse(raw)
         if (typeof parsed !== 'object' || parsed === null) return empty
-        const { uploaded, rejected, bodyVersion } = parsed as Record<
+        const { uploaded, rejected, bodyVersion, omitEmpty } = parsed as Record<
           string,
           unknown
         >
         return {
-          uploaded: new Set(
-            Array.isArray(uploaded)
-              ? uploaded.filter((id): id is string => typeof id === 'string')
-              : [],
-          ),
+          uploaded: ids(uploaded),
           rejected: new Map(
             typeof rejected === 'object' &&
               rejected !== null &&
@@ -227,6 +321,7 @@ export function createStorageMarkStore(
             bodyVersion >= 1
               ? bodyVersion
               : 1,
+          omitEmpty: ids(omitEmpty),
         }
       } catch {
         return empty
@@ -240,6 +335,7 @@ export function createStorageMarkStore(
             uploaded: [...marks.uploaded],
             rejected: Object.fromEntries(marks.rejected),
             bodyVersion: marks.bodyVersion,
+            omitEmpty: [...marks.omitEmpty],
           }),
         )
       } catch {
@@ -260,6 +356,11 @@ export interface RecordUploadDeps {
   isCurrent?: () => boolean
   /** 요청 한 건의 시간 제한(ms). 기본은 REQUEST_TIMEOUT_MS이고 테스트가 짧게 바꾼다. */
   timeoutMs?: number
+  /**
+   * 사용자가 "완료한 운동만 다시 보내기"를 누른 기록 id. 거절 코드가 tooManyExercises인 기록만 받아들여(고칠 수 있는 기록)
+   * 거절 표시를 지우고 omitEmpty 표시를 단 뒤 이번 실행에서 같은 requestId로 보낸다. 다른 기록은 무시한다.
+   */
+  retry?: ReadonlySet<string>
 }
 
 export interface RecordUploadSummary {
@@ -300,6 +401,26 @@ export async function uploadPendingRecords(
   for (const id of marks.rejected.keys()) {
     if (!ids.has(id)) marks.rejected.delete(id)
   }
+  for (const id of marks.omitEmpty) {
+    if (!ids.has(id) || marks.uploaded.has(id)) marks.omitEmpty.delete(id)
+  }
+  const byId = new Map(items.map((record) => [record.id, record]))
+  // 운동 수 상한: 예전에 보내서 INVALID_REQUEST로 거절된 기록 중 운동이 100개를 넘는 것은 그 이유로 다시 분류한다(요청 없이 기록만 본다).
+  // 이 판정이 없던 때 거절된 기록도 화면이 이유를 보여 주고, 고칠 수 있으면 다시 보낼 수 있게 하기 위해서다.
+  for (const [id, code] of marks.rejected) {
+    if (code !== 'INVALID_REQUEST') continue
+    const record = byId.get(id)
+    const limit = record
+      ? exerciseLimitRejection(record, marks.omitEmpty.has(id))
+      : null
+    if (limit) marks.rejected.set(id, limit)
+  }
+  // 사용자가 고쳐 보내기로 한 기록(고칠 수 있는 거절만): 거절을 지우고 완료한 세트가 없는 운동을 빼고 보낸다.
+  for (const id of deps.retry ?? []) {
+    if (marks.rejected.get(id) !== TOO_MANY_EXERCISES) continue
+    marks.rejected.delete(id)
+    marks.omitEmpty.add(id)
+  }
   // 본문 규칙이 바뀌었으면 예전 본문으로 INVALID_REQUEST를 받은 기록을 다시 보낸다. 다른 이유(없는 운동, 내용 충돌, 세션 불일치)는
   // 본문 규칙과 관계없어 그대로 둔다. 다시 보내서 또 거절되면(예: 실제 수행 값이 서버 규칙 밖) 지금 버전의 거절로 남는다.
   if (marks.bodyVersion < RECORD_BODY_VERSION) {
@@ -317,6 +438,14 @@ export async function uploadPendingRecords(
   try {
     for (const record of pending) {
       if (!isCurrent()) break
+      const omitEmpty = marks.omitEmpty.has(record.id)
+      // 서버가 받지 않을 운동 수면 보내지 않고 이유를 남긴다(같은 본문은 늘 400이다).
+      const limit = exerciseLimitRejection(record, omitEmpty)
+      if (limit) {
+        marks.rejected.set(record.id, limit)
+        summary.rejected += 1
+        continue
+      }
       let session: WorkoutSession | null
       try {
         session = await deps.sessions.get(record.sessionId)
@@ -324,7 +453,9 @@ export async function uploadPendingRecords(
         summary.stoppedBy = error
         break
       }
-      const body = session ? toRecordUploadBody(record, session) : null
+      const body = session
+        ? toRecordUploadBody(record, session, { omitEmptyExercises: omitEmpty })
+        : null
       if (!body) {
         marks.rejected.set(
           record.id,

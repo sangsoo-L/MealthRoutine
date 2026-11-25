@@ -14,6 +14,7 @@ import type {
   ResultEditorState,
   ResultPanel,
 } from '../components/exercise/result/resultTypes.ts'
+import { useRecordUploadStatus } from '../exercise/useRecordUploadStatus.ts'
 import { PATH_SESSION } from '../exercise/useWorkoutStart.ts'
 import { hasLeaveRisk, useWorkoutResult } from '../exercise/useWorkoutResult.ts'
 import {
@@ -40,6 +41,11 @@ function ResultBody({
 }) {
   const navigate = useNavigate()
   const { snapshot, controller } = useWorkoutResult(userId, sessionId)
+  // 이미 저장된 기록이 서버에 올라가지 못했으면 그 이유를 보여 주고, 고칠 수 있으면 다시 보낸다.
+  const upload = useRecordUploadStatus(
+    userId,
+    snapshot.load.status === 'completed' ? (snapshot.record?.id ?? null) : null,
+  )
   const [editor, setEditor] = useState<ResultEditorState | null>(null)
   const [panel, setPanel] = useState<ResultPanel | null>(null)
   const [failureDismissed, setFailureDismissed] = useState(false)
@@ -241,6 +247,7 @@ function ResultBody({
         panel={shownPanel}
         failureDismissed={failureDismissed}
         actions={actions}
+        upload={upload}
       />
     </>
   )

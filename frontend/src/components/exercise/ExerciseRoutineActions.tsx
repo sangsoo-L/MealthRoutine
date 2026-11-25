@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useAuth } from '../../auth/authContext.ts'
 import { planAddToToday } from '../../exercise/addToTodayDraft.ts'
 import type { Exercise } from '../../exercise/exerciseTypes.ts'
+import { MAX_SAVED_ITEMS } from '../../exercise/workoutDraftModel.ts'
 import { useWorkoutDraft } from '../../exercise/workoutDraftContext.ts'
 import Icon from '../icons/Icon.tsx'
 import type { IconName } from '../icons/iconTypes.ts'
@@ -242,7 +243,7 @@ function RoutineActions({ exercise }: { exercise: Exercise }) {
                 {plan.kind === 'blocked'
                   ? plan.reason === 'duplicate'
                     ? `‘${exercise.name}’은(는) 구성 중인 목록(${plan.itemCount}개)에 이미 있어서 다시 담지 않아요.`
-                    : `운동은 최대 500개까지 담을 수 있어서 ‘${exercise.name}’을(를) 더 담을 수 없어요.`
+                    : `운동은 최대 ${MAX_SAVED_ITEMS}개까지 담을 수 있어서 ‘${exercise.name}’을(를) 더 담을 수 없어요.`
                   : `운동 ${plan.itemCount}개가 담겨 있어요. ‘${exercise.name}’을(를) 여기에 추가하거나, 지금 구성을 지우고 새로 시작할 수 있어요.`}
               </p>
               <div className="mt-4 flex flex-col gap-2">

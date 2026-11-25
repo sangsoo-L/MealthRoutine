@@ -321,6 +321,7 @@ test('업로드: 개발용 카탈로그 기록은 보내지 않고, 세션이 �
       uploaded: ['record-a'],
       rejected: { 'record-m': 'sessionMissing', 'record-x': 'sessionMismatch' },
       bodyVersion: 2,
+      omitEmpty: [],
     },
   )
 })
@@ -386,6 +387,7 @@ test('표시: 깨진 값은 빈 표시로 보고, 지워진 기록의 표시는 
       uploaded: ['record-a'],
       rejected: {},
       bodyVersion: 2,
+      omitEmpty: [],
     },
   )
 
@@ -397,12 +399,14 @@ test('표시: 깨진 값은 빈 표시로 보고, 지워진 기록의 표시는 
     uploaded: new Set(),
     rejected: new Map(),
     bodyVersion: 2,
+    omitEmpty: new Set(),
   })
   assert.doesNotThrow(() =>
     broken.write({
       uploaded: new Set(['x']),
       rejected: new Map(),
       bodyVersion: 2,
+      omitEmpty: new Set(),
     }),
   )
 })
@@ -656,6 +660,7 @@ test('거절 재검토: 예전 본문으로 INVALID_REQUEST를 받은 기록은 
       'record-d': 'INVALID_REQUEST',
     },
     bodyVersion: 2,
+    omitEmpty: [],
   })
   // 지금 버전으로 다시 거절된 기록은 더 보내지 않는다.
   await upload.uploadPendingRecords(deps)
@@ -696,7 +701,7 @@ test('시간 제한: 응답이 오지 않으면 제한 시간 뒤 실행이 끝�
   assert.equal(calls.length, 1)
   assert.deepEqual(
     JSON.parse(storage.get('mealthroutine.recordUploads.v1.7')),
-    { uploaded: [], rejected: {}, bodyVersion: 2 },
+    { uploaded: [], rejected: {}, bodyVersion: 2, omitEmpty: [] },
   )
 
   const second = await upload.uploadPendingRecords(deps)

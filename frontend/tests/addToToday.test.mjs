@@ -228,8 +228,9 @@ test('이미 초안에 있는 운동은 W02·W13과 같이 건너뛴다(중복 �
   assert.equal(Model.addExercisesToDraft(existing, [exerciseById(1)]), existing)
 })
 
-test('항목이 상한(500개)에 이르면 추가하지 않는다', () => {
-  const items = Array.from({ length: Model.MAX_ITEMS }, (_, index) => ({
+test('항목이 저장 상한(100개)에 이르면 추가하지 않는다', () => {
+  assert.equal(Model.MAX_SAVED_ITEMS, 100)
+  const items = Array.from({ length: Model.MAX_SAVED_ITEMS }, (_, index) => ({
     itemId: `x${index}`,
     exerciseId: `custom-${index}`,
     name: `운동 ${index}`,
