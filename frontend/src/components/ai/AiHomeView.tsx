@@ -190,11 +190,6 @@ export default function AiHomeView() {
               >
                 {meal.title}
               </h2>
-              <p>
-                <span className={statusBadge(mealStatus)}>
-                  {STATUS_LABEL[mealStatus]}
-                </span>
-              </p>
             </div>
             <span
               aria-hidden="true"
@@ -248,11 +243,6 @@ export default function AiHomeView() {
               <span className="mt-0.5 block text-support leading-snug font-normal text-muted">
                 {AI_HOME.photoSummary}
               </span>
-            </span>
-            <span
-              className={`${badgeBase} border border-line bg-page text-muted`}
-            >
-              {AI_HOME.pendingBadge}
             </span>
             {photoLink ? (
               <>
