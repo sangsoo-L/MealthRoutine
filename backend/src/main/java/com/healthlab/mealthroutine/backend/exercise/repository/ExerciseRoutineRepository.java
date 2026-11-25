@@ -20,6 +20,14 @@ public interface ExerciseRoutineRepository extends JpaRepository<ExerciseRoutine
             """)
     Page<ExerciseRoutineEntity> findVisible(@Param("userId") Long userId, Pageable pageable);
 
+    /** Only the member's own routines, most recently saved or edited first (the frontend routine list order). */
+    @Query("""
+            select r from ExerciseRoutineEntity r
+            where r.ownerUserId = :userId
+            order by r.updatedAt desc, r.routineId desc
+            """)
+    Page<ExerciseRoutineEntity> findOwned(@Param("userId") Long userId, Pageable pageable);
+
     /** Plain (non-locking) existence check, so a request for an id that does not exist never takes a lock. */
     @Query("select count(r) > 0 from ExerciseRoutineEntity r where r.routineId = :routineId")
     boolean routineExists(@Param("routineId") Long routineId);

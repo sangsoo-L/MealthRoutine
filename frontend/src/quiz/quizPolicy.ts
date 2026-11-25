@@ -6,6 +6,18 @@ import type { QuizDifficulty } from './quizTypes.ts'
  */
 export const QUIZ_REWARD = { points: 10, experience: 10 } as const
 
+/**
+ * 서버 모드의 퀴즈 보상 몫. 퀴즈는 하루 점수에 정답 10점·오답 5점을 더하고,
+ * 다음 날 00:05 정산 때 경험치 = 점수, 포인트 = 점수 ÷ 2(소수점 버림)로 들어간다.
+ */
+export const SERVER_QUIZ_REWARD = {
+  correct: { points: 5, experience: 10 },
+  wrong: { points: 2, experience: 5 },
+} as const
+
+/** 보상이 들어가는 방식: 개발용 로컬 저장소는 바로, 서버는 다음 날 정산 */
+export type QuizRewardTiming = 'instant' | 'nextDay'
+
 export const QUIZ_REWARD_TYPE = 'daily-quiz' as const
 
 /** 보상 키: 계정·날짜·퀴즈 유형 기준(하루 한 번). */

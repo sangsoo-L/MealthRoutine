@@ -1,0 +1,72 @@
+# 밀스루틴 운영 서버 구성 (서버 위치: /opt/mealthroutine/compose.yml)
+# - 값은 같은 폴더의 .env(권한 600, Git 밖)에서 읽는다. 이 파일에는 비밀값을 적지 않는다.
+# - 외부에 여는 포트는 caddy의 80/443뿐이다. backend(8080)와 mysql(3306)은 내부 네트워크에서만 보인다.
+# - 앱 파일은 releases/<sha>/app.jar, releases/<sha>/dist/ 에 두고 releases/current 링크로 고른다.
+name: mealthroutine
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: mealthroutine
+      MYSQL_USER: mealthroutine
+      MYSQL_PASSWORD: ${DB_PASSWORD:?.env에 DB_PASSWORD를 설정하세요}
+      TZ: Asia/Seoul
+    # 서버 메모리(2GB)를 아끼기 위해 성능 측정 기능을 끈다. 기능 동작에는 영향 없음.
+    command: ["--performance-schema=OFF"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 빈 볼륨으로 처음 시작할 때만 이 폴더의 SQL을 이름 순서대로 실행한다(스키마 + 기준 seed).
+      # 테스트 사용자(002_insert_test_users)와 테스트 DB 생성 파일은 넣지 않는다(DEPLOY-8).
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+      - ./backups:/backups
+    healthcheck:
+      # 서버가 TCP로 응답하는지만 본다(초기화 중에는 TCP가 꺼져 있어 실패 → 초기화 끝난 뒤 성공).
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+
+  backend:
+    image: eclipse-temurin:21-jre
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/mealthroutine
+      DB_USERNAME: mealthroutine
+      DB_PASSWORD: ${DB_PASSWORD:?.env에 DB_PASSWORD를 설정하세요}
+      JWT_SECRET: ${JWT_SECRET:?.env에 JWT_SECRET을 설정하세요}
+      # 서버 시각 기준(Clock.systemDefaultZone)을 한국 시간으로 고정(HEALTH8-5, DEPLOY-10).
+      TZ: Asia/Seoul
+    # current 링크가 가리키는 jar를 실행한다. 링크를 바꾼 뒤 backend만 재시작하면 새 버전이 뜬다.
+    command: ["java", "-Xms256m", "-Xmx512m", "-Duser.timezone=Asia/Seoul", "-jar", "/srv/releases/current/app.jar"]
+    volumes:
+      - ./releases:/srv/releases:ro
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?.env에 SITE_ADDRESS(도메인)를 설정하세요}
+      # 비우면 실제 Let's Encrypt. 첫 시험은 .env에서 staging 주소를 넣는다.
+      ACME_CA: ${ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./releases:/srv/releases:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  mysql-data:
+  caddy-data:
+  caddy-config:

@@ -44,8 +44,12 @@ export function isPortion(value: unknown): value is Portion {
 }
 
 /** 양 구분의 중량(g). 시안 예시 기준(1인분 100g)이다. */
-export function portionGrams(portion: Portion): number {
-  return SAMPLE_SERVING_GRAMS * PORTION_RATIO[portion]
+/** 양 구분의 중량(g) = 1인분 중량 × 0.5·1·1.5. 1인분을 모르면 시안 예시(100g) 기준이다. */
+export function portionGrams(
+  portion: Portion,
+  servingGrams: number = SAMPLE_SERVING_GRAMS,
+): number {
+  return servingGrams * PORTION_RATIO[portion]
 }
 
 /** "적게 · 50g"·"보통(1인분) · 100g". */

@@ -25,7 +25,7 @@ public class QuizController {
     @PostMapping("/attempt")
     public ApiResponse<QuizResultResponse> submit(@LoginUser Long userId,
                                                   @Valid@RequestBody QuizAttemptRequest req){
-        return ApiResponse.ok(quizService.submit(userId,req.answer()));
+        return ApiResponse.ok(quizService.submit(userId,req.answer(),req.questionId()));
     }
 
 }

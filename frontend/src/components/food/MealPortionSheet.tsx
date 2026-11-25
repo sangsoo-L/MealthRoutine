@@ -21,7 +21,8 @@ import {
 
 /**
  * 양 선택 팝업의 내용(적게·보통(1인분)·많이). 새로 등록할 때는 끼니를 함께 고르고, 수정할 때는 끼니를 바꾸지 않는다.
- * 각 선택지에 환산 중량과 예상 열량을 보인다. 양 구분의 중량은 시안 예시 기준(1인분 100g)이며 확정된 서비스 기준이 아니다(아래 안내문).
+ * 각 선택지에 환산 중량과 예상 열량을 보인다. 중량은 이 음식의 1인분 × 0.5·1·1.5로, 서버에 저장되는 기준과 같다.
+ * 1인분을 모르는 음식(개발용 예시 데이터)은 시안 예시 기준(1인분 100g)으로 계산하고 아래 안내문으로 알린다.
  * 열량 정보가 없는 음식은 예상 열량을 0이 아니라 "열량 정보 없음"으로 알린다. 끼니를 고르지 않았으면 등록하지 않고 이유를 알린다.
  */
 export function MealPortionForm({
@@ -29,6 +30,7 @@ export function MealPortionForm({
   mode,
   foodName,
   per100g,
+  servingGrams,
   initialPortion,
   meal,
   onMealChange,
@@ -42,6 +44,8 @@ export function MealPortionForm({
   mode: 'new' | 'edit'
   foodName: string
   per100g: Per100g
+  /** 이 음식의 1인분 중량(g). 없으면 시안 예시(100g) 기준으로 계산한다. */
+  servingGrams?: number
   initialPortion: Portion
   meal: MealType | null
   /** 새로 등록할 때만 있다. */
@@ -92,7 +96,7 @@ export function MealPortionForm({
         {PORTIONS.map((option) => {
           const selected = option === portion
           const kcal = formatKcal(
-            scaleNutrition(per100g, portionGrams(option)).kcal,
+            scaleNutrition(per100g, portionGrams(option, servingGrams)).kcal,
           )
           return (
             <button
@@ -115,7 +119,8 @@ export function MealPortionForm({
                   {option === 'normal' ? ' (1인분)' : ''}
                 </span>
                 <span className="block text-support leading-snug font-normal text-muted">
-                  {PORTION_HINT[option]} · {formatGrams(portionGrams(option))}
+                  {PORTION_HINT[option]} ·{' '}
+                  {formatGrams(portionGrams(option, servingGrams))}
                 </span>
               </span>
               <span className="shrink-0 text-right text-support leading-snug font-normal tabular-nums text-content">
@@ -126,8 +131,9 @@ export function MealPortionForm({
         })}
       </div>
       <p className="text-support leading-relaxed font-normal text-muted">
-        1인분 기준이 아직 확정되지 않아 시안 예시 기준으로 계산해요: 1인분은{' '}
-        {SAMPLE_SERVING_GRAMS}g, 적게는 0.5배, 많이는 1.5배예요.
+        {servingGrams === undefined
+          ? `1인분 기준이 아직 확정되지 않아 시안 예시 기준으로 계산해요: 1인분은 ${SAMPLE_SERVING_GRAMS}g, 적게는 0.5배, 많이는 1.5배예요.`
+          : `이 음식의 1인분(${formatGrams(servingGrams)})을 기준으로 계산해요. 적게는 0.5배, 많이는 1.5배예요.`}
       </p>
       {needsMeal ? (
         <p role="status" className="text-support leading-relaxed text-warning">
