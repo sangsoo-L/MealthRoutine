@@ -32,7 +32,7 @@ export default function CommunityPostPage({
   usePageTitle(TITLE[board])
   const { postId = '' } = useParams()
   const { status } = useAuth()
-  const source = useCommunitySource()
+  const source = useCommunitySource(board)
   const { state, reload, refresh } = usePost(source, board, postId)
   const listPath =
     useBackTarget(BOARD_LIST_PATH[board]) ?? BOARD_LIST_PATH[board]
@@ -86,6 +86,7 @@ export default function CommunityPostPage({
       onEligibilityRetry={retry}
       actions={actions}
       listPath={listPath}
+      supports={source?.supports ?? null}
     />
   )
 }

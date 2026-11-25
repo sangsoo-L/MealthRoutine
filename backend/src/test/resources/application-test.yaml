@@ -1,6 +1,9 @@
 spring:
   datasource:
     url: jdbc:mysql://localhost:3306/mealthroutine_test
+    hikari:
+      # Spring caches multiple test application contexts. Keep their idle connections below MySQL's limit.
+      minimum-idle: 1
 
 # Tests use a separate key from .env (decision TEST-KEY-1). No key value is stored in the repository.
 app:

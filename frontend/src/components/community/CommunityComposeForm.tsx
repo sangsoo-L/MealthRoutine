@@ -9,15 +9,18 @@ import {
 import { Link } from 'react-router'
 import {
   COMPOSE_ERROR_MESSAGE,
+  COMPOSE_TOO_LONG_MESSAGE,
   COMPOSE_UNAVAILABLE_TEXT,
   MEDICAL_NOTE,
   PRIVACY_WARNING,
   QA_CATEGORIES,
   QA_CATEGORY_LABEL,
+  settleSubmittedPost,
   validateCompose,
   type CommunityBoard,
   type ComposeField,
   type NewPostInput,
+  type SubmittedPost,
   type QaCategory,
 } from '../../community/community.ts'
 import {
@@ -47,6 +50,7 @@ const COPY: Record<
     submit: string
     submitting: string
     failed: string
+    uncertain: string
   }
 > = {
   free: {
@@ -56,6 +60,8 @@ const COPY: Record<
     submitting: '글을 등록하고 있어요…',
     failed:
       '글을 등록하지 못했어요. 입력한 내용은 그대로 남아 있으니 다시 시도해 주세요.',
+    uncertain:
+      '글이 등록됐는지 확인하지 못했어요. 목록에서 글이 올라갔는지 확인한 뒤, 없을 때만 다시 등록해 주세요. 입력한 내용은 그대로 남아 있어요.',
   },
   qa: {
     // 명세 UX: 지식 부족형에게 질문 예시를 제공한다.
@@ -66,19 +72,23 @@ const COPY: Record<
     submitting: '질문을 등록하고 있어요…',
     failed:
       '질문을 등록하지 못했어요. 입력한 내용은 그대로 남아 있으니 다시 시도해 주세요.',
+    uncertain:
+      '질문이 등록됐는지 확인하지 못했어요. 목록에서 질문이 올라갔는지 확인한 뒤, 없을 때만 다시 등록해 주세요. 입력한 내용은 그대로 남아 있어요.',
   },
 }
 
-type Phase = 'idle' | 'invalid' | 'submitting' | 'failed'
+type Phase = 'idle' | 'invalid' | 'submitting' | 'failed' | 'uncertain'
 
 /**
  * C02 자유게시판 글 작성 / C02-1 초보자 Q&A 질문 작성 폼(화면명세 v5.0).
  * - 자유게시판: 제목·내용. Q&A: 메인 카테고리(운동/식단, 필수·단일 선택)·질문 제목·질문 내용. 취소는 해당 목록으로 돌아간다.
- * - 제목·내용은 앞뒤 공백을 뺀 뒤 비어 있으면 막고, Q&A는 카테고리를 고르지 않으면 막는다. 글자 수 제한은 명세에 없어 만들지 않는다. 오류는 칸을 벗어날 때와 제출할 때 알린다.
+ * - 제목·내용은 앞뒤 공백을 뺀 뒤 비어 있으면 막고, 서버와 같은 최대 글자 수(제목 250·내용 5,000)를 넘으면 막는다. Q&A는 카테고리를 고르지 않으면 막는다.
+ *   오류는 칸을 벗어날 때와 제출할 때 알린다.
  * - 올린 글이 누구나 볼 수 있다는 개인정보 경고를 항상 보이고, Q&A는 답변이 의료 진단을 대신하지 않는다는 안내를 함께 둔다.
  * - 서버 연결(`submit`)이 없으면 등록 버튼을 비활성으로 두고 "등록되지도 저장되지도 않아요"를 알린다. 서버가 등록 응답을 준 때만 `onCreated`로 알리고
  *   등록 완료 화면을 따로 만들지 않는다(상세로 이동은 호출한 화면이 맡는다). 입력은 이 화면에서만 유지하고 저장하지 않는다.
- * - 처리 중에는 다시 제출해도 한 번만 나간다. 실패하면 입력을 유지한 채 다시 제출할 수 있다.
+ * - 처리 중에는 다시 제출해도 한 번만 나간다. 결과(C1-R2): 저장되지 않음이 확실하면(rejected) "등록하지 못했어요",
+ *   저장 여부를 모르면(uncertain) "확인하지 못했어요. 목록에서 확인한 뒤 없을 때만 다시"로 나눠 알린다. 둘 다 입력은 유지하고 자동으로 다시 보내지 않는다.
  */
 export default function CommunityComposeForm({
   board,
@@ -89,7 +99,7 @@ export default function CommunityComposeForm({
   board: CommunityBoard
   /** 서버 연결. 없으면(null) 등록할 수 없다. 서버가 성공 응답으로 글 id를 줘야 등록된 것이다. */
   submit:
-    | ((input: NewPostInput, signal: AbortSignal) => Promise<{ id: string }>)
+    | ((input: NewPostInput, signal: AbortSignal) => Promise<SubmittedPost>)
     | null
   cancelTo: string
   onCreated: (id: string) => void
@@ -117,14 +127,16 @@ export default function CommunityComposeForm({
       firstRef.current = false
       return
     }
-    if (phase === 'failed') failedRef.current?.focus()
+    if (phase === 'failed' || phase === 'uncertain') failedRef.current?.focus()
   }, [phase])
 
   const check = validateCompose(board, { category, title, body })
   const invalidFields: readonly ComposeField[] = check.ok ? [] : check.errors
   const errorOf = (name: ComposeField): string | null =>
     shown.includes(name) && invalidFields.includes(name)
-      ? COMPOSE_ERROR_MESSAGE[name]
+      ? name !== 'category' && !check.ok && check.tooLong.includes(name)
+        ? COMPOSE_TOO_LONG_MESSAGE[name]
+        : COMPOSE_ERROR_MESSAGE[name]
       : null
   const reveal = (name: ComposeField) =>
     setShown((current) =>
@@ -154,18 +166,23 @@ export default function CommunityComposeForm({
     setPhase('submitting')
     const controller = new AbortController()
     abortRef.current = controller
+    let submitted: SubmittedPost
     try {
-      const created = await submit(result.input, controller.signal)
-      if (controller.signal.aborted) return
-      busyRef.current = false
-      abortRef.current = null
-      onCreated(created.id)
+      submitted = await submit(result.input, controller.signal)
     } catch {
-      if (controller.signal.aborted) return
-      busyRef.current = false
-      abortRef.current = null
-      setPhase('failed')
+      // 연결이 결과를 분류하지 못한 예외: 서버가 저장했을 수 있다.
+      submitted = { result: { kind: 'uncertain' }, isCurrent: () => true }
     }
+    // 화면을 떠났거나(계정 변경으로 폼이 새로 그려진 경우 포함) 취소된 요청의 결과는 쓰지 않는다.
+    if (controller.signal.aborted) return
+    busyRef.current = false
+    abortRef.current = null
+    // 반영 직전에 로그인 작업을 다시 확인한다(C1-C1). 바뀌었으면 이동·실패 안내 대신 확인 안내만.
+    settleSubmittedPost(submitted, {
+      created: onCreated,
+      rejected: () => setPhase('failed'),
+      uncertain: () => setPhase('uncertain'),
+    })
   }
 
   const categoryError = errorOf('category')
@@ -337,9 +354,21 @@ export default function CommunityComposeForm({
             {copy.failed}
           </p>
         ) : null}
+        {phase === 'uncertain' ? (
+          <p
+            ref={failedRef}
+            tabIndex={-1}
+            data-community-state="uncertain"
+            className="rounded-control border border-danger/30 bg-danger-soft px-3 py-2 text-support leading-relaxed font-normal text-danger focus:outline-none"
+          >
+            {copy.uncertain}
+          </p>
+        ) : null}
         {phase === 'invalid' ? (
           <p data-community-state="invalid" className={`${errorClass} mt-0`}>
-            필수 항목을 입력해 주세요.
+            {!check.ok && check.tooLong.length > 0
+              ? '입력한 내용을 확인해 주세요.'
+              : '필수 항목을 입력해 주세요.'}
           </p>
         ) : null}
       </div>

@@ -299,3 +299,13 @@ def test_allergy_verified_food_allows_inference_only_for_verified_choices():
         response = client.post("/internal/ai/diet-recommendations", json=req)
     assert response.status_code == 200, response.text
     assert response.json()["meals"][0]["foods"][0]["food_id"] == 102
+
+
+def test_internal_key_enforcement(monkeypatch):
+    monkeypatch.setenv("AI_INTERNAL_KEY", "internal-test-key")
+    path = "/internal/ai/diet-recommendations"
+    assert client.get("/health").status_code == 200
+    assert client.post(path, json=foods_payload()).status_code == 403
+    assert client.post(path, headers={"X-Internal-Key": "incorrect"}, json=foods_payload()).status_code == 403
+    with patch("routers.diet_catalog.get_gemini_vision_client", return_value=mock_vision_response()):
+        assert client.post(path, headers={"X-Internal-Key": "internal-test-key"}, json=foods_payload()).status_code == 200
