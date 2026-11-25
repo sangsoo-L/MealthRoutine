@@ -6,7 +6,7 @@ import { createWorkoutRoutineRepository } from './workoutSource.ts'
 /**
  * 루틴 조회 상태.
  * - loading: 불러오는 중.
- * - unavailable: 저장소가 없다(운영 빌드·계정 없음)거나 이 브라우저에서 IndexedDB를 쓸 수 없다. "루틴 없음"이나 오류가 아니다.
+ * - unavailable: 저장소가 없다(계정 없음)거나 개발 서버에서 이 브라우저의 IndexedDB를 쓸 수 없다. "루틴 없음"이나 오류가 아니다.
  * - error: 조회에 실패했다(reload로 다시 시도).
  * - ready: 조회 성공. 목록(items)은 최근 수정 순이고, skippedCount는 읽을 수 없는 루틴 수다(정상 루틴은 숨기지 않는다).
  */

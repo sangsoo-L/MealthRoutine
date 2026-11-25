@@ -347,7 +347,7 @@ test('W06: 비어 있음·불러오는 중·실패·준비 중은 서로 다른 
   const error = view({ status: 'error' })
   assert.match(error, /role="alert"/)
   assert.match(error, /다시 시도/)
-  // 저장소가 없으면(운영) "새 루틴 만들기"는 링크가 아니라 비활성 버튼이고 준비 중이라고 알린다.
+  // 저장소가 없으면(계정 없음) "새 루틴 만들기"는 링크가 아니라 비활성 버튼이고 준비 중이라고 알린다.
   const unavailable = view({ status: 'unavailable' })
   assert.match(unavailable, /루틴 기능을 준비 중이에요/)
   assert.match(unavailable, /aria-disabled="true"/)

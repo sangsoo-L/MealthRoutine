@@ -104,9 +104,18 @@ function RoutineEditor({ routine }: { routine: WorkoutRoutine | null }) {
   const catalog = useExerciseCatalog()
   const [name, setName] = useState(routine?.name ?? '')
   const [description, setDescription] = useState(routine?.description ?? '')
-  const [draft, setDraft] = useState<WorkoutDraft>(() =>
-    routine ? routineToDraft(routine) : createEmptyDraft(),
-  )
+  // 수정이면 초안 항목마다 원래 루틴의 몇 번째 항목이었는지 기억한다. 항목 id는 이동·세트 수정에도 그대로라, 저장소가
+  // 남긴 줄을 구분해 앱 모델에 없는 값(서버의 휴식 시간)을 지킬 수 있다.
+  const [initial] = useState(() => {
+    const first = routine ? routineToDraft(routine) : createEmptyDraft()
+    return {
+      draft: first,
+      sourceItemIndexes: new Map(
+        first.items.map((item, index) => [item.itemId, index]),
+      ) as ReadonlyMap<string, number>,
+    }
+  })
+  const [draft, setDraft] = useState<WorkoutDraft>(initial.draft)
   const [pickMode, setPickMode] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [attempt, setAttempt] = useState<RoutineEditAttempt | null>(null)
@@ -251,6 +260,7 @@ function RoutineEditor({ routine }: { routine: WorkoutRoutine | null }) {
         ? await repository.update(routine.id, {
             ...content,
             expectedRevision: routine.revision,
+            sourceItemIndexes: initial.sourceItemIndexes,
           })
         : (
             await repository.create({

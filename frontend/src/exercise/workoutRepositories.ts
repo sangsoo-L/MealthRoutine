@@ -257,6 +257,12 @@ export interface CreateRoutineInput extends RoutineContentInput {
 export interface UpdateRoutineInput extends RoutineContentInput {
   /** 화면이 마지막으로 읽은 루틴의 revision. 다르면 다른 곳에서 먼저 수정한 것이라 conflict(revisionMismatch)다. */
   expectedRevision: number
+  /**
+   * 초안 항목 id → 그 항목이 수정 전 루틴(expectedRevision 때)의 몇 번째 항목에서 왔는지(0부터). 새로 넣은 항목은 없다.
+   * 서버 저장소가 앱 모델에 없는 값(휴식 시간)을 남긴 줄에 그대로 붙이는 데 쓴다. 같은 운동이 두 줄이어도 줄을 구분한다.
+   * 로컬 저장소는 쓰지 않는다.
+   */
+  sourceItemIndexes?: ReadonlyMap<string, number>
 }
 
 export interface SaveRoutineResult {
@@ -267,10 +273,10 @@ export interface SaveRoutineResult {
 
 /**
  * 운동 루틴 저장소(W06~W08). 계정 id로 만들며 모든 조회·쓰기는 그 계정의 루틴만 다룬다(다른 계정의 루틴은 "없음"과 같다).
- * 지금 구현은 개발 서버 전용 IndexedDB이며, 서버 연동(`/api/v1/workout-routines`)이 정해지면 workoutSource의 반환만 교체한다.
+ * 개발 서버는 IndexedDB(kind 'local'), 운영 빌드는 루틴 API(`/api/v1/workout-routines`, kind 'api') 구현을 쓴다(workoutSource.ts).
  */
 export interface WorkoutRoutineRepository {
-  readonly kind: 'local'
+  readonly kind: 'local' | 'api'
   create(input: CreateRoutineInput): Promise<SaveRoutineResult>
   /** 없으면(다른 계정의 루틴 포함) null. */
   get(routineId: string): Promise<WorkoutRoutine | null>
