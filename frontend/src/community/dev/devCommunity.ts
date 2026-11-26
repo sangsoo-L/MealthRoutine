@@ -17,7 +17,9 @@ import type {
  * - **탭 메모리에만 둔다.** localStorage·sessionStorage·IndexedDB에 쓰지 않으며 새로고침하면 처음 예시로 돌아간다. 서버로 보내지도 않는다.
  * - 예시 글은 `example: true`이고 작성자는 "개발용 예시"다. 실제 사용자의 글이 아니며 화면은 개발 서버에서 예시임을 밝힌다.
  *   등록한 글·댓글·응원도 이 탭 안에서만 보이는 예시이며 어디에도 게시되지 않는다.
- * - 권한 판정(작성자·답변 자격)은 하지 않는다. 화면이 회원 여부와 이해도로 입력을 열고 닫는다(실제 판정은 서버 몫).
+ * - 답변 자격은 판정하지 않는다. 화면이 회원 여부와 이해도로 입력을 열고 닫는다(실제 판정은 서버 몫).
+ * - 내 글 수정·삭제(C2)는 서버와 같은 규칙으로 흉내 낸다: 이 탭에서 내가 쓴 자유게시판 글만(`mine`), 남의 글·예시 글은 forbidden,
+ *   Q&A·지운 글은 gone. 삭제한 글은 저장소에서 빠진다(목록·상세에 없음).
  */
 
 const EXAMPLE_AUTHOR = '개발용 예시'
@@ -25,6 +27,8 @@ const EXAMPLE_AUTHOR = '개발용 예시'
 interface StoredPost extends PostDetailData {
   comments: PostComment[]
   likedBy: Set<string>
+  /** 이 탭에서 글을 쓴 사용자 id. 예시 글은 없다(누구의 글도 아님). */
+  authorId?: string
 }
 
 function seed(): StoredPost[] {
@@ -160,7 +164,7 @@ function summaryOf(post: StoredPost): PostSummary {
 }
 
 function detailOf(post: StoredPost, actor: CommunityActor | null): PostDetail {
-  const { comments, likedBy, ...rest } = post
+  const { comments, likedBy, authorId, ...rest } = post
   void likedBy
   return {
     post: {
@@ -168,6 +172,7 @@ function detailOf(post: StoredPost, actor: CommunityActor | null): PostDetail {
       commentCount: post.board === 'free' ? comments.length : null,
       answered: post.board === 'qa' ? comments.length > 0 : null,
       likedByMe: actor === null ? null : post.likedBy.has(actor.id),
+      mine: actor !== null && authorId === actor.id,
     },
     comments: comments.map((comment) => ({ ...comment })),
   }
@@ -184,7 +189,13 @@ export function createDevCommunitySource(
   actor: CommunityActor | null,
 ): CommunitySource {
   return {
-    supports: { boards: ['free', 'qa'], comments: true, likes: true },
+    // 내 글 수정·삭제는 서버처럼 자유게시판만 연다(C2-D3, Q&A에는 버튼이 없다).
+    supports: {
+      boards: ['free', 'qa'],
+      comments: true,
+      likes: true,
+      editOwn: ['free'],
+    },
     async listPosts(board: CommunityBoard) {
       return store
         .filter((post) => post.board === board)
@@ -221,8 +232,27 @@ export function createDevCommunitySource(
         likedByMe: null,
         likedBy: new Set(),
         comments: [],
+        authorId: me.id,
       })
       return { kind: 'created', id }
+    },
+    async updatePost(postId, input) {
+      if (actor === null) return { kind: 'rejected' }
+      const post = store.find((p) => p.id === postId)
+      if (!post || post.board !== 'free') return { kind: 'gone' }
+      if (post.authorId !== actor.id) return { kind: 'forbidden' }
+      post.title = input.title
+      post.body = input.body
+      return { kind: 'updated', detail: detailOf(post, actor) }
+    },
+    async deletePost(postId) {
+      if (actor === null) return { kind: 'rejected' }
+      const index = store.findIndex((p) => p.id === postId)
+      const post = index < 0 ? undefined : store[index]
+      if (!post || post.board !== 'free') return { kind: 'gone' }
+      if (post.authorId !== actor.id) return { kind: 'forbidden' }
+      store.splice(index, 1)
+      return { kind: 'deleted' }
     },
     async addComment(postId, body) {
       const me = requireActor(actor)

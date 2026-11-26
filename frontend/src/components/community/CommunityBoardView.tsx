@@ -9,6 +9,8 @@ import {
   countLabel,
   formatPostDate,
   postPath,
+  DELETE_RESULT_TEXT,
+  type BoardNotice,
   type CommunityBoard,
   type ListState,
   type PostSummary,
@@ -144,10 +146,13 @@ export default function CommunityBoardView({
   board,
   state,
   onRetry,
+  notice = null,
 }: {
   board: CommunityBoard
   state: ListState
   onRetry: () => void
+  /** 상세에서 삭제하고 넘어온 결과(C2). deleted만 "삭제했어요", gone은 중립 안내다. */
+  notice?: BoardNotice | null
 }) {
   const copy = COPY[board]
   const posts = state.status === 'ready' ? state.posts : null
@@ -172,6 +177,16 @@ export default function CommunityBoardView({
           <Icon name="chevron-right" size={18} />
         </Link>
       </header>
+
+      {notice !== null ? (
+        <p
+          role="status"
+          data-community-board-notice={notice}
+          className={`${noticeClass} mt-0`}
+        >
+          {DELETE_RESULT_TEXT[notice]}
+        </p>
+      ) : null}
 
       {hasExample ? (
         <p role="note" data-community-dev="" className={`${noticeClass} mt-0`}>
