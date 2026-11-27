@@ -146,16 +146,19 @@ const callsOf = (fake, key) => fake.calls.filter((call) => call.key === key)
 test('실제 모드(개발 기본)는 서버 연결이고 자유게시판만 지원한다. 모의 모드는 예시 저장소로 모두 지원한다', () => {
   const real = source.createCommunitySource(null)
   assert.ok(real)
+  // C2: 내 글 수정·삭제는 실제·모의 모두 자유게시판만(C2-D3).
   assert.deepEqual(real.supports, {
     boards: ['free'],
     comments: false,
     likes: false,
+    editOwn: ['free'],
   })
   const mock = mockSource.createCommunitySource({ id: 'u1', nickname: 'n' })
   assert.deepEqual(mock.supports, {
     boards: ['free', 'qa'],
     comments: true,
     likes: true,
+    editOwn: ['free'],
   })
   // 지원하지 않는 게시판은 연결이 없는 것처럼(null → "서버 연결 전") 보인다.
   const hook = read('src/community/useCommunity.ts')
@@ -242,7 +245,10 @@ test('상세: 잘못된 id는 서버에 묻지 않고 없는 글, 404 POST_NOT_F
 
 test('상세: 화면 값으로 바꾸고(본문·댓글 없음·응원 null), 형식 오류·다른 id·그 밖의 404는 조회 실패다', async () => {
   const { fake, source: s } = guestEnv()
-  fake.on('GET /community/posts/7', ok({ ...row(), content: '본문\n둘째 줄' }))
+  fake.on(
+    'GET /community/posts/7',
+    ok({ ...row(), content: '본문\n둘째 줄', mine: false }),
+  )
   const state = await c.runGetPost(s, 'free', '7', signal)
   assert.equal(state.status, 'ready')
   assert.deepEqual(state.detail, {
@@ -259,6 +265,7 @@ test('상세: 화면 값으로 바꾸고(본문·댓글 없음·응원 null), �
       body: '본문\n둘째 줄',
       likeCount: null,
       likedByMe: null,
+      mine: false,
     },
     comments: [],
   })

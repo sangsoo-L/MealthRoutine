@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ReactNode,
   type SubmitEvent,
 } from 'react'
 import { Link, useLocation } from 'react-router'
@@ -38,6 +39,27 @@ import { cardClass, chipClass, focusRing } from '../mypage/myStyles.ts'
 export interface PostActions {
   like: (liked: boolean) => Promise<boolean>
   comment: (body: string) => Promise<boolean>
+}
+
+/**
+ * 내 글 수정·삭제 화면 상태(C2). 버튼을 보일지(`canEditOwnPost`)와 결과 처리는 상세 화면(`CommunityPostPage`)이 정하고,
+ * 이 컴포넌트는 그 상태를 그리기만 한다.
+ * - mode: view(보기) · edit(편집 폼, `editor`) · confirm-delete(삭제 확인 패널)
+ * - deleting: 삭제 요청 중(버튼 비활성)
+ * - notice: 결과 안내(수정 완료·남의 글·삭제 실패 등)
+ */
+export interface OwnPostControls {
+  mode: 'view' | 'edit' | 'confirm-delete'
+  deleting: boolean
+  /** recheck면 안내 아래 "글 다시 불러오기" 버튼을 둔다(결과를 모르는 경우, C2-C2). */
+  notice: { tone: 'info' | 'error'; text: string; recheck?: boolean } | null
+  editor: ReactNode
+  onEdit: () => void
+  onDelete: () => void
+  onCancelDelete: () => void
+  onConfirmDelete: () => void
+  /** 글을 다시 불러온다(안내의 recheck 버튼). */
+  onRecheck: () => void
 }
 
 const help = 'text-support leading-relaxed font-normal text-muted'
@@ -292,6 +314,7 @@ function Ready({
   actions,
   listPath,
   supports,
+  own,
 }: {
   detail: PostDetail
   board: CommunityBoard
@@ -301,8 +324,11 @@ function Ready({
   actions: PostActions
   listPath: string
   supports: Pick<CommunitySupports, 'comments' | 'likes'> | null
+  own: OwnPostControls | null
 }) {
   const { post, comments } = detail
+  const editing = own?.mode === 'edit'
+
   // 연결이 댓글·응원을 지원하지 않으면(서버 C1) 숨기고 "준비 중"을 보인다. 모르면(null) 기존처럼 연다.
   const commentsOn = supports?.comments !== false
   const likesOn = supports?.likes !== false
@@ -357,14 +383,105 @@ function Ready({
         </p>
       </header>
 
-      <p
-        data-community-body=""
-        className="text-body leading-relaxed font-normal whitespace-pre-line text-content"
-      >
-        {post.body}
-      </p>
+      {own?.notice ? (
+        <div className="flex flex-col gap-2">
+          <p
+            role={own.notice.tone === 'error' ? 'alert' : 'status'}
+            data-community-own-notice={own.notice.tone}
+            className={
+              own.notice.tone === 'error'
+                ? `${errorClass} mt-0`
+                : `${noticeClass} mt-0`
+            }
+          >
+            {own.notice.text}
+          </p>
+          {own.notice.recheck ? (
+            <button
+              type="button"
+              data-community-own-recheck=""
+              onClick={own.onRecheck}
+              className={secondaryButtonClass}
+            >
+              글 다시 불러오기
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
-      {board === 'free' && likesOn ? (
+      {editing ? (
+        own.editor
+      ) : (
+        <p
+          data-community-body=""
+          className="text-body leading-relaxed font-normal whitespace-pre-line text-content"
+        >
+          {post.body}
+        </p>
+      )}
+
+      {own !== null && own.mode === 'view' ? (
+        <div className="flex flex-wrap gap-2" data-community-own="">
+          <button
+            type="button"
+            data-community-edit-start=""
+            onClick={own.onEdit}
+            className={secondaryButtonClass}
+          >
+            수정
+          </button>
+          <button
+            type="button"
+            data-community-delete-start=""
+            onClick={own.onDelete}
+            className={secondaryButtonClass}
+          >
+            삭제
+          </button>
+        </div>
+      ) : null}
+
+      {own !== null && own.mode === 'confirm-delete' ? (
+        <div
+          role="alertdialog"
+          aria-labelledby="community-delete-title"
+          aria-describedby="community-delete-desc"
+          data-community-delete-confirm=""
+          className={cardClass}
+        >
+          <p
+            id="community-delete-title"
+            className="text-body leading-snug font-semibold text-content"
+          >
+            이 글을 삭제할까요?
+          </p>
+          <p id="community-delete-desc" className={`mt-1 ${help}`}>
+            삭제한 글은 목록과 상세에서 사라져요.
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            <button
+              type="button"
+              data-community-delete-confirm-yes=""
+              disabled={own.deleting}
+              onClick={own.onConfirmDelete}
+              className={`${primaryButtonClass} ${primaryDisabledClass}`}
+            >
+              {own.deleting ? '삭제 중…' : '삭제'}
+            </button>
+            <button
+              type="button"
+              data-community-delete-confirm-no=""
+              disabled={own.deleting}
+              onClick={own.onCancelDelete}
+              className={`${secondaryButtonClass} disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {editing ? null : board === 'free' && likesOn ? (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -403,7 +520,7 @@ function Ready({
         </div>
       ) : null}
 
-      {!commentsOn ? (
+      {editing ? null : !commentsOn ? (
         <section
           aria-labelledby="community-comments-title"
           className={cardClass}
@@ -497,7 +614,8 @@ function Ready({
  * - Q&A: 답변 상태·카테고리 → 제목·작성자·작성일·본문 → 구분선 아래 답변 카드(답변자·등급·작성일) → 답변 입력(자격이 있을 때) → 질문 목록으로.
  * - 읽기는 비회원도 한다. 댓글·응원은 회원이고 비회원은 로그인 안내를 본다. 답변은 질문 영역의 이해도가 중급 이상인 회원에게만 입력을 연다(안내용, 판정은 서버).
  * - 상태: 조회 중 · 서버 연결 전 · 조회 실패(다시 시도) · 없는 글·삭제된 글(목록으로) · 글. 서버가 성공을 알린 때만 댓글·응원이 반영된다.
- * - 수정·삭제·신고는 명세에 화면이 없어 만들지 않았다.
+ * - 내 글 수정·삭제(C2): `own`이 있을 때만(서버가 내 글이라고 답한 자유게시판 글) 수정·삭제 버튼, 편집 폼, 삭제 확인 패널을 보인다.
+ *   편집 중에는 응원·댓글 영역을 숨긴다. 신고는 만들지 않았다.
  */
 export default function CommunityPostView({
   board,
@@ -509,6 +627,7 @@ export default function CommunityPostView({
   actions,
   listPath,
   supports = null,
+  own = null,
 }: {
   board: CommunityBoard
   state: PostState
@@ -522,6 +641,8 @@ export default function CommunityPostView({
   listPath: string
   /** 연결이 지원하는 댓글·응원. null이면 모두 연다(예시 저장소와 같은 동작). */
   supports?: Pick<CommunitySupports, 'comments' | 'likes'> | null
+  /** 내 글 수정·삭제(C2). 내 글이 아니면 null이다. */
+  own?: OwnPostControls | null
 }) {
   if (state.status === 'ready')
     return (
@@ -534,6 +655,7 @@ export default function CommunityPostView({
         actions={actions}
         listPath={listPath}
         supports={supports}
+        own={own}
       />
     )
 

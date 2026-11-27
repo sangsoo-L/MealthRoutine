@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/authContext.ts'
 import { loadKnowledgeLevels } from '../mypage/knowledgeSource.ts'
 import {
@@ -7,13 +7,15 @@ import {
   type CommunityBoard,
   type CommunitySource,
   type ListState,
+  type PostDetail,
   type PostState,
   type QaCategory,
 } from './community.ts'
 import { createCommunitySource } from './communitySource.ts'
 
 /**
- * 현재 사용자의 커뮤니티 연결. 사용자가 바뀌면 새로 만든다(모의 저장소가 작성자 이름에 쓴다).
+ * 현재 사용자의 커뮤니티 연결. 사용자가 바뀌면 새로 만든다(모의 저장소가 작성자 이름에 쓰고, 서버 연결은 회원이면 상세에서 `mine`을 받는다).
+ * 닉네임이 아직 없는 회원도 회원 연결이다(닉네임은 모의 저장소의 작성자 이름에만 쓴다).
  * 연결이 이 게시판을 지원하지 않으면 null이다(실제 서버는 아직 Q&A가 없어 "연결 전" 안내가 보인다, C1-D8).
  */
 export function useCommunitySource(
@@ -25,7 +27,7 @@ export function useCommunitySource(
   const source = useMemo(
     () =>
       createCommunitySource(
-        id !== null && nickname !== null ? { id, nickname } : null,
+        id !== null ? { id, nickname: nickname ?? '회원' } : null,
       ),
     [id, nickname],
   )
@@ -70,30 +72,50 @@ export function usePostList(
 /**
  * 상세 조회(읽기 전용). 비어 있는 id는 서버에 묻지 않고 없는 글이다.
  * `refresh`는 댓글·응원 같은 쓰기 뒤에 서버 값을 조용히 다시 읽는다(화면을 로딩으로 바꾸지 않고 도착하면 바꾼다).
+ * `viewer`(지금 사용자 id, 비회원은 빈 값)가 키에 들어가 계정이 바뀌면 바로 "불러오는 중"이 된다: 이전 계정의 `mine:true`가
+ * 새 계정 화면에 잠깐이라도 남지 않는다(C2).
+ * `replace`는 수정 성공 응답의 글로 화면을 바로 바꾼다. 그 전에 시작된 조회가 늦게 도착해도 버린다(옛 내용으로 덮지 않음).
  */
 export function usePost(
   source: CommunitySource | null,
   board: CommunityBoard,
   postId: string,
-): { state: PostState; reload: () => void; refresh: () => void } {
+  viewer = '',
+): {
+  state: PostState
+  reload: () => void
+  refresh: () => void
+  replace: (detail: PostDetail) => void
+} {
   const [attempt, setAttempt] = useState(0)
   const [refreshes, setRefreshes] = useState(0)
   const [loaded, setLoaded] = useState<{
     key: string
     state: Exclude<PostState, { status: 'loading' }>
   } | null>(null)
-  const base = `${board}:${postId}:${attempt}`
+  // replace가 올리는 세대. 조회는 시작할 때의 세대를 기억하고, 그 사이 replace가 있었으면 결과를 버린다.
+  const generation = useRef(0)
+  const base = `${viewer}:${board}:${postId}:${attempt}`
 
   useEffect(() => {
     const controller = new AbortController()
+    const started = generation.current
     void runGetPost(source, board, postId, controller.signal).then((state) => {
-      if (!controller.signal.aborted) setLoaded({ key: base, state })
+      if (!controller.signal.aborted && generation.current === started)
+        setLoaded({ key: base, state })
     })
     return () => controller.abort()
   }, [source, board, postId, base, refreshes])
 
   const reload = useCallback(() => setAttempt((n) => n + 1), [])
   const refresh = useCallback(() => setRefreshes((n) => n + 1), [])
+  const replace = useCallback(
+    (detail: PostDetail) => {
+      generation.current += 1
+      setLoaded({ key: base, state: { status: 'ready', detail } })
+    },
+    [base],
+  )
   return {
     state:
       loaded !== null && loaded.key === base
@@ -101,6 +123,7 @@ export function usePost(
         : { status: 'loading' },
     reload,
     refresh,
+    replace,
   }
 }
 

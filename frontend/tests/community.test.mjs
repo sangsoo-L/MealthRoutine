@@ -480,7 +480,7 @@ test('상세 상태: 조회 중·서버 연결 전·실패(다시 시도)·없�
   assert.match(qa, /href="\/community\/qa"[^>]*>질문 목록으로/)
 })
 
-test('상세 화면에는 수정·삭제·신고 버튼이 없다(명세에 화면이 없다)', () => {
+test('상세 화면: 내 글 수정 상태(own)가 없으면 수정·삭제 버튼이 없고, 신고 버튼은 어디에도 없다(C2)', () => {
   const html = post({
     isMember: true,
     state: { status: 'ready', detail: detail(summary(), [comment()]) },
@@ -557,6 +557,7 @@ test('개발 전용 예시 저장소: 탭 메모리 안에서만 글·댓글·�
     boards: ['free', 'qa'],
     comments: true,
     likes: true,
+    editOwn: ['free'],
   })
   const created = await source.createPost(
     { board: 'free', title: '새 글', body: '내용' },
@@ -660,7 +661,7 @@ test('라우트: 목록·상세는 공개(AuthGate 밖), 작성은 회원 전용
   }
 })
 
-test('후속 화면(C01-1·C02-2·C03)과 수정·삭제 화면은 만들지 않았고 삭제된 루틴 좋아요 API를 쓰지 않는다', () => {
+test('후속 화면(C01-1·C02-2·C03)과 별도 수정 경로는 만들지 않았고(C2는 상세 안 편집) 삭제된 루틴 좋아요 API를 쓰지 않는다', () => {
   const router = read('src/app/router.tsx')
   for (const id of ['C01-1', 'C02-2', 'C03'])
     assert.doesNotMatch(router, new RegExp(`screenId: '${id}'`), id)
@@ -674,6 +675,7 @@ test('후속 화면(C01-1·C02-2·C03)과 수정·삭제 화면은 만들지 않
     'src/components/community/CommunityBoardView.tsx',
     'src/components/community/CommunityPostView.tsx',
     'src/components/community/CommunityComposeForm.tsx',
+    'src/components/community/CommunityEditForm.tsx',
     'src/pages/CommunityBoardPage.tsx',
     'src/pages/CommunityPostPage.tsx',
     'src/pages/CommunityWritePage.tsx',

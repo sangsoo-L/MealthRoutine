@@ -2,7 +2,9 @@ package com.healthlab.mealthroutine.backend.community;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -10,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.healthlab.mealthroutine.backend.user.domain.UserRole;
 import com.healthlab.mealthroutine.backend.user.jwt.JwtTokenProvider;
 import com.jayway.jsonpath.JsonPath;
+import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -34,7 +37,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Free board list, detail and create (C1). Every test rolls back, and the clock is fixed at 12:00 in Seoul on
+ * Free board list, detail and create (C1), the author's edit and delete and the detail's mine (C2). Row locks and
+ * races of edit and delete are in CommunityPostLockTests. Every test rolls back, and the clock is fixed at 12:00 in Seoul on
  * 2026-11-25. The list tests assume the test DB has no other community posts (the table starts empty and every test
  * here rolls back).
  */
@@ -58,6 +62,10 @@ class CommunityPostApiTests {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    /** The test transaction never commits: flush before reading a row the request changed through JPA. */
+    @Autowired
+    private EntityManager entityManager;
 
     @MockitoBean
     private Clock clock;
@@ -266,6 +274,7 @@ class CommunityPostApiTests {
                 .andExpect(jsonPath("$.data.content").value("content " + postId))
                 .andExpect(jsonPath("$.data.authorName").value("회원1"))
                 .andExpect(jsonPath("$.data.createdAt").value("2026-11-25T11:55:00"))
+                .andExpect(jsonPath("$.data.mine").value(false))
                 .andExpect(jsonPath("$.data.userId").doesNotExist());
     }
 
@@ -339,7 +348,296 @@ class CommunityPostApiTests {
                 .andExpect(jsonPath("$.errorCode").value("LOGIN_REQUIRED"));
     }
 
+    // ---------- GET detail: mine (C2-D1) ----------
+
+    @Test
+    void mineIsTrueOnlyForTheAuthorAndTheAuthorIdIsNeverSent() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        insertMember(otherUserId, "active", "다른회원");
+        long postId = insertPost(userId, "general", "visible", NOW_LOCAL);
+
+        mockMvc.perform(get(POSTS + "/" + postId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mine").value(false));
+        mockMvc.perform(get(POSTS + "/" + postId).header("Authorization", bearer(userId)))
+                .andExpect(jsonPath("$.data.mine").value(true))
+                .andExpect(jsonPath("$.data.userId").doesNotExist())
+                .andExpect(jsonPath("$.data.authorUserId").doesNotExist());
+        mockMvc.perform(get(POSTS + "/" + postId).header("Authorization", bearer(otherUserId)))
+                .andExpect(jsonPath("$.data.mine").value(false));
+        // routine and question details still work and also carry mine (only editing is limited to general).
+        long question = insertPost(userId, "question", "visible", NOW_LOCAL);
+        mockMvc.perform(get(POSTS + "/" + question).header("Authorization", bearer(userId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mine").value(true));
+        // A withdrawn author's post is nobody's: a new member never gets the old account's posts.
+        long withdrawnId = NEXT_ID.getAndIncrement();
+        insertMember(withdrawnId, "deleted", "옛닉네임");
+        long withdrawn = insertPost(withdrawnId, "general", "visible", NOW_LOCAL);
+        mockMvc.perform(get(POSTS + "/" + withdrawn).header("Authorization", bearer(otherUserId)))
+                .andExpect(jsonPath("$.data.mine").value(false));
+        // A bad token is still a 401 on the public detail (unchanged).
+        mockMvc.perform(get(POSTS + "/" + postId).header("Authorization", "Bearer not-a-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_TOKEN"));
+    }
+
+    // ---------- PATCH (C2) ----------
+
+    @Test
+    void authorEditsTitleAndContentAndNothingElseChanges() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        insertMember(otherUserId, "active", "다른회원");
+        LocalDateTime created = NOW_LOCAL.minusHours(3);
+        long postId = insertPost(userId, "general", "visible", created);
+        now.set(NOW.plusMillis(456));
+
+        String body = """
+                {"title":"  고친 제목\u3000","content":"\\n고친 내용\\n","postType":"routine","userId":%d,
+                 "authorName":"다른회원","visibility":"hidden","createdAt":"2000-01-01T00:00:00","mine":false}
+                """.formatted(otherUserId);
+        String response = edit(bearer(userId), postId, body)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.postId").value(postId))
+                .andExpect(jsonPath("$.data.postType").value("general"))
+                .andExpect(jsonPath("$.data.title").value("고친 제목"))
+                .andExpect(jsonPath("$.data.content").value("고친 내용"))
+                .andExpect(jsonPath("$.data.authorName").value("글쓴이"))
+                .andExpect(jsonPath("$.data.createdAt").value("2026-11-25T09:00:00"))
+                .andExpect(jsonPath("$.data.mine").value(true))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(response).doesNotContain("\"userId\"");
+
+        Map<String, Object> row = row(postId);
+        assertThat(row.get("title")).isEqualTo("고친 제목");
+        assertThat(row.get("content")).isEqualTo("고친 내용");
+        assertThat(row.get("user_id")).isEqualTo(userId);
+        assertThat(row.get("post_type")).isEqualTo("general");
+        assertThat(row.get("visibility")).isEqualTo("visible");
+        assertThat(row.get("created_at")).isEqualTo(created);
+        assertThat(row.get("updated_at")).isEqualTo(NOW_LOCAL); // app clock, fractions dropped
+    }
+
+    @Test
+    void sameValuesAfterTrimmingKeepUpdatedAt() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        LocalDateTime created = NOW_LOCAL.minusHours(3);
+        long postId = insertPost(userId, "general", "visible", created);
+
+        edit(bearer(userId), postId, "{\"title\":\" title \",\"content\":\"content " + postId + "\\n\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("title"));
+        assertThat(row(postId).get("updated_at")).isEqualTo(created);
+    }
+
+    @Test
+    void editRefusesEveryBadValueWithoutChangingTheRow() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        long postId = insertPost(userId, "general", "visible", NOW_LOCAL.minusHours(1));
+        List<String> bodies = List.of(
+                "{\"content\":\"내용\"}",
+                "{\"title\":null,\"content\":\"내용\"}",
+                "{\"title\":12,\"content\":\"내용\"}",
+                "{\"title\":true,\"content\":\"내용\"}",
+                "{\"title\":[\"a\"],\"content\":\"내용\"}",
+                "{\"title\":{\"a\":1},\"content\":\"내용\"}",
+                "{\"title\":\"제목\"}",
+                "{\"title\":\"제목\",\"content\":null}",
+                "{\"title\":\"제목\",\"content\":5}",
+                "{\"title\":\"\",\"content\":\"내용\"}",
+                "{\"title\":\"\\u00a0\\u3000\\ufeff\",\"content\":\"내용\"}",
+                "{\"title\":\"제목\",\"content\":\" \\n\\t \"}",
+                "{\"title\":\"" + "가".repeat(251) + "\",\"content\":\"내용\"}",
+                "{\"title\":\"" + "😀".repeat(251) + "\",\"content\":\"내용\"}",
+                "{\"title\":\"제목\",\"content\":\"" + "a".repeat(5001) + "\"}",
+                "{\"title\":\"제목\"",
+                "",
+                "[]");
+        for (String body : bodies) {
+            edit(bearer(userId), postId, body)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
+        }
+        for (String id : List.of("abc", "9223372036854775808", "1.5")) {
+            mockMvc.perform(patch(POSTS + "/" + id).header("Authorization", bearer(userId))
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"t\",\"content\":\"c\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
+        }
+        assertThat(row(postId).get("title")).isEqualTo("title");
+
+        // Boundaries that are allowed: 250 code points (emoji) and 5,000 characters.
+        edit(bearer(userId), postId, "{\"title\":\"" + "😀".repeat(250) + "\",\"content\":\"" + "a".repeat(5000)
+                + "\"}").andExpect(status().isOk());
+        assertThat((String) row(postId).get("title")).hasSize(500);
+    }
+
+    // ---------- DELETE (C2) ----------
+
+    @Test
+    void authorDeletesSoftlyAndThePostDisappears() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        LocalDateTime created = NOW_LOCAL.minusHours(3);
+        long postId = insertPost(userId, "general", "visible", created);
+        long kept = insertPost(userId, "general", "visible", created);
+        now.set(NOW.plusMillis(999));
+
+        String body = remove(bearer(userId), postId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("요청 성공"))
+                // ApiResponse leaves null fields out (C2-D5).
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.errorCode").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(body).doesNotContain("\"data\"");
+
+        Map<String, Object> row = row(postId);
+        assertThat(row.get("visibility")).isEqualTo("deleted");
+        assertThat(row.get("title")).isEqualTo("title");
+        assertThat(row.get("content")).isEqualTo("content " + postId);
+        assertThat(row.get("created_at")).isEqualTo(created);
+        assertThat(row.get("updated_at")).isEqualTo(NOW_LOCAL);
+
+        mockMvc.perform(get(POSTS + "/" + postId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("POST_NOT_FOUND"));
+        String list = mockMvc.perform(get(POSTS)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(ids(list)).containsExactly(kept);
+
+        // A second delete and an edit of the deleted post are 404; the edit does not bring it back.
+        remove(bearer(userId), postId).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("POST_NOT_FOUND"));
+        edit(bearer(userId), postId, "{\"title\":\"부활\",\"content\":\"부활\"}")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("POST_NOT_FOUND"));
+        assertThat(row(postId).get("visibility")).isEqualTo("deleted");
+        assertThat(row(postId).get("title")).isEqualTo("title");
+    }
+
+    // ---------- edit and delete: login, owner, targets, order (C2-D3, C2-D6) ----------
+
+    @Test
+    void editAndDeleteNeedAUsableLogin() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        long suspendedId = NEXT_ID.getAndIncrement();
+        insertMember(suspendedId, "suspended", "정지회원");
+        long postId = insertPost(userId, "general", "visible", NOW_LOCAL);
+        long suspendedPost = insertPost(suspendedId, "general", "visible", NOW_LOCAL);
+        String body = "{\"title\":\"t\",\"content\":\"c\"}";
+        String expired = "Bearer " + jwtTokenProvider.createAccessToken(userId, UserRole.USER,
+                NOW.minus(Duration.ofHours(2)));
+
+        edit(null, postId, body).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("LOGIN_REQUIRED"));
+        remove(null, postId).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("LOGIN_REQUIRED"));
+        edit(expired, postId, body).andExpect(jsonPath("$.errorCode").value("TOKEN_EXPIRED"));
+        remove(expired, postId).andExpect(jsonPath("$.errorCode").value("TOKEN_EXPIRED"));
+        edit("Bearer not-a-token", postId, body).andExpect(jsonPath("$.errorCode").value("INVALID_TOKEN"));
+        remove("Bearer not-a-token", postId).andExpect(jsonPath("$.errorCode").value("INVALID_TOKEN"));
+        edit(bearer(suspendedId), suspendedPost, body).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCOUNT_SUSPENDED"));
+        remove(bearer(suspendedId), suspendedPost).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCOUNT_SUSPENDED"));
+        assertThat(row(postId).get("title")).isEqualTo("title");
+        assertThat(row(suspendedPost).get("visibility")).isEqualTo("visible");
+    }
+
+    @Test
+    void anotherMembersVisiblePostIs403AndStaysUnchanged() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        insertMember(otherUserId, "active", "다른회원");
+        long postId = insertPost(userId, "general", "visible", NOW_LOCAL);
+
+        edit(bearer(otherUserId), postId, "{\"title\":\"남의 글\",\"content\":\"남의 글\"}")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        remove(bearer(otherUserId), postId)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+        Map<String, Object> row = row(postId);
+        assertThat(row.get("title")).isEqualTo("title");
+        assertThat(row.get("visibility")).isEqualTo("visible");
+    }
+
+    @Test
+    void onlyVisibleFreeBoardPostsAreTargetsAndEverythingElseIs404() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        insertMember(otherUserId, "active", "다른회원");
+        List<Long> mineNotTargets = List.of(
+                insertPost(userId, "general", "hidden", NOW_LOCAL),
+                insertPost(userId, "general", "deleted", NOW_LOCAL),
+                insertPost(userId, "routine", "visible", NOW_LOCAL),
+                insertPost(userId, "question", "visible", NOW_LOCAL),
+                insertPost(userId, "notice", "visible", NOW_LOCAL));
+        // Someone else's non-targets are 404 too, not 403: whether they exist is not shown.
+        List<Long> othersNotTargets = List.of(
+                insertPost(otherUserId, "general", "hidden", NOW_LOCAL),
+                insertPost(otherUserId, "general", "deleted", NOW_LOCAL),
+                insertPost(otherUserId, "routine", "visible", NOW_LOCAL),
+                insertPost(otherUserId, "question", "visible", NOW_LOCAL));
+        long missing = othersNotTargets.get(othersNotTargets.size() - 1) + 1000;
+        String body = "{\"title\":\"t\",\"content\":\"c\"}";
+
+        List<String> ids = new java.util.ArrayList<>();
+        for (long id : mineNotTargets) {
+            ids.add(String.valueOf(id));
+        }
+        for (long id : othersNotTargets) {
+            ids.add(String.valueOf(id));
+        }
+        ids.addAll(List.of(String.valueOf(missing), "0", "-1"));
+        for (String id : ids) {
+            mockMvc.perform(patch(POSTS + "/" + id).header("Authorization", bearer(userId))
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.errorCode").value("POST_NOT_FOUND"));
+            mockMvc.perform(delete(POSTS + "/" + id).header("Authorization", bearer(userId)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.errorCode").value("POST_NOT_FOUND"));
+        }
+        for (long id : mineNotTargets) {
+            assertThat(row(id).get("title")).isEqualTo("title");
+        }
+        assertThat(row(mineNotTargets.get(2)).get("visibility")).isEqualTo("visible");
+    }
+
+    @Test
+    void aBadBodyIs400BeforeTheTargetOrTheAuthorIsChecked() throws Exception {
+        insertMember(userId, "active", "글쓴이");
+        insertMember(otherUserId, "active", "다른회원");
+        long others = insertPost(otherUserId, "general", "visible", NOW_LOCAL);
+        long othersDeleted = insertPost(otherUserId, "general", "deleted", NOW_LOCAL);
+        String bad = "{\"title\":\"\",\"content\":\"c\"}";
+        String good = "{\"title\":\"t\",\"content\":\"c\"}";
+
+        edit(bearer(userId), others, bad).andExpect(status().isBadRequest());
+        edit(bearer(userId), others + 1000, bad).andExpect(status().isBadRequest());
+        edit(bearer(userId), othersDeleted, good).andExpect(status().isNotFound());
+        edit(bearer(userId), others, good).andExpect(status().isForbidden());
+    }
+
     // ---------- helpers ----------
+
+    private ResultActions edit(String authorization, long postId, String body) throws Exception {
+        MockHttpServletRequestBuilder request =
+                patch(POSTS + "/" + postId).contentType(MediaType.APPLICATION_JSON).content(body);
+        if (authorization != null) {
+            request.header("Authorization", authorization);
+        }
+        return mockMvc.perform(request);
+    }
+
+    private ResultActions remove(String authorization, long postId) throws Exception {
+        MockHttpServletRequestBuilder request = delete(POSTS + "/" + postId);
+        if (authorization != null) {
+            request.header("Authorization", authorization);
+        }
+        return mockMvc.perform(request);
+    }
 
     private ResultActions create(String authorization, String body) throws Exception {
         MockHttpServletRequestBuilder request = post(POSTS).contentType(MediaType.APPLICATION_JSON).content(body);
@@ -383,6 +681,7 @@ class CommunityPostApiTests {
     }
 
     private Map<String, Object> row(long postId) {
+        entityManager.flush();
         return jdbcTemplate.queryForMap("select * from community_posts where post_id = ?", postId);
     }
 
